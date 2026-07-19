@@ -37,7 +37,7 @@
 
 ## Development Branch Convention
 
-Tis is the convention we follow for development
+This is the convention we follow for development
 
 - `main` - Productiontion Branch. After final testing completion `dev` branch will be marged to `main` branch.
 - `dev` - feature branches will be marged here for final testing.
