@@ -42,6 +42,7 @@ The folder structure enforces **Clean Architecture / Dependency Inversion**:
 the 1-month MVP timeline, this also means Phase 2 features (screenshots, USB logging)
 slot in as new classes implementing existing interfaces, not rewrites.
 
+```
 Agent/
 ├── src/
 │ ├── Collectors/
@@ -78,6 +79,7 @@ Agent/
 │ └── IdleStateCollectorTests.cs
 ├── Buffering.Tests/
 └── Sync.Tests/
+```
 
 ---
 

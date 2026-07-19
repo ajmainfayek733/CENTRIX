@@ -23,6 +23,7 @@ must make it obvious at a glance which flow a route belongs to. If you're adding
 route and unsure which prefix it goes under, ask "does a machine call this, or does a
 person call this" — that answer decides it.
 
+```
 Backend/
 ├── src/
 │ ├── modules/
@@ -109,6 +110,7 @@ Backend/
 ├── unit/
 ├── integration/
 └── contract/activity-batch.contract.spec.ts
+```
 
 ---
 

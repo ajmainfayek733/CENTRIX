@@ -28,6 +28,7 @@ session. If you find yourself adding device-token logic here, stop — that belo
 
 ## 2. Folder structure
 
+```
 Frontend/
 ├── src/
 │ ├── app/
@@ -80,6 +81,7 @@ Frontend/
 └── tests/
 ├── employees.test.tsx
 └── activity-timeline.test.tsx
+```
 
 ---
 
