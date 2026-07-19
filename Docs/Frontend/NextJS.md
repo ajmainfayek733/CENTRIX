@@ -28,35 +28,58 @@ session. If you find yourself adding device-token logic here, stop — that belo
 
 ## 2. Folder structure
 
-```
-src/
-  app/
-    (auth)/
-      login/page.tsx
-    (dashboard)/
-      layout.tsx           # shared shell: nav, RequireRole wrapper
-      page.tsx             # Overview screen
-      employees/
-        page.tsx           # Employee list
-        [id]/page.tsx      # Employee detail
-      reports/page.tsx
-      settings/page.tsx    # super_admin only
-    api/
-      auth/
-        login/route.ts     # proxies to monitoring-server, sets httpOnly cookie
-        logout/route.ts
-    middleware.ts           # route-level auth + RBAC gate
-  components/
-    dashboard/
-    employee-detail/
-    reports/
-    ui/                     # shadcn components
-  hooks/
-  lib/
-    api-client.ts           # server-side fetch wrapper (reads cookie, calls Express)
-    session.ts              # cookie read/verify helpers
-  types/
-```
+Frontend/
+├── src/
+│ ├── app/
+│ │ ├── layout.tsx
+│ │ ├── page.tsx # landing/redirect
+│ │ ├── login/
+│ │ │ └── page.tsx
+│ │ ├── (dashboard)/ # route group, RBAC-protected
+│ │ │ ├── layout.tsx # session check + role gate
+│ │ │ ├── overview/
+│ │ │ │ └── page.tsx
+│ │ │ ├── employees/
+│ │ │ │ ├── page.tsx # roster list
+│ │ │ │ └── [employeeId]/
+│ │ │ │ └── page.tsx # detail/timeline
+│ │ │ ├── reports/
+│ │ │ │ └── page.tsx
+│ │ │ └── settings/
+│ │ │ ├── categories/page.tsx
+│ │ │ ├── retention/page.tsx
+│ │ │ └── users/page.tsx
+│ │ └── api/ # thin BFF proxy only (optional)
+│ │ └── auth/[...nextauth]/route.ts # if using NextAuth
+│ ├── components/ # shared, presentational only
+│ │ ├── ui/
+│ │ │ ├── Table.tsx
+│ │ │ ├── Chart.tsx
+│ │ │ └── Card.tsx
+│ │ └── guards/RoleGuard.tsx
+│ ├── features/ # feature-scoped components/hooks
+│ │ ├── overview/TeamSummaryCard.tsx
+│ │ ├── employees/
+│ │ │ ├── ActivityTimeline.tsx
+│ │ │ └── useEmployeeData.ts
+│ │ ├── reports/ExportButton.tsx
+│ │ └── settings/CategoryRuleForm.tsx
+│ ├── lib/
+│ │ ├── api-client.ts # typed fetch wrapper → Backend REST API
+│ │ ├── auth.ts # session/JWT helpers
+│ │ └── constants.ts
+│ ├── store/ # Zustand/RTK client state
+│ │ ├── auth.slice.ts
+│ │ ├── employees.slice.ts
+│ │ └── settings.slice.ts
+│ ├── types/ # or import from shared/contracts
+│ └── middleware.ts # Next.js middleware — auth/RBAC redirects
+├── public/
+├── next.config.js
+├── tsconfig.json
+└── tests/
+├── employees.test.tsx
+└── activity-timeline.test.tsx
 
 ---
 
@@ -84,14 +107,14 @@ improvement worth keeping:
 
 ```typescript
 // lib/api-client.ts — server-side only
-import { cookies } from 'next/headers';
+import { cookies } from "next/headers";
 
 export async function serverFetch(path: string, init?: RequestInit) {
-  const token = (await cookies()).get('session')?.value;
+  const token = (await cookies()).get("session")?.value;
   return fetch(`${process.env.MONITORING_API_URL}${path}`, {
     ...init,
     headers: { ...init?.headers, Authorization: `Bearer ${token}` },
-    cache: 'no-store', // activity data is live; don't let Next cache it silently
+    cache: "no-store", // activity data is live; don't let Next cache it silently
   });
 }
 ```
@@ -123,22 +146,22 @@ stale cached read would show a manager yesterday's "who's online now."
 
 ```typescript
 export function middleware(request: NextRequest) {
-  const session = request.cookies.get('session')?.value;
+  const session = request.cookies.get("session")?.value;
   const { pathname } = request.nextUrl;
 
-  if (!session && pathname.startsWith('/(dashboard)')) {
-    return NextResponse.redirect(new URL('/login', request.url));
+  if (!session && pathname.startsWith("/(dashboard)")) {
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
   const role = decodeRole(session); // lightweight decode, not full verify
-  if (pathname.startsWith('/settings') && role !== 'super_admin') {
-    return NextResponse.redirect(new URL('/', request.url));
+  if (pathname.startsWith("/settings") && role !== "super_admin") {
+    return NextResponse.redirect(new URL("/", request.url));
   }
 
   return NextResponse.next();
 }
 
-export const config = { matcher: ['/((?!login|_next/static|_next/image).*)'] };
+export const config = { matcher: ["/((?!login|_next/static|_next/image).*)"] };
 ```
 
 As with the Vite version: **this is UX, not the security boundary.** `monitoring-server`
@@ -168,11 +191,11 @@ components use a hook that calls a local route handler.
 Since server components handle the initial load, hooks here are strictly for
 post-load, client-side interactivity:
 
-| Hook | Wraps | Notes |
-|---|---|---|
-| `useTeamSummaryRefresh.ts` | `GET /api/dashboard/reports/team-summary` (local route handler) | Powers a manual refresh / polling toggle on the Overview screen |
-| `useEmployeeTimelineFilter.ts` | `GET /api/dashboard/employees/:id/timeline` | Re-fetches when the date range changes |
-| `useAuditLog.ts` | `GET /api/dashboard/audit-log` | Auditor + super_admin only |
+| Hook                           | Wraps                                                           | Notes                                                           |
+| ------------------------------ | --------------------------------------------------------------- | --------------------------------------------------------------- |
+| `useTeamSummaryRefresh.ts`     | `GET /api/dashboard/reports/team-summary` (local route handler) | Powers a manual refresh / polling toggle on the Overview screen |
+| `useEmployeeTimelineFilter.ts` | `GET /api/dashboard/employees/:id/timeline`                     | Re-fetches when the date range changes                          |
+| `useAuditLog.ts`               | `GET /api/dashboard/audit-log`                                  | Auditor + super_admin only                                      |
 
 There is no `useAuth.ts` client hook anymore — auth state lives in the httpOnly
 cookie and is read server-side; a client component that needs to know the current
@@ -191,18 +214,18 @@ renders `undefined` in a report. Treat contract changes as a two-repo commit.
 
 ## 9. Phase mapping (month-1 MVP)
 
-| Component | Priority | Month-1? |
-|---|---|---|
-| Login route + httpOnly cookie + `middleware.ts` gate | M | **Yes** |
-| Overview screen (server component) | M | **Yes** |
-| Employee list (server component) | M | **Yes** |
-| Employee detail — timeline, active/idle split | M | **Yes** |
-| RBAC gating (Admin + Manager only) | M | **Yes** — Auditor can wait |
-| Date-range filtering (client component + route handler) | M | **Yes**, basic ranges |
-| CSV/PDF export buttons | S | Defer — hide, don't ship broken |
-| Screenshot viewer | S | Defer |
-| Auditor-specific views | S | Defer |
-| Settings screen | M (per original spec) | Partial — categories only if time allows; retention/work-hours can defer to direct DB config |
+| Component                                               | Priority              | Month-1?                                                                                     |
+| ------------------------------------------------------- | --------------------- | -------------------------------------------------------------------------------------------- |
+| Login route + httpOnly cookie + `middleware.ts` gate    | M                     | **Yes**                                                                                      |
+| Overview screen (server component)                      | M                     | **Yes**                                                                                      |
+| Employee list (server component)                        | M                     | **Yes**                                                                                      |
+| Employee detail — timeline, active/idle split           | M                     | **Yes**                                                                                      |
+| RBAC gating (Admin + Manager only)                      | M                     | **Yes** — Auditor can wait                                                                   |
+| Date-range filtering (client component + route handler) | M                     | **Yes**, basic ranges                                                                        |
+| CSV/PDF export buttons                                  | S                     | Defer — hide, don't ship broken                                                              |
+| Screenshot viewer                                       | S                     | Defer                                                                                        |
+| Auditor-specific views                                  | S                     | Defer                                                                                        |
+| Settings screen                                         | M (per original spec) | Partial — categories only if time allows; retention/work-hours can defer to direct DB config |
 
 ---
 

@@ -13,7 +13,7 @@ conversation history. Read this before writing code in any layer below.
   workstations. Employees are informed in writing that it runs; it is never hidden
   from Task Manager, Services, or Add/Remove Programs.
 - It is **not** a keylogger. It never captures typed content — only aggregate
-  activity signals (active window, idle time, keystroke/mouse *counts*, not values).
+  activity signals (active window, idle time, keystroke/mouse _counts_, not values).
 - It is **not** a remote-control tool. No remote desktop takeover, no reading of
   personal email/chat content, no credential harvesting.
 - It must survive **network outages, process crashes, and machine reboots** without
@@ -28,12 +28,12 @@ before being merged.
 
 The folder structure enforces **Clean Architecture / Dependency Inversion**:
 
-- `Core/` depends on nothing. It defines *contracts* (interfaces) and *data shapes*
+- `Core/` depends on nothing. It defines _contracts_ (interfaces) and _data shapes_
   (DTOs). No Windows API calls, no HTTP, no file I/O live here.
 - `Collectors/`, `Infrastructure/`, and `Services/` depend on `Core/` interfaces —
   never on each other's concrete classes directly. If `MonitoringService` needs a
   queue, it takes an `IStorageQueue`, not a `LiteDbStorageQueue`.
-- `Host/` is the composition root — the *only* place where concrete implementations
+- `Host/` is the composition root — the _only_ place where concrete implementations
   are wired to interfaces (via DI container registration in `Program.cs`).
 
 **Why this matters for a solo/small team**: it lets you swap the queue engine (LiteDB
@@ -42,21 +42,58 @@ The folder structure enforces **Clean Architecture / Dependency Inversion**:
 the 1-month MVP timeline, this also means Phase 2 features (screenshots, USB logging)
 slot in as new classes implementing existing interfaces, not rewrites.
 
+Agent/
+├── src/
+│ ├── Collectors/
+│ │ ├── IActivityCollector.cs
+│ │ ├── AppFocusCollector.cs
+│ │ ├── UrlCollector.cs
+│ │ ├── IdleStateCollector.cs
+│ │ ├── UsbDeviceCollector.cs # Phase 3
+│ │ └── ScreenshotCollector.cs # Phase 3
+│ ├── Buffering/
+│ │ ├── ILocalStore.cs
+│ │ ├── SqliteLocalStore.cs
+│ │ └── ActivityEvent.cs
+│ ├── Sync/
+│ │ ├── ISyncClient.cs
+│ │ ├── HttpSyncClient.cs
+│ │ └── RetryPolicy.cs
+│ ├── Config/
+│ │ ├── IAgentConfigProvider.cs
+│ │ ├── RemoteConfigProvider.cs
+│ │ └── AgentSettings.cs
+│ ├── Attendance/
+│ │ ├── ISessionTracker.cs
+│ │ └── LoginLogoutTracker.cs
+│ ├── Service/
+│ │ ├── MonitoringWindowsService.cs
+│ │ └── CompositionRoot.cs # DI wiring
+│ ├── Program.cs
+│ └── appsettings.json
+├── installer/ # WiX/MSI project
+└── tests/
+├── Collectors.Tests/
+│ ├── AppFocusCollectorTests.cs
+│ └── IdleStateCollectorTests.cs
+├── Buffering.Tests/
+└── Sync.Tests/
+
 ---
 
 ## 3. Core/ — contracts and models
 
 ### 3.1 Interfaces (`Core/Interfaces/`)
 
-| Interface | Responsibility | Notes |
-|---|---|---|
-| `IActivityCollector` | Produce one activity reading (app name, window title, timestamp) | Implemented by `WindowTracker` |
-| `IIdleDetector` | Report milliseconds since last keyboard/mouse input | Implemented by `IdleDetector`, wraps `GetLastInputInfo` |
-| `IBrowserTracker` | Report active tab URL/domain, if available | Phase 2 — see §8. Must degrade gracefully to `null` if extension isn't installed |
-| `IStorageQueue` | Durable local enqueue/dequeue of pending records | Backed by LiteDB or SQLite — see §5.1 |
-| `ISyncService` | Batch unsynced records and POST to server | Wraps HttpClient + Polly — see §5.2 |
-| `IConfigurationService` | Load device token, server URL, sampling/sync intervals | Reads `appsettings.json` + encrypted secrets — see §5.3 |
-| `ITelemetry` | Agent's own health/error logging | Wraps Serilog — see §5.4. Never used to log *employee* activity, only agent operational health |
+| Interface               | Responsibility                                                   | Notes                                                                                          |
+| ----------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `IActivityCollector`    | Produce one activity reading (app name, window title, timestamp) | Implemented by `WindowTracker`                                                                 |
+| `IIdleDetector`         | Report milliseconds since last keyboard/mouse input              | Implemented by `IdleDetector`, wraps `GetLastInputInfo`                                        |
+| `IBrowserTracker`       | Report active tab URL/domain, if available                       | Phase 2 — see §8. Must degrade gracefully to `null` if extension isn't installed               |
+| `IStorageQueue`         | Durable local enqueue/dequeue of pending records                 | Backed by LiteDB or SQLite — see §5.1                                                          |
+| `ISyncService`          | Batch unsynced records and POST to server                        | Wraps HttpClient + Polly — see §5.2                                                            |
+| `IConfigurationService` | Load device token, server URL, sampling/sync intervals           | Reads `appsettings.json` + encrypted secrets — see §5.3                                        |
+| `ITelemetry`            | Agent's own health/error logging                                 | Wraps Serilog — see §5.4. Never used to log _employee_ activity, only agent operational health |
 
 Each interface should be small enough to fake in a unit test with a hand-written
 stub — if an interface grows past 3-4 methods, split it (Interface Segregation).
@@ -119,13 +156,13 @@ Every collector implements exactly one `Core/Interfaces` contract and touches th
 Windows API directly. No collector talks to the queue, the network, or another
 collector — that orchestration lives in `Services/MonitoringService.cs`.
 
-| File | Implements | Win32 / mechanism | Priority |
-|---|---|---|---|
-| `WindowTracker.cs` | `IActivityCollector` | `GetForegroundWindow`, `GetWindowText`, `GetWindowThreadProcessId` → resolve process name | **M** |
-| `IdleDetector.cs` | `IIdleDetector` | `GetLastInputInfo` + `GetTickCount64` | **M** |
-| `AttendanceTracker.cs` | (uses `IIdleDetector` + session events) | `WTSRegisterSessionNotification` (lock/unlock) or simpler: first sample of the day = login, last non-idle sample = logout | **M** |
-| `BrowserTracker.cs` | `IBrowserTracker` | Native message host listening on localhost port; paired with a Chrome/Edge/Firefox extension reading `tabs.query` for the active tab | **S** |
-| `UsbDeviceLogger.cs` | (new interface `IUsbMonitor` if added) | WMI event subscription on `Win32_VolumeChangeEvent` | **C** |
+| File                   | Implements                              | Win32 / mechanism                                                                                                                    | Priority |
+| ---------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | -------- |
+| `WindowTracker.cs`     | `IActivityCollector`                    | `GetForegroundWindow`, `GetWindowText`, `GetWindowThreadProcessId` → resolve process name                                            | **M**    |
+| `IdleDetector.cs`      | `IIdleDetector`                         | `GetLastInputInfo` + `GetTickCount64`                                                                                                | **M**    |
+| `AttendanceTracker.cs` | (uses `IIdleDetector` + session events) | `WTSRegisterSessionNotification` (lock/unlock) or simpler: first sample of the day = login, last non-idle sample = logout            | **M**    |
+| `BrowserTracker.cs`    | `IBrowserTracker`                       | Native message host listening on localhost port; paired with a Chrome/Edge/Firefox extension reading `tabs.query` for the active tab | **S**    |
+| `UsbDeviceLogger.cs`   | (new interface `IUsbMonitor` if added)  | WMI event subscription on `Win32_VolumeChangeEvent`                                                                                  | **C**    |
 
 ### P/Invoke guidance for `WindowTracker` / `IdleDetector`
 
@@ -148,7 +185,7 @@ static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
 either falsely flags someone as idle all day or fails to detect real idle time — both
 undermine trust in the whole system.
 
-**UAC / secure desktop**: `GetForegroundWindow` returns a handle into the *user's*
+**UAC / secure desktop**: `GetForegroundWindow` returns a handle into the _user's_
 desktop, not the secure desktop (UAC prompts, Ctrl+Alt+Del, lock screen). Expect
 `GetWindowText` to occasionally return empty — this is correct OS behavior, not a bug
 to work around.
@@ -214,7 +251,7 @@ services.AddHttpClient<ISyncService, SyncService>()
 - Serilog, with a **file sink** (rolling daily, capped size) always on, and an
   **optional server sink** (a lightweight "agent health" endpoint, separate from the
   activity-ingest endpoint) for centralized troubleshooting across 30-100 machines.
-- **Hard rule**: this logger is for *agent operational health* (crashes, sync
+- **Hard rule**: this logger is for _agent operational health_ (crashes, sync
   failures, collector errors) — it must never log activity content (window titles,
   URLs). Mixing the two creates a second, unaudited channel for the exact data the
   compliance requirements in the parent spec are meant to control.
@@ -224,6 +261,7 @@ services.AddHttpClient<ISyncService, SyncService>()
 ## 6. Services/ — orchestration
 
 ### `MonitoringService.cs`
+
 The orchestrator. Owns two independent timers (not one shared loop — see rationale
 below):
 
@@ -238,14 +276,16 @@ Decoupling guarantees a dead network never degrades data collection quality — 
 sync freshness.
 
 ### `ScreenshotService.cs` (S — should-have, Phase 2)
+
 - Off by default. Toggle lives in agent config, controlled remotely by admin
   settings (server pushes config, agent polls/applies it).
 - When enabled: captures on its own timer (default 10 min), encrypts the image at
   rest before queuing (per parent spec §9 — "encrypt sensitive data at rest,
-  especially screenshots"), and reuses the *same* `IStorageQueue`/`ISyncService`
+  especially screenshots"), and reuses the _same_ `IStorageQueue`/`ISyncService`
   pattern as activity logs — don't build a parallel pipeline for this.
 
 ### `UpdateService.cs` (C — could-have, later)
+
 - Checks a version endpoint, downloads a signed installer, and hands off to the
   Windows Installer for an in-place upgrade. Deferred past the 1-month MVP — see §8.
 
@@ -273,17 +313,17 @@ sync freshness.
 
 ## 8. Phase mapping (ties back to the 1-month MVP scope)
 
-| Component | Priority | Month-1 MVP? |
-|---|---|---|
-| `WindowTracker`, `IdleDetector`, `AttendanceTracker` | M | **Yes** |
-| `Core/Interfaces`, `Models`, basic `Queue/`, basic `Sync/` (retry only, no circuit breaker yet if time-constrained) | M | **Yes** |
-| `IConfigurationService`, `ITelemetry` (file sink only) | M | **Yes** |
-| Windows Service installer, code signing | M | **Yes** — required to deploy to 30 machines at all |
-| `BrowserTracker` (URL tracking) | S | Defer |
-| `ScreenshotService` | S | Defer |
-| Polly circuit breaker (retry alone is acceptable for MVP) | S | Defer if time-constrained |
-| `UsbDeviceLogger` | C | Defer |
-| `UpdateService` (auto-update) | C | Defer |
+| Component                                                                                                           | Priority | Month-1 MVP?                                       |
+| ------------------------------------------------------------------------------------------------------------------- | -------- | -------------------------------------------------- |
+| `WindowTracker`, `IdleDetector`, `AttendanceTracker`                                                                | M        | **Yes**                                            |
+| `Core/Interfaces`, `Models`, basic `Queue/`, basic `Sync/` (retry only, no circuit breaker yet if time-constrained) | M        | **Yes**                                            |
+| `IConfigurationService`, `ITelemetry` (file sink only)                                                              | M        | **Yes**                                            |
+| Windows Service installer, code signing                                                                             | M        | **Yes** — required to deploy to 30 machines at all |
+| `BrowserTracker` (URL tracking)                                                                                     | S        | Defer                                              |
+| `ScreenshotService`                                                                                                 | S        | Defer                                              |
+| Polly circuit breaker (retry alone is acceptable for MVP)                                                           | S        | Defer if time-constrained                          |
+| `UsbDeviceLogger`                                                                                                   | C        | Defer                                              |
+| `UpdateService` (auto-update)                                                                                       | C        | Defer                                              |
 
 This mirrors the priority letters from the original technical spec — every deferred
 item here is explicitly S or C priority there, so cutting it for month 1 doesn't
@@ -293,13 +333,13 @@ contradict the client-agreed scope.
 
 ## 9. Non-functional requirements (binding for all layers)
 
-| Requirement | Target |
-|---|---|
-| CPU footprint | < 3% average, no visible slowdown for the employee |
-| Memory | Low, stable — no unbounded growth from the local queue (enforced by retention purge) |
-| Offline resilience | Zero data loss across network drops — enforced by `IStorageQueue` durability |
-| Crash recovery | Windows Service auto-restart; on restart, resume from queue — no re-reading of already-queued samples |
-| Scale | Comfortably 30 agents now, must not require architectural rework at 100 |
+| Requirement        | Target                                                                                                |
+| ------------------ | ----------------------------------------------------------------------------------------------------- |
+| CPU footprint      | < 3% average, no visible slowdown for the employee                                                    |
+| Memory             | Low, stable — no unbounded growth from the local queue (enforced by retention purge)                  |
+| Offline resilience | Zero data loss across network drops — enforced by `IStorageQueue` durability                          |
+| Crash recovery     | Windows Service auto-restart; on restart, resume from queue — no re-reading of already-queued samples |
+| Scale              | Comfortably 30 agents now, must not require architectural rework at 100                               |
 
 ---
 
