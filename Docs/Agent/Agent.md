@@ -45,40 +45,40 @@ slot in as new classes implementing existing interfaces, not rewrites.
 ```
 Agent/
 ├── src/
-│ ├── Collectors/
-│ │ ├── IActivityCollector.cs
-│ │ ├── AppFocusCollector.cs
-│ │ ├── UrlCollector.cs
-│ │ ├── IdleStateCollector.cs
-│ │ ├── UsbDeviceCollector.cs # Phase 3
-│ │ └── ScreenshotCollector.cs # Phase 3
-│ ├── Buffering/
-│ │ ├── ILocalStore.cs
-│ │ ├── SqliteLocalStore.cs
-│ │ └── ActivityEvent.cs
-│ ├── Sync/
-│ │ ├── ISyncClient.cs
-│ │ ├── HttpSyncClient.cs
-│ │ └── RetryPolicy.cs
-│ ├── Config/
-│ │ ├── IAgentConfigProvider.cs
-│ │ ├── RemoteConfigProvider.cs
-│ │ └── AgentSettings.cs
-│ ├── Attendance/
-│ │ ├── ISessionTracker.cs
-│ │ └── LoginLogoutTracker.cs
-│ ├── Service/
-│ │ ├── MonitoringWindowsService.cs
-│ │ └── CompositionRoot.cs # DI wiring
-│ ├── Program.cs
-│ └── appsettings.json
-├── installer/ # WiX/MSI project
+│   ├── Collectors/
+│   │   ├── IActivityCollector.cs
+│   │   ├── AppFocusCollector.cs
+│   │   ├── UrlCollector.cs
+│   │   ├── IdleStateCollector.cs
+│   │   ├── UsbDeviceCollector.cs        # Phase 3
+│   │   └── ScreenshotCollector.cs       # Phase 3
+│   ├── Buffering/
+│   │   ├── ILocalStore.cs
+│   │   ├── SqliteLocalStore.cs
+│   │   └── ActivityEvent.cs
+│   ├── Sync/
+│   │   ├── ISyncClient.cs
+│   │   ├── HttpSyncClient.cs
+│   │   └── RetryPolicy.cs
+│   ├── Config/
+│   │   ├── IAgentConfigProvider.cs
+│   │   ├── RemoteConfigProvider.cs
+│   │   └── AgentSettings.cs
+│   ├── Attendance/
+│   │   ├── ISessionTracker.cs
+│   │   └── LoginLogoutTracker.cs
+│   ├── Service/
+│   │   ├── MonitoringWindowsService.cs
+│   │   └── CompositionRoot.cs          # DI wiring
+│   ├── Program.cs
+│   └── appsettings.json
+├── installer/                          # WiX/MSI project
 └── tests/
-├── Collectors.Tests/
-│ ├── AppFocusCollectorTests.cs
-│ └── IdleStateCollectorTests.cs
-├── Buffering.Tests/
-└── Sync.Tests/
+    ├── Collectors.Tests/
+    │   ├── AppFocusCollectorTests.cs
+    │   └── IdleStateCollectorTests.cs
+    ├── Buffering.Tests/
+    └── Sync.Tests/
 ```
 
 ---

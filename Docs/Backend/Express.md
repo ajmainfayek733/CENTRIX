@@ -26,90 +26,90 @@ person call this" — that answer decides it.
 ```
 Backend/
 ├── src/
-│ ├── modules/
-│ │ ├── auth/
-│ │ │ ├── auth.routes.ts
-│ │ │ ├── auth.controller.ts
-│ │ │ ├── auth.service.ts
-│ │ │ └── strategies/
-│ │ │ ├── jwt.strategy.ts
-│ │ │ └── device-token.strategy.ts
-│ │ ├── devices/
-│ │ │ ├── devices.routes.ts
-│ │ │ ├── devices.controller.ts
-│ │ │ ├── devices.service.ts
-│ │ │ └── devices.dto.ts
-│ │ ├── ingestion/
-│ │ │ ├── ingestion.routes.ts
-│ │ │ ├── ingestion.controller.ts
-│ │ │ ├── ingestion.service.ts
-│ │ │ └── activity-batch.dto.ts
-│ │ ├── activity/
-│ │ │ ├── activity.service.ts
-│ │ │ └── activity.repository.ts
-│ │ ├── attendance/
-│ │ │ ├── attendance.service.ts
-│ │ │ └── attendance.repository.ts
-│ │ ├── categorization/
-│ │ │ ├── categorization-engine.ts
-│ │ │ └── strategies/
-│ │ │ ├── keyword-rule.strategy.ts
-│ │ │ └── domain-rule.strategy.ts
-│ │ ├── screenshots/
-│ │ │ ├── screenshots.routes.ts
-│ │ │ ├── screenshots.controller.ts
-│ │ │ └── screenshots.service.ts
-│ │ ├── reports/
-│ │ │ ├── reports.routes.ts
-│ │ │ ├── reports.controller.ts
-│ │ │ ├── reports.service.ts
-│ │ │ └── exporters/
-│ │ │ ├── csv-exporter.ts
-│ │ │ └── pdf-exporter.ts
-│ │ ├── audit/
-│ │ │ ├── audit.service.ts
-│ │ │ └── audit.middleware.ts # wraps every route to log access
-│ │ ├── retention/
-│ │ │ └── retention.job.ts
-│ │ └── users/
-│ │ ├── users.routes.ts
-│ │ ├── users.controller.ts
-│ │ └── users.service.ts
-│ ├── common/
-│ │ ├── interfaces/
-│ │ │ ├── activity-repository.interface.ts
-│ │ │ ├── attendance-repository.interface.ts
-│ │ │ ├── feature-flags.interface.ts
-│ │ │ └── clock.interface.ts
-│ │ ├── middlewares/
-│ │ │ ├── auth.middleware.ts # verifies JWT / device token
-│ │ │ ├── roles.middleware.ts # RBAC guard
-│ │ │ ├── error-handler.middleware.ts
-│ │ │ └── rate-limit.middleware.ts
-│ │ └── validators/ # request schemas (zod/joi)
-│ ├── infrastructure/
-│ │ ├── postgres/
-│ │ │ ├── db.ts # pool/client init
-│ │ │ ├── models/
-│ │ │ │ ├── employee.model.ts
-│ │ │ │ ├── device.model.ts
-│ │ │ │ ├── activity-log.model.ts
-│ │ │ │ ├── attendance.model.ts
-│ │ │ │ ├── screenshot.model.ts
-│ │ │ │ ├── category.model.ts
-│ │ │ │ ├── user.model.ts
-│ │ │ │ └── audit-log.model.ts
-│ │ │ └── migrations/
-│ │ ├── storage/local-disk-storage.adapter.ts
-│ │ └── mailer/smtp-mailer.adapter.ts
-│ ├── container.ts # composition root — manual/awilix DI wiring
-│ ├── routes/index.ts # mounts all module routers
-│ ├── app.ts # Express app: middleware + route mounting
-│ └── server.ts # entrypoint — http.listen
+│   ├── modules/
+│   │   ├── auth/
+│   │   │   ├── auth.routes.ts
+│   │   │   ├── auth.controller.ts
+│   │   │   ├── auth.service.ts
+│   │   │   └── strategies/
+│   │   │       ├── jwt.strategy.ts
+│   │   │       └── device-token.strategy.ts
+│   │   ├── devices/
+│   │   │   ├── devices.routes.ts
+│   │   │   ├── devices.controller.ts
+│   │   │   ├── devices.service.ts
+│   │   │   └── devices.dto.ts
+│   │   ├── ingestion/
+│   │   │   ├── ingestion.routes.ts
+│   │   │   ├── ingestion.controller.ts
+│   │   │   ├── ingestion.service.ts
+│   │   │   └── activity-batch.dto.ts
+│   │   ├── activity/
+│   │   │   ├── activity.service.ts
+│   │   │   └── activity.repository.ts
+│   │   ├── attendance/
+│   │   │   ├── attendance.service.ts
+│   │   │   └── attendance.repository.ts
+│   │   ├── categorization/
+│   │   │   ├── categorization-engine.ts
+│   │   │   └── strategies/
+│   │   │       ├── keyword-rule.strategy.ts
+│   │   │       └── domain-rule.strategy.ts
+│   │   ├── screenshots/
+│   │   │   ├── screenshots.routes.ts
+│   │   │   ├── screenshots.controller.ts
+│   │   │   └── screenshots.service.ts
+│   │   ├── reports/
+│   │   │   ├── reports.routes.ts
+│   │   │   ├── reports.controller.ts
+│   │   │   ├── reports.service.ts
+│   │   │   └── exporters/
+│   │   │       ├── csv-exporter.ts
+│   │   │       └── pdf-exporter.ts
+│   │   ├── audit/
+│   │   │   ├── audit.service.ts
+│   │   │   └── audit.middleware.ts          # wraps every route to log access
+│   │   ├── retention/
+│   │   │   └── retention.job.ts
+│   │   └── users/
+│   │       ├── users.routes.ts
+│   │       ├── users.controller.ts
+│   │       └── users.service.ts
+│   ├── common/
+│   │   ├── interfaces/
+│   │   │   ├── activity-repository.interface.ts
+│   │   │   ├── attendance-repository.interface.ts
+│   │   │   ├── feature-flags.interface.ts
+│   │   │   └── clock.interface.ts
+│   │   ├── middlewares/
+│   │   │   ├── auth.middleware.ts           # verifies JWT / device token
+│   │   │   ├── roles.middleware.ts          # RBAC guard
+│   │   │   ├── error-handler.middleware.ts
+│   │   │   └── rate-limit.middleware.ts
+│   │   └── validators/                      # request schemas (zod/joi)
+│   ├── infrastructure/
+│   │   ├── postgres/
+│   │   │   ├── db.ts                        # pool/client init
+│   │   │   ├── models/
+│   │   │   │   ├── employee.model.ts
+│   │   │   │   ├── device.model.ts
+│   │   │   │   ├── activity-log.model.ts
+│   │   │   │   ├── attendance.model.ts
+│   │   │   │   ├── screenshot.model.ts
+│   │   │   │   ├── category.model.ts
+│   │   │   │   ├── user.model.ts
+│   │   │   │   └── audit-log.model.ts
+│   │   │   └── migrations/
+│   │   ├── storage/local-disk-storage.adapter.ts
+│   │   └── mailer/smtp-mailer.adapter.ts
+│   ├── container.ts                         # composition root — manual/awilix DI wiring
+│   ├── routes/index.ts                      # mounts all module routers
+│   ├── app.ts                                # Express app: middleware + route mounting
+│   └── server.ts                             # entrypoint — http.listen
 └── test/
-├── unit/
-├── integration/
-└── contract/activity-batch.contract.spec.ts
+    ├── unit/
+    ├── integration/
+    └── contract/activity-batch.contract.spec.ts
 ```
 
 ---
