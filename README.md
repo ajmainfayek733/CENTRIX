@@ -35,6 +35,17 @@
 
 ---
 
+## Development Branch Convention
+
+Tis is the convention we follow for development
+
+- `main` - Productiontion Branch. After final testing completion `dev` branch will be marged to `main` branch.
+- `dev` - feature branches will be marged here for final testing.
+- `feat/docs` - Document branch. All kind of documents create/update will happen here.
+- `feat/<feature-name>` - New feature will be developed in its own branch.
+
+---
+
 ## Git Commit Convention
 
 We follow a structured commit message format:
