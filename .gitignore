@@ -1,0 +1,72 @@
+# Build outputs
+**/bin/
+**/obj/
+**/out/
+**/publish/
+**/artifacts/
+
+# .NET / IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.nupkg
+packages/
+TestResults/
+
+# Local runtime / secrets
+.env
+.env.*
+*.pem
+*.pfx
+*.p12
+*.key
+*.crt
+*.cer
+*.token
+*.secret
+*.secrets
+secrets.json
+secret.json
+appsettings.Development.json
+appsettings.Local.json
+appsettings.*.local.json
+config.local.json
+local.settings.json
+
+# Windows installer / packaging artifacts
+*.msi
+*.msm
+*.msp
+*.exe
+*.cab
+*.wixpdb
+*.wixobj
+*.wixsec
+*.wixout
+installer/**/*.msi
+installer/**/*.exe
+installer/**/*.wixpdb
+installer/**/*.wixobj
+
+# Logs and databases
+*.log
+*.db
+*.sqlite
+*.sqlite3
+*.trx
+*.coverage
+
+# Logs and databases
+*.log
+*.db
+*.sqlite
+*.sqlite3
+*.trx
+*.coverage
+
+# Local tool cache
+.dotnet/
