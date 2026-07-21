@@ -114,7 +114,34 @@ Backend/
 
 ---
 
-## 2. prisma/schema.prisma — data model
+## 2. Directory structure
+
+```
+monitoring-server/
+├── prisma/                  # Database schema
+│   └── schema.prisma
+├── src/
+│   ├── config/              # env, db, auth (Better Auth instance)
+│   ├── controllers/         # Request handlers
+│   ├── routes/              # Express routes
+│   ├── services/            # Business logic
+│   ├── middleware/          # Auth, validation, error
+│   ├── utils/               # Helpers
+│   ├── dtos/                # Data Transfer Objects
+│   └── server.ts
+├── .env
+├── tsconfig.json
+├── package.json
+└── nodemon.json
+```
+
+Every section below maps onto this tree — §3 covers `prisma/schema.prisma`, §4
+covers `src/config/`, §5 covers `src/middleware/`, §6 covers `src/services/`, §7
+covers `src/controllers/` + `src/routes/`, §8 covers `src/dtos/`.
+
+---
+
+## 3. prisma/schema.prisma — data model
 
 Mirrors the parent spec's data model (§7) directly — do not rename fields without
 updating `API-CONTRACT.md` in lockstep, since the agent's DTOs serialize to these
@@ -206,7 +233,7 @@ devices.
 
 ---
 
-## 3. src/config/ — env, db, jwt
+## 4. src/config/ — env, db, auth
 
 - `env.ts`: validate all required env vars at boot (`DATABASE_URL`, `JWT_SECRET`,
   `DEVICE_TOKEN_PEPPER`) using `zod` — fail fast on startup, not on first request.
@@ -218,7 +245,7 @@ devices.
 
 ---
 
-## 4. src/middleware/ — the enforcement layer
+## 5. src/middleware/ — the enforcement layer
 
 | Middleware        | Applies to                     | Responsibility                                                                                                                                                                                                       |
 | ----------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -240,7 +267,7 @@ RBAC role table (mirrors parent spec §6):
 
 ---
 
-## 5. src/services/ — business logic
+## 6. src/services/ — business logic
 
 ### `ingestService.ts`
 
@@ -249,9 +276,9 @@ Handles the write path. Two responsibilities that must both be present:
 1. **Idempotency check**: before inserting, check `IngestBatch` for the incoming
    `Idempotency-Key` header. If found, return the previous success response without
    re-inserting — this is what makes agent retries safe (see the agent-side
-   `Agent.md` §5.2). If not found, insert the batch's `ActivityLog` rows and the
+   `Agent.md` §6.2). If not found, insert the batch's `ActivityLog` rows and the
    `IngestBatch` ledger row in **one transaction** — partial success must not happen.
-2. **Device token validation** happens in middleware (§4), not here — this service
+2. **Device token validation** happens in middleware (§5), not here — this service
    assumes the caller is already an authenticated device.
 
 ```typescript
@@ -278,9 +305,32 @@ one generic "query builder" — the dashboard's fixed set of report views doesn'
 that flexibility, and named functions are far easier for a junior dev (or an AI
 assistant) to locate and modify safely.
 
-### `authService.ts`
+### Authentication: Better Auth, not hand-rolled JWT
+**Superseded from the original plan.** Dashboard user auth (login, session,
+password hashing) is handled by **Better Auth** (`config/auth.ts`), not a
+custom `authService.ts` with manual bcrypt/JWT logic. Better Auth owns the
+`user`, `session`, `account`, and `verification` tables (extended with a
+`role` field via `additionalFields`) and issues an httpOnly session cookie —
+see the dashboard's `AGENTS.md` §3, which already assumed this shape.
 
-Login (bcrypt/argon2 compare → JWT issue), never touched by the ingest flow.
+Key decisions baked into `config/auth.ts`:
+- **No public self-registration.** A `databaseHooks.user.create.before` hook
+  blocks the `/sign-up/email` route specifically. Every account is created
+  through `services/accountService.ts`, which wraps the **admin plugin's**
+  `auth.api.createUser` — the only sanctioned path, restricted to
+  `super_admin` via `requireRole` on `routes/users.routes.ts`.
+- **`trustedOrigins`** must list every deployed dashboard URL plus local dev.
+  Missing an entry here reproduces the `INVALID_ORIGIN` failure mode already
+  seen on a past project — check this first if login mysteriously fails in
+  one environment but not another.
+- **Mount order in `server.ts` is load-bearing**: Better Auth's catch-all
+  route (`app.all('/api/auth/*', toNodeHandler(auth))`) must be registered
+  *before* `express.json()`. Better Auth reads the raw body itself; reversing
+  this order causes the client to hang on "pending" with no clear error.
+- Device-token auth (`deviceAuth.ts`) is completely separate from Better
+  Auth and always will be — machines aren't users, and routing agent auth
+  through Better Auth "for consistency" reopens the exact write-path/
+  read-path confusion §1 exists to prevent.
 
 ### `categoryService.ts`
 
@@ -291,7 +341,7 @@ report time keeps historical data reinterpretable under new rules).
 
 ---
 
-## 6. src/controllers/ + src/routes/ — thin by design
+## 7. src/controllers/ + src/routes/ — thin by design
 
 Controllers only: parse `req`, call one service method, shape the response. No
 business logic, no Prisma calls directly in a controller — that always belongs in
@@ -310,9 +360,9 @@ routes/
 
 ---
 
-## 7. src/dtos/ — the contract boundary
+## 8. src/dtos/ — the contract boundary
 
-DTOs here must match the agent's `Core/Models` field-for-field (see `Agent.md` §3.2).
+DTOs here must match the agent's `Core/Models` field-for-field (see `Agent.md` §4.2).
 Validate every incoming payload against a `zod` schema derived from the DTO shape
 before it reaches a service — this is the server's half of the "never trust client
 input" rule; the agent validates on its side too, but the server cannot assume that
@@ -320,7 +370,7 @@ held.
 
 ---
 
-## 8. Security requirements (binding, from parent spec §9)
+## 9. Security requirements (binding, from parent spec §9)
 
 - HTTPS/TLS only — reject plain HTTP at the reverse proxy level, not just in Express.
 - Device tokens stored as **hashes** (`tokenHash`), never raw — same principle as
@@ -334,7 +384,7 @@ held.
 
 ---
 
-## 9. Phase mapping (month-1 MVP)
+## 10. Phase mapping (month-1 MVP)
 
 | Component                                                                 | Priority                                                                                       | Month-1?                                                                      |
 | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
@@ -349,7 +399,7 @@ held.
 
 ---
 
-## 10. Definition of done (month-1 MVP)
+## 11. Definition of done (month-1 MVP)
 
 - An agent with a valid device token can POST a batch and have it land in
   `ActivityLog` exactly once, even when the same batch is sent twice.
