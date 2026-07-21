@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <!-- Principal Engineer Note: Define unique Product ID and Upgrade Code for the installation package -->
+  <Product Id="*" 
+           Name="Company Activity Monitor" 
+           Language="1033" 
+           Version="1.0.0.0" 
+           Manufacturer="Company Inc." 
+           UpgradeCode="d246cf98-8c10-449e-ba78-ef7288ab8e92">
+           
+    <Package InstallerVersion="200" 
+             Compressed="yes" 
+             InstallScope="perMachine" 
+             Description="Durable and Disclosed Employee Activity Monitoring Service" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    
+    <!-- Embed the CAB file inside the MSI package -->
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Configuration properties passed during silent installation -->
+    <Property Id="SERVERURL" Secure="yes" />
+    <Property Id="DEVICETOKEN" Secure="yes" />
+
+    <!-- Directory structure definition -->
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER" Name="CompanyActivityMonitor" />
+      </Directory>
+    </Directory>
+
+    <!-- Component definition -->
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+      
+      <!-- Primary Executable and Windows Service registration -->
+      <Component Id="ServiceExecutable" Guid="a4a589cf-f308-466d-a3df-7b56839aa6f4">
+        <!-- Path to the compiled agent file -->
+        <File Id="AgentExe" Source="$(var.Agent.TargetDir)\Agent.exe" KeyPath="yes" />
+        
+        <!-- Register as a Windows Service -->
+        <ServiceInstall Id="ServiceInstaller"
+                        Type="ownProcess"
+                        Name="CompanyActivityMonitor"
+                        DisplayName="Company Activity Monitor"
+                        Description="Provides secure and transparent workplace activity and attendance tracking."
+                        Start="auto"
+                        ErrorControl="normal"
+                        Account="NT AUTHORITY\SYSTEM">
+                        
+          <!-- Service Recovery Configuration: restarts the service on crash/update reboot -->
+          <ServiceConfig FailureActionsWhen="both"
+                         PlayActionOnNonCrashFailures="yes"
+                         RestartServiceDelayInMs="5000">
+            <FailureAction Type="restart" />
+            <FailureAction Type="restart" />
+            <FailureAction Type="none" />
+          </ServiceConfig>
+        </ServiceInstall>
+
+        <!-- Start service on installation, stop on uninstall -->
+        <ServiceControl Id="ServiceController"
+                        Name="CompanyActivityMonitor"
+                        Start="install"
+                        Stop="both"
+                        Remove="uninstall"
+                        Wait="yes" />
+      </Component>
+
+      <!-- Configuration File component -->
+      <Component Id="AppSettingsJson" Guid="b5c689de-d98c-4a37-b4d6-3d23e5900c98">
+        <File Id="AppSettingsFile" Source="$(var.Agent.TargetDir)\appsettings.json" />
+      </Component>
+
+      <!-- DPAPI / Secrets Writer Custom Action Helper -->
+      <!-- When SERVERURL and DEVICETOKEN are passed via msiexec command line, 
+           they will be written to agent_secrets.json and encrypted using DPAPI -->
+      <Component Id="AgentSecretsPlaceholder" Guid="c7d87a9e-f0ab-4456-89cc-1d23e5900c99">
+        <File Id="SecretsFile" Source="$(var.Agent.TargetDir)\agent_secrets.json" />
+      </Component>
+      
+    </ComponentGroup>
+
+    <!-- Execution Features -->
+    <Feature Id="ProductFeature" Title="Monitoring Agent Service" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+    </Feature>
+
+    <!-- Custom Action: Writes and encrypts the credentials to agent_secrets.json at install time -->
+    <!-- (Note: An external bootstrapper or custom actions library would call EncryptionUtility.cs) -->
+    
+  </Product>
+</Wix>
