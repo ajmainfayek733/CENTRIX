@@ -10,18 +10,107 @@ this document.
 
 ## 1. The two flows this server serves
 
-| | Write path (agents) | Read path (dashboard) |
-|---|---|---|
-| Caller | Windows agent, unattended | Manager/HR, logged-in human |
-| Auth | Per-device token | User JWT (email/password login) |
-| Route prefix | `/v1/ingest/*` | `/v1/dashboard/*` |
-| Frequency | Every 1-5 min, 30-100 devices | On page load / filter change |
-| Failure mode if confused | A stolen device token could read reports; a stolen dashboard JWT could inject fake activity | |
+|                          | Write path (agents)                                                                         | Read path (dashboard)           |
+| ------------------------ | ------------------------------------------------------------------------------------------- | ------------------------------- |
+| Caller                   | Windows agent, unattended                                                                   | Manager/HR, logged-in human     |
+| Auth                     | Per-device token                                                                            | User JWT (email/password login) |
+| Route prefix             | `/v1/ingest/*`                                                                              | `/v1/dashboard/*`               |
+| Frequency                | Every 1-5 min, 30-100 devices                                                               | On page load / filter change    |
+| Failure mode if confused | A stolen device token could read reports; a stolen dashboard JWT could inject fake activity |                                 |
 
 **Rule**: these two auth mechanisms must never share middleware, and route prefixes
 must make it obvious at a glance which flow a route belongs to. If you're adding a
 route and unsure which prefix it goes under, ask "does a machine call this, or does a
 person call this" — that answer decides it.
+
+```
+Backend/
+├── src/
+│   ├── modules/
+│   │   ├── auth/
+│   │   │   ├── auth.routes.ts
+│   │   │   ├── auth.controller.ts
+│   │   │   ├── auth.service.ts
+│   │   │   └── strategies/
+│   │   │       ├── jwt.strategy.ts
+│   │   │       └── device-token.strategy.ts
+│   │   ├── devices/
+│   │   │   ├── devices.routes.ts
+│   │   │   ├── devices.controller.ts
+│   │   │   ├── devices.service.ts
+│   │   │   └── devices.dto.ts
+│   │   ├── ingestion/
+│   │   │   ├── ingestion.routes.ts
+│   │   │   ├── ingestion.controller.ts
+│   │   │   ├── ingestion.service.ts
+│   │   │   └── activity-batch.dto.ts
+│   │   ├── activity/
+│   │   │   ├── activity.service.ts
+│   │   │   └── activity.repository.ts
+│   │   ├── attendance/
+│   │   │   ├── attendance.service.ts
+│   │   │   └── attendance.repository.ts
+│   │   ├── categorization/
+│   │   │   ├── categorization-engine.ts
+│   │   │   └── strategies/
+│   │   │       ├── keyword-rule.strategy.ts
+│   │   │       └── domain-rule.strategy.ts
+│   │   ├── screenshots/
+│   │   │   ├── screenshots.routes.ts
+│   │   │   ├── screenshots.controller.ts
+│   │   │   └── screenshots.service.ts
+│   │   ├── reports/
+│   │   │   ├── reports.routes.ts
+│   │   │   ├── reports.controller.ts
+│   │   │   ├── reports.service.ts
+│   │   │   └── exporters/
+│   │   │       ├── csv-exporter.ts
+│   │   │       └── pdf-exporter.ts
+│   │   ├── audit/
+│   │   │   ├── audit.service.ts
+│   │   │   └── audit.middleware.ts          # wraps every route to log access
+│   │   ├── retention/
+│   │   │   └── retention.job.ts
+│   │   └── users/
+│   │       ├── users.routes.ts
+│   │       ├── users.controller.ts
+│   │       └── users.service.ts
+│   ├── common/
+│   │   ├── interfaces/
+│   │   │   ├── activity-repository.interface.ts
+│   │   │   ├── attendance-repository.interface.ts
+│   │   │   ├── feature-flags.interface.ts
+│   │   │   └── clock.interface.ts
+│   │   ├── middlewares/
+│   │   │   ├── auth.middleware.ts           # verifies JWT / device token
+│   │   │   ├── roles.middleware.ts          # RBAC guard
+│   │   │   ├── error-handler.middleware.ts
+│   │   │   └── rate-limit.middleware.ts
+│   │   └── validators/                      # request schemas (zod/joi)
+│   ├── infrastructure/
+│   │   ├── postgres/
+│   │   │   ├── db.ts                        # pool/client init
+│   │   │   ├── models/
+│   │   │   │   ├── employee.model.ts
+│   │   │   │   ├── device.model.ts
+│   │   │   │   ├── activity-log.model.ts
+│   │   │   │   ├── attendance.model.ts
+│   │   │   │   ├── screenshot.model.ts
+│   │   │   │   ├── category.model.ts
+│   │   │   │   ├── user.model.ts
+│   │   │   │   └── audit-log.model.ts
+│   │   │   └── migrations/
+│   │   ├── storage/local-disk-storage.adapter.ts
+│   │   └── mailer/smtp-mailer.adapter.ts
+│   ├── container.ts                         # composition root — manual/awilix DI wiring
+│   ├── routes/index.ts                      # mounts all module routers
+│   ├── app.ts                                # Express app: middleware + route mounting
+│   └── server.ts                             # entrypoint — http.listen
+└── test/
+    ├── unit/
+    ├── integration/
+    └── contract/activity-batch.contract.spec.ts
+```
 
 ---
 
@@ -158,29 +247,30 @@ devices.
 
 ## 5. src/middleware/ — the enforcement layer
 
-| Middleware | Applies to | Responsibility |
-|---|---|---|
-| `deviceAuth.ts` | `/v1/ingest/*` only | Look up `tokenHash` for the claimed device, reject if missing/revoked. Updates `Device.lastSeen`. |
-| `userAuth.ts` | `/v1/dashboard/*` only | Verify JWT, attach `req.user` (id, role) |
-| `rbac.ts` | `/v1/dashboard/*` routes | Given `req.user.role`, check against a route's required role(s). Reject with 403 before the controller runs. |
-| `validate.ts` | All routes | Wraps a `zod` schema per route; agents and dashboard clients both send untrusted input — never trust either. |
-| `auditLogger.ts` | `/v1/dashboard/*` reads | Writes an `AuditLog` row on every report/employee-detail view — required by parent spec §3.1 ("every access is logged"). This runs *after* RBAC passes — don't log denied attempts as if they were legitimate views. |
-| `errorHandler.ts` | Global, last in chain | Normalize errors to a consistent JSON shape; never leak stack traces in production responses. |
-| `rateLimiter.ts` | `/v1/ingest/*` and auth routes | Protects against a malfunctioning agent retry-looping, and against login brute-forcing |
+| Middleware        | Applies to                     | Responsibility                                                                                                                                                                                                       |
+| ----------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `deviceAuth.ts`   | `/v1/ingest/*` only            | Look up `tokenHash` for the claimed device, reject if missing/revoked. Updates `Device.lastSeen`.                                                                                                                    |
+| `userAuth.ts`     | `/v1/dashboard/*` only         | Verify JWT, attach `req.user` (id, role)                                                                                                                                                                             |
+| `rbac.ts`         | `/v1/dashboard/*` routes       | Given `req.user.role`, check against a route's required role(s). Reject with 403 before the controller runs.                                                                                                         |
+| `validate.ts`     | All routes                     | Wraps a `zod` schema per route; agents and dashboard clients both send untrusted input — never trust either.                                                                                                         |
+| `auditLogger.ts`  | `/v1/dashboard/*` reads        | Writes an `AuditLog` row on every report/employee-detail view — required by parent spec §3.1 ("every access is logged"). This runs _after_ RBAC passes — don't log denied attempts as if they were legitimate views. |
+| `errorHandler.ts` | Global, last in chain          | Normalize errors to a consistent JSON shape; never leak stack traces in production responses.                                                                                                                        |
+| `rateLimiter.ts`  | `/v1/ingest/*` and auth routes | Protects against a malfunctioning agent retry-looping, and against login brute-forcing                                                                                                                               |
 
 RBAC role table (mirrors parent spec §6):
 
-| Role | Permissions |
-|---|---|
-| `super_admin` | Everything: settings, retention config, user management, all reports |
-| `manager` | Reports + employee detail for assigned team only — no config, no user management |
-| `auditor` | Read-only audit log + aggregate reports — cannot view individual screenshots |
+| Role          | Permissions                                                                      |
+| ------------- | -------------------------------------------------------------------------------- |
+| `super_admin` | Everything: settings, retention config, user management, all reports             |
+| `manager`     | Reports + employee detail for assigned team only — no config, no user management |
+| `auditor`     | Read-only audit log + aggregate reports — cannot view individual screenshots     |
 
 ---
 
 ## 6. src/services/ — business logic
 
 ### `ingestService.ts`
+
 Handles the write path. Two responsibilities that must both be present:
 
 1. **Idempotency check**: before inserting, check `IngestBatch` for the incoming
@@ -197,7 +287,7 @@ export async function ingestBatch(deviceId: string, idempotencyKey: string, samp
     const existing = await tx.ingestBatch.findUnique({ where: { idempotencyKey } });
     if (existing) return { alreadyProcessed: true };
 
-    await tx.activityLog.createMany({ data: samples.map(s => ({ ...s, deviceId })) });
+    await tx.activityLog.createMany({ data: samples.map((s) => ({ ...s, deviceId })) });
     await tx.ingestBatch.create({ data: { idempotencyKey, deviceId } });
     await tx.device.update({ where: { id: deviceId }, data: { lastSeen: new Date() } });
 
@@ -207,6 +297,7 @@ export async function ingestBatch(deviceId: string, idempotencyKey: string, samp
 ```
 
 ### `reportService.ts`
+
 Handles the read path — aggregation queries (active/idle time per employee/day,
 team summaries). Keep these as focused, named functions
 (`getTeamSummary(dateRange)`, `getEmployeeTimeline(employeeId, date)`) rather than
@@ -242,6 +333,7 @@ Key decisions baked into `config/auth.ts`:
   read-path confusion §1 exists to prevent.
 
 ### `categoryService.ts`
+
 Applies productive/neutral/unproductive tagging based on the `Category` table —
 called by `reportService` when building summaries, not stored redundantly on each
 `ActivityLog` row (categorization rules can change retroactively; recomputing at
@@ -294,16 +386,16 @@ held.
 
 ## 10. Phase mapping (month-1 MVP)
 
-| Component | Priority | Month-1? |
-|---|---|---|
-| Prisma schema (Employee, Device, ActivityLog, Attendance, User, AuditLog) | M | **Yes** |
-| `deviceAuth`, `userAuth`, `rbac` middleware | M | **Yes** |
-| `ingestService` with idempotency | M | **Yes** — this is what makes the agent's retry logic safe; cannot be deferred |
-| `reportService` basic team/employee views | M | **Yes** |
-| CSV/PDF export | S | Defer |
-| `Category` table + productivity tagging | M (per original spec) but can ship with a manually-seeded default list rather than an admin UI | Partial — seed data yes, admin UI defer |
-| Screenshots table + storage | S | Defer |
-| Auditor role, full audit-log UI | S/M split | Backend model yes; dedicated UI can defer |
+| Component                                                                 | Priority                                                                                       | Month-1?                                                                      |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Prisma schema (Employee, Device, ActivityLog, Attendance, User, AuditLog) | M                                                                                              | **Yes**                                                                       |
+| `deviceAuth`, `userAuth`, `rbac` middleware                               | M                                                                                              | **Yes**                                                                       |
+| `ingestService` with idempotency                                          | M                                                                                              | **Yes** — this is what makes the agent's retry logic safe; cannot be deferred |
+| `reportService` basic team/employee views                                 | M                                                                                              | **Yes**                                                                       |
+| CSV/PDF export                                                            | S                                                                                              | Defer                                                                         |
+| `Category` table + productivity tagging                                   | M (per original spec) but can ship with a manually-seeded default list rather than an admin UI | Partial — seed data yes, admin UI defer                                       |
+| Screenshots table + storage                                               | S                                                                                              | Defer                                                                         |
+| Auditor role, full audit-log UI                                           | S/M split                                                                                      | Backend model yes; dedicated UI can defer                                     |
 
 ---
 
