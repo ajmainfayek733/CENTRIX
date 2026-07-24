@@ -1,6 +1,6 @@
-import { auth } from '../config/auth';
-import { prisma } from '../config/db';
-import { RegisterDto, LoginDto } from '../dtos/auth.dto';
+import { auth } from '../../config/auth';
+import { prisma } from '../../config/db';
+import { RegisterDto, LoginDto } from './auth.dto';
 
 export class AuthService {
   /**

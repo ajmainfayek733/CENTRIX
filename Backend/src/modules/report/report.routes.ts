@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import { reportController } from '../controllers/reportController';
-import { userAuth } from '../middleware/userAuth';
-import { requireRole } from '../middleware/rbac';
-import { auditLogger } from '../middleware/auditLogger';
+import { reportController } from './reportController';
+import { userAuth } from '../../middleware/userAuth';
+import { requireRole } from '../../middleware/rbac';
+import { auditLogger } from '../../middleware/auditLogger';
 
 const router = Router();
 

@@ -7,10 +7,10 @@ import { auth } from './config/auth';
 import { env } from './config/env';
 import { errorHandler } from './middleware/errorHandler';
 
-import ingestRoutes from './routes/ingest.routes';
-import authRoutes from './routes/auth.routes';
-import employeeRoutes from './routes/employee.routes';
-import reportRoutes from './routes/report.routes';
+import ingestRoutes from './modules/ingest';
+import authRoutes from './modules/auth';
+import employeeRoutes from './modules/employee';
+import reportRoutes from './modules/report';
 
 const app = express();
 
@@ -18,7 +18,7 @@ const app = express();
 app.use(helmet());
 app.use(
   cors({
-    origin: [env.FRONTEND_URL, 'http://localhost:3000', 'http://127.0.0.1:3000'],
+    origin: [env.FRONTEND_URL],
     credentials: true,
   })
 );
@@ -46,6 +46,8 @@ app.get('/health', (req, res) => {
 // Write Path for Unattended Windows Agents
 app.use('/v1/ingest', ingestRoutes);
 app.use('/api/agents', ingestRoutes); // Alias for agent compatibility
+app.use('/api/v1', ingestRoutes);     // Agent API Contract endpoints
+
 
 // Read Path for Human Dashboard (Managers, Admins, Auditors)
 app.use('/v1/dashboard/auth', authRoutes);

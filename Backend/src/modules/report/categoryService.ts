@@ -1,4 +1,4 @@
-import { prisma } from '../config/db';
+import { prisma } from '../../config/db';
 
 export class CategoryService {
   async categorizeActivity(appName?: string | null, domain?: string | null): Promise<'productive' | 'neutral' | 'unproductive'> {

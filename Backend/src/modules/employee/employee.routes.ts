@@ -1,10 +1,10 @@
 import { Router } from 'express';
-import { employeeController } from '../controllers/employeeController';
-import { userAuth } from '../middleware/userAuth';
-import { requireRole } from '../middleware/rbac';
-import { auditLogger } from '../middleware/auditLogger';
-import { validate } from '../middleware/validate';
-import { createEmployeeSchema, registerDeviceSchema } from '../dtos/employee.dto';
+import { employeeController } from './employeeController';
+import { userAuth } from '../../middleware/userAuth';
+import { requireRole } from '../../middleware/rbac';
+import { auditLogger } from '../../middleware/auditLogger';
+import { validate } from '../../middleware/validate';
+import { createEmployeeSchema, registerDeviceSchema } from './employee.dto';
 
 const router = Router();
 
