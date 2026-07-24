@@ -1,12 +1,12 @@
-import { betterAuth } from "better-auth";
-import { prismaAdapter } from "@better-auth/prisma-adapter";
-import { prisma } from "./db";
-import { env } from "./env";
+import { betterAuth } from 'better-auth';
+import { prismaAdapter } from '@better-auth/prisma-adapter';
+import { prisma } from './db';
+import { env } from './env';
 
 export const auth = betterAuth({
   secret: env.BETTER_AUTH_SECRET,
   database: prismaAdapter(prisma, {
-    provider: "postgresql",
+    provider: 'postgresql',
   }),
   emailAndPassword: {
     enabled: true,
@@ -16,13 +16,13 @@ export const auth = betterAuth({
   user: {
     additionalFields: {
       role: {
-        type: "string",
+        type: 'string',
         required: false,
-        defaultValue: "manager",
+        defaultValue: 'manager',
         input: true,
       },
       isActive: {
-        type: "boolean",
+        type: 'boolean',
         required: false,
         defaultValue: true,
         input: false,
@@ -33,9 +33,5 @@ export const auth = betterAuth({
     expiresIn: 60 * 60 * 24 * 7, // 7 days
     updateAge: 60 * 60 * 24, // 1 day
   },
-  trustedOrigins: [
-    env.FRONTEND_URL,
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-  ],
+  trustedOrigins: [env.FRONTEND_URL],
 });

@@ -1,6 +1,6 @@
-import { prisma } from '../config/db';
-import { CreateEmployeeDto, RegisterDeviceDto } from '../dtos/employee.dto';
-import { generateDeviceToken, hashDeviceToken } from '../utils/token';
+import { prisma } from '../../config/db';
+import { CreateEmployeeDto, RegisterDeviceDto } from './employee.dto';
+import { generateDeviceToken, hashDeviceToken } from '../../utils/token';
 
 export class EmployeeService {
   async createEmployee(dto: CreateEmployeeDto) {

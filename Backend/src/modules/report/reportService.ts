@@ -1,4 +1,4 @@
-import { prisma } from '../config/db';
+import { prisma } from '../../config/db';
 import { categoryService } from './categoryService';
 
 export class ReportService {

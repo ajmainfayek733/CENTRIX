@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { reportService } from '../services/reportService';
+import { reportService } from './reportService';
 
 export class ReportController {
   async getTeamSummary(req: Request, res: Response, next: NextFunction) {
