@@ -1,0 +1,13 @@
+<Solution>
+  <Project Path="Agent.Alerts/Agent.Alerts.csproj" />
+  <Project Path="Agent.Collectors/Agent.Collectors.csproj" />
+  <Project Path="Agent.Core/Agent.Core.csproj" />
+  <Project Path="Agent.DevTools/Agent.DevTools.csproj" />
+  <Project Path="Agent.Host/Agent.Host.csproj" />
+  <Project Path="Agent.Native/Agent.Native.csproj" />
+  <Project Path="Agent.Storage/Agent.Storage.csproj" />
+  <Project Path="Agent.Sync/Agent.Sync.csproj" />
+  <Project Path="Agent.Tests.Integration/Agent.Tests.Integration.csproj" />
+  <Project Path="Agent.Tests.Unit/Agent.Tests.Unit.csproj" />
+  <Project Path="Agent.TrayHelper/Agent.TrayHelper.csproj" />
+</Solution>

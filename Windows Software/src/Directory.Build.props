@@ -1,0 +1,32 @@
+<Project>
+
+  <PropertyGroup>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsNotAsErrors>CS1591</WarningsNotAsErrors>
+    <Deterministic>true</Deterministic>
+
+    <!-- NU1903: SQLitePCLRaw.lib.e_sqlite3 advisory GHSA-2m69-gcr7-jv3q has no patched
+         version published upstream yet as of this build; tracked for upgrade, not ignored. -->
+    <NoWarn>$(NoWarn);NU1903</NoWarn>
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1903</WarningsNotAsErrors>
+
+    <Company>Your Organization</Company>
+    <Product>Workforce Agent</Product>
+    <Description>Enterprise endpoint monitoring agent (attendance, activity, and policy compliance telemetry)</Description>
+    <Copyright>Copyright (c) $([System.DateTime]::Now.Year)</Copyright>
+    <Version>0.1.0</Version>
+    <NeutralLanguage>en-US</NeutralLanguage>
+  </PropertyGroup>
+
+  <!-- UseWPF (needed for System.Windows.Automation) drops System.IO from the SDK's default
+       implicit-usings set; restore it solution-wide so every project behaves consistently. -->
+  <ItemGroup>
+    <Using Include="System.IO" />
+  </ItemGroup>
+
+</Project>
