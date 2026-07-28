@@ -11,6 +11,7 @@ import ingestRoutes from './modules/ingest';
 import authRoutes from './modules/auth';
 import employeeRoutes from './modules/employee';
 import reportRoutes from './modules/report';
+import organizationRoutes from './modules/organization';
 
 const app = express();
 
@@ -42,22 +43,16 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Route Handlers following strict route prefixing specification (Express.md §1)
-// Write Path for Unattended Windows Agents
-app.use('/v1/ingest', ingestRoutes);
-app.use('/api/agents', ingestRoutes); // Alias for agent compatibility
-app.use('/api/v1', ingestRoutes);     // Agent API Contract endpoints
+// Write path for the Windows Agent — exactly the surface documented in
+// docs/backend-api-specification.md §4 (events/{channel}, policy, screenshots, consent).
+app.use('/api/v1', ingestRoutes);
 
-
-// Read Path for Human Dashboard (Managers, Admins, Auditors)
+// Read/admin path for the human dashboard (managers, admins, auditors). Out of scope of the
+// Agent API spec (§1.1) — this is backend-owned surface.
 app.use('/v1/dashboard/auth', authRoutes);
+app.use('/v1/dashboard/organizations', organizationRoutes);
 app.use('/v1/dashboard/employees', employeeRoutes);
 app.use('/v1/dashboard/reports', reportRoutes);
-
-// Fallback legacy mount
-app.use('/api/dashboard/auth', authRoutes);
-app.use('/api/dashboard/employees', employeeRoutes);
-app.use('/api/dashboard/reports', reportRoutes);
 
 // Global Error Handler Middleware
 app.use(errorHandler);

@@ -44,6 +44,18 @@ export class EmployeeController {
       next(error);
     }
   }
+
+  async setDeviceActive(req: Request, res: Response, next: NextFunction) {
+    try {
+      const device = await employeeService.setDeviceActive(req.params.deviceId as string, req.body.isActive);
+      return res.status(200).json({
+        message: `Device ${device.isActive ? 'reactivated' : 'deactivated'} successfully`,
+        data: device,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export const employeeController = new EmployeeController();

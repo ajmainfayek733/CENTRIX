@@ -1,81 +1,51 @@
 import { Response, NextFunction } from 'express';
+import fs from 'fs/promises';
 import { ingestService } from './ingestService';
 import { DeviceAuthenticatedRequest } from '../../middleware/deviceAuth';
+import { Channel } from './ingest.dto';
 
 export class IngestController {
-  async ingestActivityBatch(req: DeviceAuthenticatedRequest, res: Response, next: NextFunction) {
+  /** POST /api/v1/events/{channel} — spec §4.1 */
+  async pushEvents(req: DeviceAuthenticatedRequest, res: Response, next: NextFunction) {
     try {
-      if (!req.device) {
-        return res.status(401).json({ error: 'Device context missing' });
-      }
-
-      const idempotencyKey = (req.headers['idempotency-key'] as string) || (req.headers['x-idempotency-key'] as string);
-
-      if (!idempotencyKey) {
-        return res.status(400).json({ error: 'Idempotency-Key header is required' });
-      }
-
-      const { samples } = req.body;
-      const result = await ingestService.ingestBatch(req.device.id, idempotencyKey, samples);
-
-      return res.status(200).json({
-        success: true,
-        ...result,
-      });
+      const channel = req.params.channel as Channel;
+      const acknowledgedEventIds = await ingestService.pushEvents(req.device!, channel, req.body.events);
+      return res.status(200).json({ acknowledgedEventIds });
     } catch (error) {
       next(error);
     }
   }
 
-  async getAgentConfig(req: DeviceAuthenticatedRequest, res: Response, next: NextFunction) {
+  /** GET /api/v1/policy — spec §4.2 */
+  async getPolicy(req: DeviceAuthenticatedRequest, res: Response, next: NextFunction) {
     try {
-      if (!req.device) {
-        return res.status(401).json({ error: 'Device context missing' });
-      }
-
-      const config = {
-        AppTrackingEnabled: true,
-        UrlTrackingEnabled: false,
-        IdleDetectionEnabled: true,
-        IdleThresholdSeconds: 300,
-        AttendanceEnabled: true,
-        ScreenshotsEnabled: false,
-        ScreenshotIntervalMinutes: 10,
-        ActivityLevelEnabled: true,
-        UsbLoggingEnabled: false,
-        SampleIntervalSeconds: 15,
-        SyncIntervalSeconds: 60,
-      };
-
-      return res.status(200).json(config);
+      const policy = await ingestService.getPolicy(req.device!.organizationId);
+      return res.status(200).json(policy);
     } catch (error) {
       next(error);
     }
   }
 
-  async ingestAgentBatch(req: DeviceAuthenticatedRequest, res: Response, next: NextFunction) {
+  /** POST /api/v1/screenshots — spec §4.3 / §6 */
+  async uploadScreenshot(req: DeviceAuthenticatedRequest, res: Response, next: NextFunction) {
     try {
-      if (!req.device) {
-        return res.status(401).json({ error: 'Device context missing' });
+      const { clientEventId, capturedAtUtc } = req.body;
+      const result = await ingestService.storeScreenshot(req.device!, { clientEventId, capturedAtUtc }, req.file!.path);
+      return res.status(200).json({ remoteUri: result.remoteUri });
+    } catch (error) {
+      // Best-effort cleanup of the temp upload if persisting failed after multer wrote it.
+      if (req.file?.path) {
+        await fs.unlink(req.file.path).catch(() => undefined);
       }
+      next(error);
+    }
+  }
 
-      const idempotencyKey = (req.headers['idempotency-key'] as string) || (req.headers['x-idempotency-key'] as string);
-
-      if (!idempotencyKey) {
-        return res.status(400).json({ error: 'Idempotency-Key header is required' });
-      }
-
-      const result = await ingestService.ingestAgentBatch(
-        req.device.id,
-        req.device.employeeId,
-        idempotencyKey,
-        req.body
-      );
-
-      return res.status(202).json({
-        status: 'success',
-        message: result.message || 'batch accepted',
-      });
+  /** POST /api/v1/consent — spec §8 */
+  async recordConsent(req: DeviceAuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      await ingestService.recordConsent(req.device!, req.body);
+      return res.status(200).json({ status: 'ok' });
     } catch (error) {
       next(error);
     }

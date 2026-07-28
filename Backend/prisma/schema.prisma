@@ -6,58 +6,216 @@ datasource db {
   provider = "postgresql"
 }
 
-model Employee {
-  id         String   @id @default(uuid())
-  name       String
-  email      String   @unique
-  department String?
-  status     String   @default("active")
-  createdAt  DateTime @default(now())
-  devices    Device[]
+// ---------------------------------------------------------------------------
+// Dashboard / tenancy
+// ---------------------------------------------------------------------------
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  employees Employee[]
+  devices   Device[]
+  policy    Policy?
 }
+
+model Employee {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  email          String       @unique
+  department     String?
+  status         String       @default("active")
+  createdAt      DateTime     @default(now())
+
+  devices Device[]
+
+  @@index([organizationId])
+}
+
+// ---------------------------------------------------------------------------
+// Agent devices — the identity the Windows Agent authenticates as.
+// See docs/backend-api-specification.md §2.2 / §5.1.
+// ---------------------------------------------------------------------------
 
 model Device {
-  id           String        @id @default(uuid())
-  employeeId   String
-  employee     Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employeeId     String
+  employee       Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  // Windows MachineGuid (HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid) — the device's
+  // stable primary identity per spec §5.1. One row per physical/reimaged OS install.
+  machineId    String  @unique
   hostname     String
   os           String
-  agentVersion String
-  tokenHash    String        // device token, hashed — never store raw
-  lastSeen     DateTime?
-  activityLogs ActivityLog[]
+  agentVersion String?
+
+  // Device API key (spec §2.2 option 1), issued once at enrollment and never displayed again.
+  // Only the HMAC is stored.
+  apiKeyHash String @unique
+
+  isActive Boolean   @default(true)
+  lastSeenAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  events    TelemetryEvent[]
+  alerts    Alert[]
+  screenshots Screenshot[]
+  consents  ConsentRecord[]
+
+  @@index([organizationId])
+  @@index([employeeId])
 }
 
-model ActivityLog {
-  id          String   @id @default(uuid())
-  deviceId    String
-  device      Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  appName     String?
-  windowTitle String?
-  domain      String?  // Phase 2, nullable until browser tracker ships
-  isIdle      Boolean
-  capturedAt  DateTime
-  createdAt   DateTime @default(now())
+// ---------------------------------------------------------------------------
+// Policy distribution — GET /api/v1/policy (spec §4.2). One versioned JSON
+// document per organization; Version must increment on every write.
+// ---------------------------------------------------------------------------
 
-  @@index([deviceId, capturedAt])
+model Policy {
+  id             String       @id @default(uuid())
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  version        Int          @default(1)
+  document       Json
+  updatedAt      DateTime     @updatedAt
+  createdAt      DateTime     @default(now())
 }
 
-model Attendance {
-  id                 String    @id @default(uuid())
-  employeeId         String
-  date               DateTime  @db.Date
-  firstLogin         DateTime
-  lastLogout         DateTime?
-  totalActiveSeconds Int       @default(0)
+// ---------------------------------------------------------------------------
+// Generic telemetry ingestion — POST /api/v1/events/{channel} (spec §4.1).
+// One row per client event, deduplicated per (channel, clientEventId). The
+// `alert` channel is intentionally NOT stored here — it has upsert/escalation
+// semantics and lives in its own Alert model (spec §4.1.6).
+// ---------------------------------------------------------------------------
 
-  @@unique([employeeId, date])
+enum TelemetryChannel {
+  attendance
+  app_session        @map("app-session")
+  activity_session   @map("activity-session")
+  browser_navigation @map("browser-navigation")
+  usb_device         @map("usb-device")
 }
+
+model TelemetryEvent {
+  id             String           @id @default(uuid())
+  channel        TelemetryChannel
+  clientEventId  String
+  deviceId       String
+  device         Device           @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  machineId      String
+  userSid        String
+  occurredAtUtc  DateTime
+  payload        Json
+  createdAt      DateTime         @default(now())
+
+  @@unique([channel, clientEventId])
+  @@index([machineId, userSid, occurredAtUtc])
+  @@index([deviceId, channel, occurredAtUtc])
+}
+
+// ---------------------------------------------------------------------------
+// Alerts — POST /api/v1/events/alert (spec §4.1.6). Upserted on clientEventId
+// since escalations reuse the same id rather than creating a new event.
+// ---------------------------------------------------------------------------
+
+enum AlertSeverity {
+  Information
+  Warning
+  High
+  Critical
+}
+
+enum AlertState {
+  New
+  Shown
+  Acknowledged
+  Resolved
+  Archived
+}
+
+model Alert {
+  id                String        @id @default(uuid())
+  clientEventId     String        @unique
+  deviceId          String
+  device            Device        @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  machineId         String
+  userSid           String
+  type              String
+  severity          AlertSeverity
+  state             AlertState
+  title             String
+  message           String
+  contextJson       String
+  triggeredAtUtc    DateTime
+  acknowledgedAtUtc DateTime?
+  resolvedAtUtc     DateTime?
+  lastNotifiedAtUtc DateTime?
+  escalationLevel   Int
+  notificationCount Int
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([machineId, userSid, type, resolvedAtUtc])
+  @@index([deviceId, triggeredAtUtc])
+}
+
+// ---------------------------------------------------------------------------
+// Screenshots — POST /api/v1/screenshots (spec §4.3 / §6).
+// ---------------------------------------------------------------------------
+
+model Screenshot {
+  id             String   @id @default(uuid())
+  clientEventId  String   @unique
+  deviceId       String
+  device         Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  machineId      String
+  capturedAtUtc  DateTime
+  storagePath    String
+  remoteUri      String
+  sizeBytes      Int
+  createdAt      DateTime @default(now())
+
+  @@index([deviceId, capturedAtUtc])
+}
+
+// ---------------------------------------------------------------------------
+// Consent — POST /api/v1/consent (spec §8). Proof employees were notified
+// before monitoring began, keyed idempotently per (userSid, machineId, policyVersion).
+// ---------------------------------------------------------------------------
+
+model ConsentRecord {
+  id                String   @id @default(uuid())
+  deviceId          String
+  device            Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  userSid           String
+  machineId         String
+  policyVersion     Int
+  acknowledgedAtUtc DateTime
+  createdAt         DateTime @default(now())
+
+  @@unique([userSid, machineId, policyVersion])
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard-side productivity categorization (independent of the Agent's own
+// client-computed ProductivityTags — see reportService / categoryService).
+// ---------------------------------------------------------------------------
 
 model Category {
   id       String @id @default(uuid())
   pattern  String // app name or domain
   category String // productive | neutral | unproductive
 }
+
+// ---------------------------------------------------------------------------
+// Better Auth — dashboard users (managers/admins/auditors), unrelated to Agent
+// device identity above.
+// ---------------------------------------------------------------------------
 
 model User {
   id            String    @id @default(uuid())
@@ -118,10 +276,4 @@ model AuditLog {
   target    String
   timestamp DateTime @default(now())
   ipAddress String
-}
-
-model IngestBatch {
-  idempotencyKey String   @id
-  deviceId       String
-  processedAt    DateTime @default(now())
 }

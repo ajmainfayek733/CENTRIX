@@ -4,7 +4,7 @@ import { userAuth } from '../../middleware/userAuth';
 import { requireRole } from '../../middleware/rbac';
 import { auditLogger } from '../../middleware/auditLogger';
 import { validate } from '../../middleware/validate';
-import { createEmployeeSchema, registerDeviceSchema } from './employee.dto';
+import { createEmployeeSchema, registerDeviceSchema, deviceStatusSchema } from './employee.dto';
 
 const router = Router();
 
@@ -39,6 +39,14 @@ router.post(
   validate(registerDeviceSchema),
   auditLogger('REGISTER_DEVICE'),
   employeeController.registerDevice
+);
+
+router.patch(
+  '/devices/:deviceId/status',
+  requireRole('super_admin'),
+  validate(deviceStatusSchema),
+  auditLogger('SET_DEVICE_STATUS', (req) => `Device:${req.params.deviceId}`),
+  employeeController.setDeviceActive
 );
 
 export default router;

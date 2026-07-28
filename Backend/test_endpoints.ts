@@ -1,110 +1,121 @@
+/**
+ * Smoke test for the Agent-facing surface (docs/backend-api-specification.md §4), run against
+ * the real Express app with an in-memory Prisma mock so it needs no live database. Covers the
+ * behaviors the spec calls out as load-bearing: bearer auth (401 unknown, 403 deactivated),
+ * per-clientEventId idempotency on POST /api/v1/events/{channel}, and GET /api/v1/policy always
+ * returning a full versioned document.
+ */
 import { prisma as realPrisma } from './src/config/db';
-import { hashDeviceToken } from './src/utils/token';
+import { hashDeviceApiKey } from './src/utils/token';
 import { env } from './src/config/env';
 
-console.log(`Test configured to run on port: ${env.PORT}`);
-
-const mockDevice = {
-  id: 'desktop-01',
-  employeeId: 'employee-123',
+const ACTIVE_DEVICE = {
+  id: 'device-01',
+  organizationId: 'org-01',
+  employeeId: 'employee-01',
+  machineId: 'machine-guid-01',
   hostname: 'desktop-01',
   os: 'Windows 11',
-  agentVersion: '1.0.0',
-  tokenHash: hashDeviceToken('valid-device-token'),
-  lastSeen: null,
+  isActive: true,
+  apiKeyHash: hashDeviceApiKey('valid-device-key'),
 };
 
-// Keep track of queries and database state
-let activityLogsInserted: any[] = [];
-let attendanceRecordsUpserted: any[] = [];
-let ingestBatchesCreated: string[] = [];
-let ingestBatchesQueried: string[] = [];
+const DEACTIVATED_DEVICE = {
+  id: 'device-02',
+  organizationId: 'org-01',
+  employeeId: 'employee-02',
+  machineId: 'machine-guid-02',
+  hostname: 'desktop-02',
+  os: 'Windows 11',
+  isActive: false,
+  apiKeyHash: hashDeviceApiKey('deactivated-device-key'),
+};
 
-// Create a Proxy over realPrisma to intercept only the target methods
+const devicesByApiKeyHash = new Map([
+  [ACTIVE_DEVICE.apiKeyHash, ACTIVE_DEVICE],
+  [DEACTIVATED_DEVICE.apiKeyHash, DEACTIVATED_DEVICE],
+]);
+
+const telemetryEvents: any[] = [];
+const alerts = new Map<string, any>();
+const policies = new Map<string, any>([['org-01', { organizationId: 'org-01', version: 3, document: { WorkingHours: { StartLocal: '08:00:00' } } }]]);
+const consentRecords = new Map<string, any>();
+
 const fakePrisma = new Proxy(realPrisma, {
   get(target, prop) {
     if (prop === 'device') {
       return {
-        findUnique: async (args: any) => {
-          console.log('[-] Mocked prisma.device.findUnique called with:', JSON.stringify(args));
-          if (args.where.id === 'desktop-01') {
-            return mockDevice;
+        findUnique: async (args: any) => devicesByApiKeyHash.get(args.where.apiKeyHash) ?? null,
+        update: async (args: any) => ({ ...(devicesByApiKeyHash.get(args.where.id) ?? {}) }),
+      };
+    }
+
+    if (prop === 'telemetryEvent') {
+      return {
+        createMany: async (args: any) => {
+          let inserted = 0;
+          for (const row of args.data) {
+            const exists = telemetryEvents.some((e) => e.channel === row.channel && e.clientEventId === row.clientEventId);
+            if (exists && args.skipDuplicates) continue;
+            telemetryEvents.push(row);
+            inserted++;
           }
-          return null;
+          return { count: inserted };
         },
-        update: async (args: any) => {
-          console.log('[-] Mocked prisma.device.update called with:', JSON.stringify(args));
-          return mockDevice;
+      };
+    }
+
+    if (prop === 'alert') {
+      return {
+        upsert: async (args: any) => {
+          const row = { ...(alerts.get(args.where.clientEventId) ?? args.create), ...args.update };
+          alerts.set(args.where.clientEventId, row);
+          return row;
+        },
+      };
+    }
+
+    if (prop === 'policy') {
+      return {
+        upsert: async (args: any) => {
+          const existing = policies.get(args.where.organizationId);
+          if (existing) return existing;
+          const created = { organizationId: args.where.organizationId, ...args.create };
+          policies.set(args.where.organizationId, created);
+          return created;
+        },
+      };
+    }
+
+    if (prop === 'consentRecord') {
+      return {
+        upsert: async (args: any) => {
+          const key = JSON.stringify(args.where.userSid_machineId_policyVersion);
+          const row = { ...(consentRecords.get(key) ?? args.create), ...args.update };
+          consentRecords.set(key, row);
+          return row;
         },
       };
     }
 
     if (prop === '$transaction') {
-      return async (callback: (tx: any) => Promise<any>) => {
-        console.log('[-] Mocked prisma.$transaction called');
-        const txMock = {
-          ingestBatch: {
-            findUnique: async (args: any) => {
-              console.log('[-] tx.ingestBatch.findUnique called with:', JSON.stringify(args));
-              ingestBatchesQueried.push(args.where.idempotencyKey);
-              if (ingestBatchesCreated.includes(args.where.idempotencyKey)) {
-                return { idempotencyKey: args.where.idempotencyKey, deviceId: 'desktop-01' };
-              }
-              return null;
-            },
-            create: async (args: any) => {
-              console.log('[-] tx.ingestBatch.create called with:', JSON.stringify(args));
-              ingestBatchesCreated.push(args.data.idempotencyKey);
-              return args.data;
-            },
-          },
-          activityLog: {
-            createMany: async (args: any) => {
-              console.log('[-] tx.activityLog.createMany called with:', JSON.stringify(args));
-              activityLogsInserted.push(...args.data);
-              return { count: args.data.length };
-            },
-          },
-          attendance: {
-            upsert: async (args: any) => {
-              console.log('[-] tx.attendance.upsert called with:', JSON.stringify(args));
-              attendanceRecordsUpserted.push({
-                where: args.where,
-                create: args.create,
-                update: args.update,
-              });
-              return args.create;
-            },
-          },
-          device: {
-            update: async (args: any) => {
-              console.log('[-] tx.device.update called with:', JSON.stringify(args));
-              return mockDevice;
-            },
-          },
-        };
-        return callback(txMock);
-      };
+      return async (arg: any) => (Array.isArray(arg) ? Promise.all(arg) : arg((fakePrisma as any)));
     }
 
     return (target as any)[prop];
   },
 });
 
-// Hijack require.cache for the db module
 const dbPath = require.resolve('./src/config/db');
 require.cache[dbPath] = {
   id: dbPath,
   filename: dbPath,
   loaded: true,
-  exports: {
-    prisma: fakePrisma,
-  },
+  exports: { prisma: fakePrisma },
 } as any;
 
 console.log('1. Hijacked require.cache for db module');
 
-// 2. Now import app to start the server
 const app = require('./src/server').default;
 
 async function waitForServer(url: string, maxRetries = 15, delayMs = 500) {
@@ -124,206 +135,108 @@ async function waitForServer(url: string, maxRetries = 15, delayMs = 500) {
   throw new Error(`Server at ${url} failed to start in time`);
 }
 
+function fail(message: string): never {
+  console.error(`❌ ${message}`);
+  process.exit(1);
+}
+
 async function runTests() {
   const baseUrl = `http://127.0.0.1:${env.PORT}`;
+  await waitForServer(baseUrl).catch((err) => fail(err.message));
 
-  try {
-    await waitForServer(baseUrl);
-  } catch (err: any) {
-    console.error(`❌ ${err.message}`);
-    process.exit(1);
-  }
+  console.log('🧪 Starting Agent API Contract Tests (docs/backend-api-specification.md §4)...');
 
-  console.log('🧪 Starting Agent API Integration Tests...');
-
-  // Test 1: GET /api/v1/config with invalid authentication
-  console.log('\nTest 1: GET /api/v1/config with missing/invalid credentials...');
-  try {
-    const res = await fetch(`${baseUrl}/api/v1/config`, {
-      headers: {
-        'X-Device-ID': 'desktop-01',
-        'Authorization': 'Bearer invalid-token',
-      },
-    });
-    if (res.status === 401) {
-      console.log('✅ Correctly rejected unauthorized request with 401.');
-    } else {
-      console.error(`❌ Expected 401, got ${res.status}`);
-      const text = await res.text();
-      console.error('Response body:', text);
-      process.exit(1);
-    }
-  } catch (err: any) {
-    console.error('❌ Request failed:', err.message);
-    process.exit(1);
-  }
-
-  // Test 2: GET /api/v1/config with valid credentials
-  console.log('\nTest 2: GET /api/v1/config with valid credentials...');
-  try {
-    const res = await fetch(`${baseUrl}/api/v1/config`, {
-      headers: {
-        'X-Device-ID': 'desktop-01',
-        'Authorization': 'Bearer valid-device-token',
-      },
-    });
-    if (res.status === 200) {
-      const config = await res.json();
-      console.log('✅ Correctly retrieved config:', config);
-      if (config.AppTrackingEnabled === true && config.SyncIntervalSeconds === 60) {
-        console.log('✅ Config properties match contract.');
-      } else {
-        console.error('❌ Config properties mismatch!');
-        process.exit(1);
-      }
-    } else {
-      console.error(`❌ Expected 200, got ${res.status}`);
-      const text = await res.text();
-      console.error('Response body:', text);
-      process.exit(1);
-    }
-  } catch (err: any) {
-    console.error('❌ Request failed:', err.message);
-    process.exit(1);
-  }
-
-  // Test 3: POST /api/v1/ingest with valid payload
-  console.log('\nTest 3: POST /api/v1/ingest with valid batch payload...');
-  const testPayload = {
-    DeviceId: 'desktop-01',
-    ActivityLogs: [
-      {
-        DeviceId: 'desktop-01',
-        AppName: 'Visual Studio Code',
-        WindowTitle: 'Agent API Contract',
-        Domain: null,
-        IsIdle: false,
-        ActivityScore: 12,
-        CapturedAt: '2026-07-21T10:15:00Z',
-      },
-    ],
-    Screenshots: [
-      {
-        DeviceId: 'desktop-01',
-        CapturedAt: '2026-07-21T10:15:00Z',
-        EncryptedImageData: 'base64-encoded-bytes-here',
-      },
-    ],
-    UsbLogs: [
-      {
-        DeviceId: 'desktop-01',
-        DeviceName: 'USB Drive',
-        Action: 'Connected',
-        CapturedAt: '2026-07-21T10:15:00Z',
-      },
-    ],
-    AttendanceRecords: [
-      {
-        DeviceId: 'desktop-01',
-        Date: '2026-07-21',
-        FirstLogin: '2026-07-21T08:00:00Z',
-        LastLogout: '2026-07-21T17:00:00Z',
-        TotalActiveSeconds: 28800,
-      },
-    ],
-  };
-
-  const idempotencyKey = 'unique-test-idempotency-key';
-
-  try {
-    const res = await fetch(`${baseUrl}/api/v1/ingest`, {
+  console.log('\nTest 1: POST /api/v1/events/attendance with invalid bearer token -> 401');
+  {
+    const res = await fetch(`${baseUrl}/api/v1/events/attendance`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Device-ID': 'desktop-01',
-        'Authorization': 'Bearer valid-device-token',
-        'X-Idempotency-Key': idempotencyKey,
-      },
-      body: JSON.stringify(testPayload),
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer not-a-real-key' },
+      body: JSON.stringify({ events: [] }),
     });
-
-    if (res.status === 202) {
-      const responseBody = await res.json();
-      console.log('✅ Correctly accepted batch with 202:', responseBody);
-      if (responseBody.status === 'success' && responseBody.message === 'batch accepted') {
-        console.log('✅ Response body matches contract.');
-      } else {
-        console.error('❌ Response body mismatch!');
-        process.exit(1);
-      }
-
-      // Check database inserts/upserts
-      if (activityLogsInserted.length === 1 && activityLogsInserted[0].appName === 'Visual Studio Code') {
-        console.log('✅ ActivityLogs correctly routed to database.');
-      } else {
-        console.error('❌ ActivityLogs database insertion failed!');
-        process.exit(1);
-      }
-
-      if (
-        attendanceRecordsUpserted.length === 1 &&
-        attendanceRecordsUpserted[0].create.totalActiveSeconds === 28800
-      ) {
-        console.log('✅ AttendanceRecords correctly upserted to database.');
-      } else {
-        console.error('❌ AttendanceRecords database upsert failed!');
-        process.exit(1);
-      }
-    } else {
-      console.error(`❌ Expected 202, got ${res.status}`);
-      const text = await res.text();
-      console.error('Error response:', text);
-      process.exit(1);
-    }
-  } catch (err: any) {
-    console.error('❌ Request failed:', err.message);
-    process.exit(1);
+    if (res.status !== 401) fail(`Expected 401, got ${res.status}: ${await res.text()}`);
+    console.log('✅ Unknown device credential correctly rejected with 401.');
   }
 
-  // Test 4: POST /api/v1/ingest duplicate key (Idempotency check)
-  console.log('\nTest 4: POST /api/v1/ingest duplicate key (Idempotency test)...');
-  try {
-    const res = await fetch(`${baseUrl}/api/v1/ingest`, {
+  console.log('\nTest 2: POST /api/v1/events/attendance with a deactivated device -> 403');
+  {
+    const res = await fetch(`${baseUrl}/api/v1/events/attendance`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Device-ID': 'desktop-01',
-        'Authorization': 'Bearer valid-device-token',
-        'X-Idempotency-Key': idempotencyKey,
-      },
-      body: JSON.stringify(testPayload),
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer deactivated-device-key' },
+      body: JSON.stringify({ events: [] }),
     });
-
-    if (res.status === 202) {
-      const responseBody = await res.json();
-      console.log('✅ Correctly accepted duplicate batch with 202 (idempotency honored):', responseBody);
-    } else {
-      console.error(`❌ Expected 202, got ${res.status}`);
-      process.exit(1);
-    }
-  } catch (err: any) {
-    console.error('❌ Request failed:', err.message);
-    process.exit(1);
+    if (res.status !== 403) fail(`Expected 403, got ${res.status}: ${await res.text()}`);
+    console.log('✅ Deactivated device correctly rejected with 403 (spec §2.3).');
   }
 
-  console.log('\n🎉 All tests passed successfully!');
+  const clientEventId = '8f14e45f-ceea-4d5a-9e57-5a5b7f2b1a3c';
+  const attendancePayload = JSON.stringify({
+    ClientEventId: clientEventId,
+    MachineId: ACTIVE_DEVICE.machineId,
+    UserSid: 'S-1-5-21-1111111111-2222222222-3333333333-1001',
+    SessionId: 1,
+    IsRemoteSession: false,
+    Reason: null,
+    OccurredAtUtc: '2026-07-27T09:00:00.0000000+00:00',
+    EventType: 'Login',
+  });
+
+  console.log('\nTest 3: POST /api/v1/events/attendance with a valid batch -> 200 + acknowledgedEventIds');
+  {
+    const res = await fetch(`${baseUrl}/api/v1/events/attendance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer valid-device-key' },
+      body: JSON.stringify({ events: [{ clientEventId, payloadJson: attendancePayload }] }),
+    });
+    if (res.status !== 200) fail(`Expected 200, got ${res.status}: ${await res.text()}`);
+    const body = await res.json();
+    if (!body.acknowledgedEventIds?.includes(clientEventId)) fail(`clientEventId missing from acknowledgedEventIds: ${JSON.stringify(body)}`);
+    if (telemetryEvents.length !== 1) fail(`Expected 1 stored telemetry event, got ${telemetryEvents.length}`);
+    console.log('✅ Batch accepted and persisted.');
+  }
+
+  console.log('\nTest 4: Resending the same batch (retry) -> 200, no duplicate row (spec §3.2)');
+  {
+    const res = await fetch(`${baseUrl}/api/v1/events/attendance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer valid-device-key' },
+      body: JSON.stringify({ events: [{ clientEventId, payloadJson: attendancePayload }] }),
+    });
+    if (res.status !== 200) fail(`Expected 200, got ${res.status}: ${await res.text()}`);
+    const body = await res.json();
+    if (!body.acknowledgedEventIds?.includes(clientEventId)) fail('Retried duplicate must still be acknowledged');
+    if (telemetryEvents.length !== 1) fail(`Idempotency violated: expected 1 stored row, got ${telemetryEvents.length}`);
+    console.log('✅ Retry was idempotent — duplicate was not re-inserted, but was still acknowledged.');
+  }
+
+  console.log('\nTest 5: GET /api/v1/policy -> 200 with Version field (spec §4.2)');
+  {
+    const res = await fetch(`${baseUrl}/api/v1/policy`, {
+      headers: { Authorization: 'Bearer valid-device-key' },
+    });
+    if (res.status !== 200) fail(`Expected 200, got ${res.status}: ${await res.text()}`);
+    const body = await res.json();
+    if (typeof body.Version !== 'number') fail(`Policy response missing numeric Version: ${JSON.stringify(body)}`);
+    console.log(`✅ Policy document returned with Version=${body.Version}.`);
+  }
+
+  console.log('\nTest 6: POST /api/v1/consent -> 200 (spec §8)');
+  {
+    const res = await fetch(`${baseUrl}/api/v1/consent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer valid-device-key' },
+      body: JSON.stringify({
+        userSid: 'S-1-5-21-1111111111-2222222222-3333333333-1001',
+        machineId: ACTIVE_DEVICE.machineId,
+        policyVersion: 3,
+        acknowledgedAtUtc: '2026-07-27T08:00:00Z',
+      }),
+    });
+    if (res.status !== 200) fail(`Expected 200, got ${res.status}: ${await res.text()}`);
+    console.log('✅ Consent record accepted.');
+  }
+
+  console.log('\n🎉 All Agent API contract tests passed.');
   process.exit(0);
 }
 
-if (process.argv.includes('--server') || process.env.MOCK_SERVER === 'true') {
-  console.log('\n========================================================================');
-  console.log('🚀 MOCK DATABASE SERVER ACTIVE');
-  console.log('The backend is running with a mocked, in-memory database.');
-  console.log('You can now point your Windows agent to this server for testing.\n');
-  console.log('Connection Details:');
-  console.log(`  - Config Endpoint: http://localhost:${env.PORT}/api/v1/config`);
-  console.log(`  - Ingest Endpoint: http://localhost:${env.PORT}/api/v1/ingest`);
-  console.log('  - Device ID: desktop-01');
-  console.log('  - Device Token: valid-device-token');
-  console.log('  - Authorization Header: Bearer valid-device-token');
-  console.log('  - X-Device-ID Header: desktop-01\n');
-  console.log('All agent requests will be validated, processed in-memory, and logged below.');
-  console.log('========================================================================\n');
-} else {
-  runTests();
-}
+runTests().catch((err) => fail(err.stack ?? err.message));

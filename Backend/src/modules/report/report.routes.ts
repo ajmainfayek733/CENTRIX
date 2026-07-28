@@ -22,4 +22,11 @@ router.get(
   reportController.getEmployeeTimeline
 );
 
+router.get(
+  '/screenshots/:deviceId/:file',
+  requireRole('super_admin', 'manager', 'auditor'),
+  auditLogger('VIEW_SCREENSHOT', (req) => `Screenshot:${req.params.deviceId}/${req.params.file}`),
+  reportController.getScreenshot
+);
+
 export default router;

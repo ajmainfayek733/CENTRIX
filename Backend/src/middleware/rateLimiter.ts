@@ -4,9 +4,12 @@ interface RateLimitStore {
   [ip: string]: { count: number; resetTime: number };
 }
 
-const store: RateLimitStore = {};
-
 export const rateLimiter = (maxRequests = 100, windowMs = 60 * 1000) => {
+  // Scoped per rateLimiter(...) call, not module-wide — otherwise every route sharing this
+  // middleware (login at 10/min, ingest at 200/min, ...) would collide on the same IP counter
+  // and get checked against whichever limit happened to run, instead of its own.
+  const store: RateLimitStore = {};
+
   return (req: Request, res: Response, next: NextFunction) => {
     const ip = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
     const now = Date.now();
