@@ -25,6 +25,33 @@ public sealed class SqliteConsentStore(ISqliteConnectionFactory connectionFactor
             DateTimeOffset.Parse(reader.GetString(3), System.Globalization.CultureInfo.InvariantCulture));
     }
 
+    public async Task<ConsentRecord?> GetLatestForMachineAsync(string machineId, CancellationToken cancellationToken)
+    {
+        using var connection = connectionFactory.CreateOpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT user_sid, machine_id, policy_version, acknowledged_at_utc
+            FROM consent_records
+            WHERE machine_id = $machineId
+            ORDER BY policy_version DESC
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$machineId", machineId);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            return null;
+        }
+
+        return new ConsentRecord(
+            reader.GetString(0),
+            reader.GetString(1),
+            reader.GetInt32(2),
+            DateTimeOffset.Parse(reader.GetString(3), System.Globalization.CultureInfo.InvariantCulture));
+    }
+
     public async Task SaveAsync(ConsentRecord record, CancellationToken cancellationToken)
     {
         using var connection = connectionFactory.CreateOpenConnection();

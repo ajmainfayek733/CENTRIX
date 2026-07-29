@@ -191,7 +191,7 @@ set `BackendBaseUrl` in each `appsettings.json` to your real backend's HTTPS URL
 Run as Administrator:
 
 ```powershell
-sc.exe create WorkforceAgent binPath= "C:\Program Files\WorkforceAgent\Agent.Host.exe" start= auto DisplayName= "Workforce Agent"
+sc.exe create WorkforceAgent binPath= "C:\Program Files\WorkforceAgent\Agent.Host\Agent.Host.exe" start= auto DisplayName= "Workforce Agent"
 sc.exe description WorkforceAgent "Enterprise endpoint monitoring agent — attendance, activity, and policy compliance telemetry."
 sc.exe start WorkforceAgent
 ```
@@ -222,7 +222,7 @@ this is a **Scheduled Task with an "at logon of any user" trigger**, deployed vi
 Policy/Intune alongside the service install:
 
 ```powershell
-$action = New-ScheduledTaskAction -Execute "C:\Program Files\WorkforceAgent\Agent.TrayHelper.exe"
+$action = New-ScheduledTaskAction -Execute "C:\Program Files\WorkforceAgent\Agent.TrayHelper\Agent.TrayHelper.exe"
 $trigger = New-ScheduledTaskTrigger -AtLogOn
 $principal = New-ScheduledTaskPrincipal -GroupId "BUILTIN\Users" -RunLevel Limited
 Register-ScheduledTask -TaskName "WorkforceAgentTray" -Action $action -Trigger $trigger -Principal $principal

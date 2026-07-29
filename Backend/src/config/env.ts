@@ -33,3 +33,9 @@ if (!_env.success) {
 }
 
 export const env = _env.data;
+
+// The schema default exists only so local dev works without a .env file. Shipping it in
+// production would let anyone forge a device API key hash offline, so fail closed instead.
+if (env.NODE_ENV === 'production' && env.DEVICE_TOKEN_PEPPER === 'dev-only-device-token-pepper-change-me') {
+  throw new Error('DEVICE_TOKEN_PEPPER must be set to a unique secret in production (see .env.example)');
+}

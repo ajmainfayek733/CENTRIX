@@ -72,8 +72,11 @@ public static class TrayServiceCollectionExtensions
         services.AddSingleton<IAlertRepository, SqliteAlertRepository>();
         services.AddSingleton<IConsentStore, SqliteConsentStore>();
 
+        services.AddSingleton<IDeviceCredentialStore>(_ => new DpapiDeviceCredentialStore(options.DeviceCredentialPath));
+        services.AddTransient<DeviceAuthDelegatingHandler>();
         services.AddHttpClient<IBackendClient, HttpBackendClient>(client =>
-            client.BaseAddress = new Uri(options.BackendBaseUrl));
+                client.BaseAddress = new Uri(options.BackendBaseUrl))
+            .AddHttpMessageHandler<DeviceAuthDelegatingHandler>();
         services.AddSingleton<IPolicyProvider>(sp => new RemotePolicyProvider(
             sp.GetRequiredService<IBackendClient>(),
             options.PolicyCachePath,

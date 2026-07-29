@@ -1,4 +1,5 @@
 using Agent.Collectors.Screenshot;
+using Agent.Core.Consent;
 using Agent.Core.Policy;
 using Agent.Core.Security;
 using Agent.Core.Sync;
@@ -10,13 +11,15 @@ namespace Agent.Sync;
 /// <summary>
 /// Screenshots don't flow through the generic outbox — the payload is a large binary blob
 /// uploaded via IBackendClient's dedicated multipart-style path, decrypted locally first since
-/// TLS (not double encryption) covers transit.
+/// TLS (not double encryption) covers transit. Uploads are held back until <see cref="ConsentGate"/>
+/// reports the device's monitoring notice has been acknowledged (see ConsentGateHostedService).
 /// </summary>
 public sealed class ScreenshotUploadWorker(
     IScreenshotRepository repository,
     IScreenshotEncryptor encryptor,
     IBackendClient backendClient,
     IPolicyProvider policyProvider,
+    ConsentGate consentGate,
     ILogger<ScreenshotUploadWorker> logger) : IHostedService, IDisposable
 {
     private Timer? _timer;
@@ -38,6 +41,11 @@ public sealed class ScreenshotUploadWorker(
 
     private async Task UploadPendingAsync()
     {
+        if (!consentGate.IsAcknowledged)
+        {
+            return;
+        }
+
         try
         {
             var pending = await repository.GetPendingUploadsAsync(policyProvider.Current.Sync.MaxBatchSize, CancellationToken.None).ConfigureAwait(false);

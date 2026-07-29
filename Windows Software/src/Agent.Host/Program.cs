@@ -1,5 +1,6 @@
 using System.ServiceProcess;
 using Agent.Core;
+using Agent.Core.Identity;
 using Agent.Host;
 using Serilog;
 
@@ -30,6 +31,14 @@ try
 
     using var host = builder.Build();
     using var service = new AgentWindowsService(host);
+
+    // Best-effort: does nothing if already enrolled, and does not block service startup if not
+    // (SyncWorker/ScreenshotUploadWorker will keep 401ing and logging clearly until an admin
+    // provisions this device — see DeviceAuthDelegatingHandler).
+    await DeviceEnrollmentBootstrapper.EnsureEnrolledAsync(
+        host.Services.GetRequiredService<IDeviceCredentialStore>(),
+        host.Services.GetRequiredService<ILoggerFactory>().CreateLogger(nameof(DeviceEnrollmentBootstrapper)),
+        CancellationToken.None).ConfigureAwait(false);
 
     if (Environment.UserInteractive)
     {

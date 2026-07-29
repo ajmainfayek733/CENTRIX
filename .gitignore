@@ -20,6 +20,7 @@ TestResults/
 # Local runtime / secrets
 .env
 .env.*
+!.env.example
 *.pem
 *.pfx
 *.p12

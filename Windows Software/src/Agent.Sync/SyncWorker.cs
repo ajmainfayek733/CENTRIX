@@ -1,3 +1,4 @@
+using Agent.Core.Consent;
 using Agent.Core.Policy;
 using Agent.Core.Sync;
 using Agent.Core.Time;
@@ -11,13 +12,16 @@ namespace Agent.Sync;
 /// there in the same local transaction as its own domain write — batches per channel, and
 /// applies exponential backoff while the backend is unreachable. Immediate-priority channels
 /// (alerts, USB) are checked far more often than the batched interval; batched channels wait
-/// for the full interval so most modules don't chatter over the wire.
+/// for the full interval so most modules don't chatter over the wire. Nothing is transmitted
+/// until <see cref="ConsentGate"/> reports the device's monitoring notice has been acknowledged
+/// (see ConsentGateHostedService) — data still buffers locally in the outbox in the meantime.
 /// </summary>
 public sealed class SyncWorker(
     IOutboxRepository outbox,
     IBackendClient backendClient,
     IPolicyProvider policyProvider,
     ISystemClock clock,
+    ConsentGate consentGate,
     ILogger<SyncWorker> logger) : IHostedService, IDisposable
 {
     private static readonly TimeSpan ImmediateCheckInterval = TimeSpan.FromSeconds(5);
@@ -52,6 +56,11 @@ public sealed class SyncWorker(
 
     private async Task RunCycleAsync(SyncPriority priorityFilter)
     {
+        if (!consentGate.IsAcknowledged)
+        {
+            return;
+        }
+
         if (clock.UtcNow < _nextAttemptAllowedAtUtc)
         {
             // Backing off after a prior failure — the batched/immediate timers keep ticking on

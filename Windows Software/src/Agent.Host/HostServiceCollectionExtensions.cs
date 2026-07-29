@@ -72,8 +72,18 @@ public static class HostServiceCollectionExtensions
         services.AddSingleton<IAlertRepository, SqliteAlertRepository>();
         services.AddSingleton<IConsentStore, SqliteConsentStore>();
 
+        services.AddSingleton<IDeviceCredentialStore>(_ => new DpapiDeviceCredentialStore(options.DeviceCredentialPath));
+        services.AddTransient<DeviceAuthDelegatingHandler>();
         services.AddHttpClient<IBackendClient, HttpBackendClient>(client =>
-            client.BaseAddress = new Uri(options.BackendBaseUrl));
+                client.BaseAddress = new Uri(options.BackendBaseUrl))
+            .AddHttpMessageHandler<DeviceAuthDelegatingHandler>();
+
+        // Agent.Host has no interactive desktop to show the consent dialog itself (that's
+        // Agent.TrayHelper's job) — this gate starts closed and is opened by
+        // ConsentGateHostedService once it observes an acknowledgement recorded by any user on
+        // this machine, so SyncWorker/ScreenshotUploadWorker never transmit before that happens.
+        services.AddSingleton<ConsentGate>();
+        services.AddHostedService<ConsentGateHostedService>();
 
         services.AddSingleton<IPolicyProvider>(sp => new RemotePolicyProvider(
             sp.GetRequiredService<IBackendClient>(),
@@ -108,6 +118,7 @@ public static class HostServiceCollectionExtensions
             sp.GetRequiredService<IScreenshotEncryptor>(),
             sp.GetRequiredService<IBackendClient>(),
             sp.GetRequiredService<IPolicyProvider>(),
+            sp.GetRequiredService<ConsentGate>(),
             sp.GetRequiredService<ILogger<ScreenshotUploadWorker>>()));
 
         return services;

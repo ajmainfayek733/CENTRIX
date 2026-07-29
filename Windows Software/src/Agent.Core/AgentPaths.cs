@@ -19,6 +19,8 @@ public sealed class AgentPaths
 
     public string ScreenshotKeyPath => Path.Combine(DataDirectory, "keys", "screenshot.key");
 
+    public string DeviceCredentialPath => Path.Combine(DataDirectory, "keys", "device.key");
+
     public string ScreenshotStorageDirectory => Path.Combine(DataDirectory, "screenshots");
 
     public string PolicyCachePath => Path.Combine(DataDirectory, "policy-cache.json");

@@ -58,18 +58,88 @@ Per organizational policy, the Agent never captures keystroke content, personal 
 
 - TLS 1.2 or higher on every endpoint. The Agent's HTTP client is built against a base URL (`https://.../`) with no support for plaintext HTTP.
 
-### 2.2 Device authentication (open decision — see §9.1)
+### 2.2 Device authentication (decided and implemented: API key per device)
 
-The Agent's `IBackendClient` sends requests via a standard `HttpClient` with a bearer token expected in the default `Authorization` header, configured at startup. **The concrete token-issuance flow is not yet decided** — the client is ready for either of:
+The Agent's `IBackendClient` sends every request via a standard `HttpClient` with a bearer token in the `Authorization` header: `Authorization: Bearer <device-api-key>`. The key is:
 
-- **API key per device**: issued once at enrollment (e.g., during Intune/GPO deployment), stored via Windows DPAPI on the device (the same mechanism the Agent already uses to protect its local database key), sent as `Authorization: Bearer <device-api-key>`.
-- **Short-lived JWT per device**, obtained via a `POST /api/v1/auth/token` exchange (device API key or client certificate → JWT), refreshed before expiry.
-
-Recommendation: JWT with a device-bound refresh credential, since it supports token revocation per-device without invalidating a shared secret — but this is the backend developer's call; flagged in §9.1 as needing a decision before go-live.
+- **issued once**, when an admin registers the device via the dashboard API (§2.4) — not self-issued or obtained through any device-initiated exchange. There is no `/auth/token` endpoint; a JWT-exchange scheme was considered but not built, since the fleet size (~30 devices) didn't justify the added complexity of short-lived-token refresh over a per-device revocable secret.
+- **stored on the device** via Windows DPAPI, `LocalMachine` scope (`C:\ProgramData\WorkforceAgent\keys\device.key`) — the same protection pattern the Agent already uses for its local database key. See `Agent.Core.Identity.DeviceEnrollmentBootstrapper` / `Agent.Storage.Security.DpapiDeviceCredentialStore` client-side, and `Agent.Sync.DeviceAuthDelegatingHandler` for how it's attached to outgoing requests.
+- **verified server-side** by hashing the presented key and looking it up (`Backend/src/middleware/deviceAuth.ts`) — the raw key itself is never stored, only its hash.
 
 ### 2.3 Token rotation
 
-Whatever scheme is chosen, the Agent will retry a `401 Unauthorized` response by attempting to re-authenticate once before treating the sync cycle as failed (this retry behavior belongs in the client, not yet implemented — see §9.1). The backend should return `401` (not `403`) for expired/invalid credentials, and `403` only for a validly-authenticated device that's been deliberately deactivated.
+The backend returns `401 Unauthorized` for a missing, malformed, or unrecognized credential, and `403 Forbidden` only for a key that hashes to a real, currently-deactivated device (§2.4's decommission flow). There is no in-place rotation endpoint — see §2.4 for the rotate/revoke procedure. The Agent does not retry a `401` by re-authenticating (there's nothing to re-authenticate with — a `401` on this scheme means the device was never enrolled, was mis-provisioned, or was deliberately revoked, not that a short-lived token expired), it simply logs the failure and retries the sync cycle on its normal interval; it will keep failing until an admin fixes enrollment.
+
+### 2.4 Device enrollment (production installation) and decommission (uninstall)
+
+This is the production install/uninstall procedure for the backend half of a device — i.e., what an admin does through the dashboard API alongside the client-side install/uninstall steps in `Windows Software/docs/running-the-agent.md` §3. Full step-by-step admin instructions (including how the key gets from this response onto the actual machine) live in `Windows Software/docs/device-enrollment.md`; this section is the authoritative contract for the two endpoints involved.
+
+A freshly installed Agent (service installed per `running-the-agent.md` §3.2, tray helper deployed per §3.3) has no credential yet and will get `401 Unauthorized` on every backend call until enrollment below is completed — this is expected, not a bug, and the Agent falls back to cached/default policy in the meantime (§4.2).
+
+**Note the path prefix:** enrollment/decommission below live under `/v1/dashboard/...` (an admin-session-authenticated surface, distinct from the device-API-key-authenticated `/api/v1/...` surface the Agent itself calls, per §4 and §7.5). They're both part of the same backend, just gated by different credentials — a human admin's dashboard login for these two, the device's own API key for everything the Agent calls directly.
+
+**Prerequisite — create the employee** (if not already present):
+
+```http
+POST /v1/dashboard/employees
+Authorization: <dashboard session, super_admin role>
+{ "organizationId": "<org-uuid>", "name": "Jane Doe", "email": "jane@company.com", "department": "Engineering" }
+```
+
+**Step 1 — register the device** (issues the credential the freshly-installed Agent needs):
+
+```http
+POST /v1/dashboard/employees/devices
+Authorization: <dashboard session, super_admin role>
+{
+  "employeeId": "<employee-uuid>",
+  "machineId": "<Windows MachineGuid — HKLM\\SOFTWARE\\Microsoft\\Cryptography\\MachineGuid>",
+  "hostname": "<hostname>",
+  "os": "Windows 11 Pro",
+  "agentVersion": "0.1.0"
+}
+```
+
+`201 Created`:
+
+```json
+{
+  "message": "Device registered successfully",
+  "data": {
+    "deviceId": "...",
+    "employeeId": "...",
+    "organizationId": "...",
+    "machineId": "...",
+    "hostname": "...",
+    "rawApiKey": "<64-char hex device API key>",
+    "note": "Save this device API key securely (e.g. via DPAPI on the device). It will not be shown again."
+  }
+}
+```
+
+**`rawApiKey` is returned exactly once and is not recoverable afterward** — only its hash is persisted server-side. Re-registering an already-registered `machineId` is rejected with `400 A device with this machineId is already registered`; there is no upsert.
+
+**Step 2 — provision the key onto the machine** (client-side half of install): the Agent looks for `rawApiKey` in the machine-scoped environment variable `WORKFORCEAGENT_DEVICE_API_KEY` the first time it starts without a stored credential, then imports it into the DPAPI-protected local store described in §2.2 and never needs the environment variable again. Set it via deployment tooling (Intune, SCCM, GPO Preferences, or a provisioning script run alongside the `sc.exe`/Scheduled Task install steps in `running-the-agent.md` §3.2–3.3):
+
+```powershell
+[Environment]::SetEnvironmentVariable('WORKFORCEAGENT_DEVICE_API_KEY', '<rawApiKey>', 'Machine')
+```
+
+Confirm success via `"Device enrolled successfully"` in `agent-*.log`; see `device-enrollment.md` for the full troubleshooting checklist (most common failure: the service/tray process was already running when the env var was set and needs a restart to see it).
+
+**Uninstall / decommission a device:**
+
+```http
+PATCH /v1/dashboard/employees/devices/:deviceId/status
+Authorization: <dashboard session, super_admin role>
+{ "isActive": false }
+```
+
+`200 OK`, and every subsequent request from that device's API key now gets `403 Forbidden` (not `401` — the credential is still recognized, just deliberately revoked, which is what lets an admin distinguish "this device was decommissioned on purpose" from "this device was never enrolled" when reading logs). Do this as part of every machine decommission/re-image, **before** uninstalling the Agent client-side (`running-the-agent.md` §3.4) — revoking first means any stray sync attempt during uninstall fails closed rather than continuing to push telemetry from a machine being retired.
+
+There is no delete-device endpoint — deactivation (`isActive: false`) is the only supported decommission path, preserving the device's historical telemetry and audit trail. Reactivating a previously decommissioned device (e.g., a machine returning from storage) is the same endpoint with `isActive: true`; its existing API key remains valid, nothing needs to be re-provisioned on the machine.
+
+**Key rotation** (suspected compromise, not routine decommission): there is no rotate-in-place endpoint. Deactivate the device (above), register a new device row for the same employee/`machineId` — wait, `machineId` is unique, so first deactivate, then the old row still occupies that `machineId` and a straight re-register will still 400. The supported path today is: deactivate the old device row, then have the backend developer either free up the `machineId` (e.g. a dedicated rotate endpoint, not yet built) or register the replacement under a fresh install with a re-imaged `machineId`. Treat scheduled key rotation as a backend follow-up, not something achievable purely through today's endpoints — flagged in `device-enrollment.md`.
 
 ---
 
@@ -413,7 +483,7 @@ Every alert (§4.1.6) is itself an audit trail entry. For broader API-level audi
 
 Per organizational policy (Singapore PDPA, GDPR where applicable), employees must be notified before monitoring begins. The Agent enforces this client-side: no collector starts until the local consent gate is acknowledged (a blocking dialog on first run and after any policy version change).
 
-**The backend must store proof of this acknowledgment.** The Agent does not currently push consent records automatically — this is flagged as an open item (§9.6) since it requires a dedicated endpoint not yet built into `IBackendClient`. When added, expect a shape matching the client's local `ConsentRecord`:
+**The backend stores proof of this acknowledgment.** `POST /api/v1/consent` (device-authenticated, same as the ingestion endpoints in §4.1) is implemented and the Agent calls it via `IBackendClient.PostConsentAsync` whenever the local consent gate is acknowledged. Body:
 
 ```json
 {
@@ -424,7 +494,7 @@ Per organizational policy (Singapore PDPA, GDPR where applicable), employees mus
 }
 ```
 
-Recommended endpoint: `POST /api/v1/consent` with this body, idempotent on `(userSid, machineId, policyVersion)`. Until this exists, the consent record only lives in the device's local encrypted database — **this is a gap, not a design choice**, and should be closed before production rollout, since the backend currently has no way to prove notice was given if asked to demonstrate compliance.
+`200 OK` on success; no dedicated response body is required beyond a 2xx status. As with the event channels (§3.2), treat this as idempotent on `(userSid, machineId, policyVersion)` — the Agent re-sends the same acknowledgment on every consent-gate pass until it gets a successful response, so a repeat post for a policy version already on file should upsert/no-op rather than error.
 
 ---
 
@@ -432,11 +502,11 @@ Recommended endpoint: `POST /api/v1/consent` with this body, idempotent on `(use
 
 These need a decision — from the product owner or backend developer — before or during backend implementation. None of them block starting the work, but all of them affect the final contract:
 
-1. **Authentication scheme** (§2.2): API key vs. JWT, and the enrollment/issuance flow. The Agent is ready for either behind `IBackendClient`, but the concrete token-acquisition code doesn't exist yet since it depends on this choice.
+1. ~~**Authentication scheme**~~ — **Resolved.** API key per device, issued via `POST /v1/dashboard/employees/devices`. See §2.2–2.4.
 2. **`TimeSpan` JSON format** in the policy document (§4.2): confirm your JSON serializer's `TimeSpan` handling matches .NET's default (`"01:30:00"` style), or agree on an alternative (e.g., total seconds as integers) and update the client accordingly.
-3. **`OrganizationId` assignment** (§5.1): how and when a device learns its organization ID — at enrollment, via policy, or some other mechanism.
+3. ~~**`OrganizationId` assignment**~~ — **Resolved, differently than originally proposed.** The Agent still never learns its own `OrganizationId` locally, and doesn't need to: the backend derives it server-side from the authenticated device (`req.device.organizationId` in `deviceAuth.ts`, set from the `Device` row created at enrollment) on every request. No client or contract change was needed.
 4. **Time zone for local-time reporting** (§5.2): the Agent transmits no time zone data today; decide whether to add it to device enrollment or infer it elsewhere.
 5. **Screenshot metadata completeness** (§6): whether width/height/monitor-count need to be transmitted explicitly or extracted from the image server-side.
-6. **Consent record sync endpoint** (§8): this is the most important open item from a compliance standpoint — the backend currently has no way to receive proof of employee notification. Recommend prioritizing this even ahead of full telemetry ingestion.
+6. ~~**Consent record sync endpoint**~~ — **Resolved.** `POST /api/v1/consent` is implemented and wired into the Agent (`IBackendClient.PostConsentAsync`). See §8.
 7. **Partial-batch acknowledgment**: confirm the all-or-nothing batch semantics in §3.3 are acceptable, or scope a coordinated change to support partial acknowledgment if your ingestion pipeline can fail rows independently.
-8. **Employee/SID-to-identity mapping**: how admins enroll a device and associate Windows SIDs on it with an actual employee record — entirely a backend/admin-console concern, but necessary before any of this telemetry is meaningful in a report.
+8. ~~**Employee/SID-to-identity mapping**~~ — **Resolved, at device granularity.** Each `Device` row is registered directly against one `Employee` (§2.4 step 1) — there's no separate SID↔employee table. This assumes one primary employee per machine; a genuinely shared machine (multiple SIDs, no single owner) has no way to attribute events to different employees today. Flag this to the product owner if shared/kiosk-style machines are in scope — otherwise no action needed.
