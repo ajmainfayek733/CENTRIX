@@ -17,6 +17,7 @@ public interface IScreenCapturer
 [SupportedOSPlatform("windows")]
 public sealed class ScreenCapturer : IScreenCapturer
 {
+    // [DllImport("user32.dll")]
     public CapturedImage? Capture(VirtualScreenBounds bounds, int jpegQuality)
     {
         if (bounds.Width <= 0 || bounds.Height <= 0)

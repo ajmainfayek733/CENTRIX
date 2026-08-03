@@ -182,6 +182,20 @@ dotnet publish Agent.Host -c Release -o publish\Agent.Host
 dotnet publish Agent.TrayHelper -c Release -o publish\Agent.TrayHelper
 ```
 
+```bash
+#linux. git bash
+cd "/Windows Software/src"
+dotnet publish Agent.Host -c Release -o publish/Agent.Host
+dotnet publish Agent.TrayHelper -c Release -o publish/Agent.TrayHelper
+```
+
+**Self Contained version**
+
+```bash
+dotnet publish Agent.Host -c Release -r win-x64 --self-contained true -p:PublishReadyToRun -o publish/Agent.Host
+dotnet publish Agent.TrayHelper -c Release -r win-x64 --self-contained true -p:PublishReadyToRun -o publish/Agent.TrayHelper
+```
+
 Before shipping, per `Rules.md`: code-sign both executables, strip debug symbols from the
 distributed package (keep a symbol server copy separately if you want crash diagnostics), and
 set `BackendBaseUrl` in each `appsettings.json` to your real backend's HTTPS URL.
@@ -271,6 +285,9 @@ copy to your Desktop, e.g. `agent-plaintext-20260727-143205.db`. Override either
 
 ```powershell
 dotnet run -- export-db --data-dir "C:\ProgramData\WorkforceAgent" --output "D:\scratch\agent-plaintext.db"
+
+# Vm Enviroment
+dotnet run --project "C:\Users\fayek\OneDrive\Desktop\Project\employee-tracker\Windows Software\src\Agent.DevTools\Agent.DevTools.csproj" -- export-db --data-dir "C:\ProgramData\WorkforceAgent" --output "C:\Users\fayek\OneDrive\Desktop\scratch\agent-plaintext.db"
 ```
 
 **This must be run on the machine where the Agent is installed** — the encryption key is
@@ -332,9 +349,9 @@ which is preferable for anything beyond throwaway local testing.
 
 ## 5. Troubleshooting
 
-| Symptom | Likely cause |
-| --- | --- |
-| Tray helper exits immediately, no consent dialog | Fixed as of this writing — consent resolution used to call `WTSQueryUserToken`, which needs the `SE_TCB_NAME` privilege held by `LocalSystem` and fails silently under a normal account. It now reads the process's own identity instead (`WindowsIdentity.GetCurrent()`). If you still see this, check `tray-<date>.log` for the actual exception. |
-| No rows appearing in any table | Check `policyProvider.Current.*.Enabled` — if policy has a module disabled (Screenshots are **off by default**), nothing will be collected for it |
-| `agent.db` won't open in any tool, even after export | Confirm both processes are pointed at the _same_ `DataDirectory` — a mismatch means you're looking at (or exporting) an empty database created fresh by whichever process ran first |
-| Service won't start | Check Windows Event Viewer → Application log for the .NET unhandled exception, and `<DataDirectory>\logs\agent-<date>.log`; most common cause during development is a locked `agent.db` from a `dotnet run` instance still running |
+| Symptom                                              | Likely cause                                                                                                                                                                                                                                                                                                                                        |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tray helper exits immediately, no consent dialog     | Fixed as of this writing — consent resolution used to call `WTSQueryUserToken`, which needs the `SE_TCB_NAME` privilege held by `LocalSystem` and fails silently under a normal account. It now reads the process's own identity instead (`WindowsIdentity.GetCurrent()`). If you still see this, check `tray-<date>.log` for the actual exception. |
+| No rows appearing in any table                       | Check `policyProvider.Current.*.Enabled` — if policy has a module disabled (Screenshots are **off by default**), nothing will be collected for it                                                                                                                                                                                                   |
+| `agent.db` won't open in any tool, even after export | Confirm both processes are pointed at the _same_ `DataDirectory` — a mismatch means you're looking at (or exporting) an empty database created fresh by whichever process ran first                                                                                                                                                                 |
+| Service won't start                                  | Check Windows Event Viewer → Application log for the .NET unhandled exception, and `<DataDirectory>\logs\agent-<date>.log`; most common cause during development is a locked `agent.db` from a `dotnet run` instance still running                                                                                                                  |
