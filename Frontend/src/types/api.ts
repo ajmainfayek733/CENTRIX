@@ -1,0 +1,196 @@
+/**
+ * Mirrors the backend's response DTOs field for field.
+ *
+ * A drifted type here does not fail the build — it silently renders `undefined` in a report.
+ * Treat any contract change as a two-repo commit, as Docs/Frontend/NextJS.md section 8 says.
+ */
+
+export type ProductivityTag = 'Productive' | 'Unproductive' | 'Blacklisted' | 'Neutral';
+export type ActivityType = 'Application' | 'Desktop' | 'Locked' | 'Idle' | 'Sleeping' | 'Disconnected';
+export type AlertSeverity = 'Information' | 'Warning' | 'High' | 'Critical';
+export type AlertState = 'New' | 'Shown' | 'Acknowledged' | 'Resolved' | 'Archived';
+export type CategoryTarget = 'Application' | 'Domain';
+
+export interface Totals {
+  activeSeconds: number;
+  idleSeconds: number;
+  productiveSeconds: number;
+  unproductiveSeconds: number;
+  neutralSeconds: number;
+  blacklistedSeconds: number;
+  productivityPercent: number;
+}
+
+export interface Overview {
+  period: { start: string; end: string };
+  headcount: number;
+  employeesTracked: number;
+  onlineNow: number;
+  openHighSeverityAlerts: number;
+  attendanceToday: { checkedIn: number; stillActive: number };
+  totals: Totals;
+}
+
+export interface RosterEmployee extends Totals {
+  id: string;
+  name: string;
+  email: string;
+  department: string | null;
+  status: string;
+  deviceCount: number;
+  lastSeen: string | null;
+  isOnline: boolean;
+}
+
+export interface Roster {
+  period: { start: string; end: string };
+  employees: RosterEmployee[];
+}
+
+export interface BrowserVisitRow {
+  id: string;
+  activitySessionId: string | null;
+  browser: string;
+  domain: string;
+  rawUrl: string;
+  pageTitle: string | null;
+  startTime: string;
+  endTime: string;
+  durationSeconds: number;
+  productivityTag: ProductivityTag;
+}
+
+export interface TimelineRow {
+  id: string;
+  activitySessionId: string;
+  appName: string | null;
+  processName: string | null;
+  type: ActivityType;
+  windowTitle: string | null;
+  startTime: string;
+  endTime: string;
+  durationSeconds: number;
+  reason: string | null;
+  productivityTag: ProductivityTag;
+  visits: BrowserVisitRow[];
+}
+
+export interface AttendanceRow {
+  sessionId: string;
+  loginTime: string;
+  logoutTime: string | null;
+  endReason: string | null;
+  workDate: string;
+}
+
+export interface EmployeeDetail {
+  employee: {
+    id: string;
+    name: string;
+    email: string;
+    department: string | null;
+    devices: Array<{ id: string; deviceName: string; lastSeen: string | null; agentVersion: string | null }>;
+  };
+  period: { start: string; end: string };
+  totals: Totals;
+  timeline: TimelineRow[];
+  topApps: Array<{ appName: string | null; productivityTag: ProductivityTag; seconds: number }>;
+  topDomains: Array<{ domain: string; productivityTag: ProductivityTag; seconds: number }>;
+  attendance: AttendanceRow[];
+}
+
+export interface AlertRow {
+  id: string;
+  clientEventId: string;
+  type: string;
+  severity: AlertSeverity;
+  state: AlertState;
+  title: string;
+  message: string;
+  idleSeconds: number | null;
+  thresholdSeconds: number | null;
+  contextAppName: string | null;
+  contextDomain: string | null;
+  contextUrl: string | null;
+  contextUsbFriendlyName: string | null;
+  triggeredAt: string;
+  resolvedAt: string | null;
+  escalationLevel: number;
+  device: { deviceName: string; employee: { id: string; name: string } };
+}
+
+export interface UsbEventRow {
+  id: string;
+  eventType: 'Connected' | 'Disconnected';
+  deviceType: string;
+  friendlyName: string | null;
+  manufacturer: string | null;
+  serialNumber: string | null;
+  driveLetter: string | null;
+  volumeLabel: string | null;
+  /** Decimal string: capacities exceed JSON's safe integer range. */
+  capacityBytes: string | null;
+  fileSystem: string | null;
+  eventTime: string;
+  device: { deviceName: string; employee: { id: string; name: string } };
+}
+
+export interface DeviceRow {
+  id: string;
+  deviceId: string;
+  deviceName: string;
+  systemType: string | null;
+  edition: string | null;
+  version: string | null;
+  macAddress: string | null;
+  agentVersion: string | null;
+  isActive: boolean;
+  lastSeen: string | null;
+  createdAt: string;
+  employee: { id: string; name: string; status: string };
+}
+
+export interface CategoryRow {
+  id: string;
+  pattern: string;
+  target: CategoryTarget;
+  tag: ProductivityTag;
+  isBlacklisted: boolean;
+}
+
+export interface Policy {
+  version: number;
+  attendance: { enabled: boolean };
+  activity: { enabled: boolean; idleThresholdSeconds: number };
+  appSession: { enabled: boolean; pollSeconds: number };
+  browserMonitor: { enabled: boolean; uiaTimeoutMs: number; maxRetryAttempts: number };
+  screenshot: { enabled: boolean; intervalSeconds: number; jpegQuality: number };
+  usb: { enabled: boolean; reconciliationIntervalSeconds: number; alertOnInsertion: boolean };
+  alert: {
+    enabled: boolean;
+    idle: {
+      enabled: boolean;
+      normalSeconds: number;
+      moderateSeconds: number;
+      severeSeconds: number;
+      renotifySeconds: number;
+    };
+    blacklistEnabled: boolean;
+    notifyOutsideWorkingHours: boolean;
+  };
+  sync: {
+    batchIntervalSeconds: number;
+    maxBatchSize: number;
+    minRetryBackoffSeconds: number;
+    maxRetryBackoffSeconds: number;
+  };
+  retention: { retentionDays: number; undeliveredRetentionDays: number };
+  workingHours: { startLocal: string; endLocal: string; workingDays: string[] };
+  categories: CategoryRow[];
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  createdAt: string;
+}

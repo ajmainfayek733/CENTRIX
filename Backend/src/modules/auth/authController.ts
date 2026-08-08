@@ -33,7 +33,9 @@ export class AuthController {
         return res.status(401).json({ error: 'Unauthorized' });
       }
       const user = await authService.getUserProfile(req.user.id);
-      return res.status(200).json({ user });
+      // `{ data }` like every other endpoint, so the dashboard's typed fetch wrapper does not
+      // need a special case for this one route.
+      return res.status(200).json({ data: user });
     } catch (error) {
       next(error);
     }
