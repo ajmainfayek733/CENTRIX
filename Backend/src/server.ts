@@ -56,7 +56,7 @@ app.use("/v1/dashboard/reports", reportRoutes);
 // Global Error Handler Middleware
 app.use(errorHandler);
 
-const server = app.listen(env.PORT, () => {
+export const server = app.listen(env.PORT, () => {
   console.log(`🚀 Monitoring Server active at http://localhost:${env.PORT}`);
   console.log(`🔒 Better Auth endpoints mounted at http://localhost:${env.PORT}/api/auth/*`);
 });

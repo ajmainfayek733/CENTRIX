@@ -4,8 +4,7 @@
     "dev": "nodemon --watch src --ext ts --exec tsx src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "test": "tsx test_endpoints.ts",
-    "dev:mock": "tsx test_endpoints.ts --server"
+    "test": "tsx scripts/smoke.ts"
   },
   "dependencies": {
     "@better-auth/prisma-adapter": "^1.6.23",

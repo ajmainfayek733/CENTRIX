@@ -1,27 +1,28 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../config/db';
 import { hashDeviceApiKey } from '../utils/token';
+import type { DeviceContext } from '../modules/ingest/ingestService';
 
 export interface DeviceAuthenticatedRequest extends Request {
-  device?: {
-    id: string;
-    employeeId: string;
-    organizationId: string;
-    machineId: string;
-    hostname: string;
-  };
+  device?: DeviceContext;
 }
 
 /**
- * Authenticates the Windows Agent via its device API key (spec §2.2). Per spec §2.2/§2.3:
- * 401 for a missing/malformed/unrecognized/wrong credential, 403 only for a device that
- * authenticated successfully but has been deliberately deactivated by an admin.
+ * Authenticates the Windows Agent via its device API key (spec §9). 401 for a missing,
+ * malformed or unrecognized credential; 403 only for a device that authenticated
+ * successfully but has been deliberately deactivated by an admin — the agent treats those
+ * differently (retry vs. stop).
+ *
+ * Lookup is by HMAC on a unique indexed column, so this is a single indexed read and is
+ * inherently constant-time with respect to the presented key.
  */
 export const deviceAuth = async (req: DeviceAuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Missing or malformed Authorization header; expected "Bearer <device-api-key>"' });
+      return res
+        .status(401)
+        .json({ error: 'Missing or malformed Authorization header; expected "Bearer <device-api-key>"' });
     }
 
     const rawKey = authHeader.slice('Bearer '.length).trim();
@@ -29,8 +30,7 @@ export const deviceAuth = async (req: DeviceAuthenticatedRequest, res: Response,
       return res.status(401).json({ error: 'Empty bearer credential' });
     }
 
-    const apiKeyHash = hashDeviceApiKey(rawKey);
-    const device = await prisma.device.findUnique({ where: { apiKeyHash } });
+    const device = await prisma.device.findUnique({ where: { apiKeyHash: hashDeviceApiKey(rawKey) } });
 
     if (!device) {
       return res.status(401).json({ error: 'Invalid device credential' });
@@ -40,17 +40,17 @@ export const deviceAuth = async (req: DeviceAuthenticatedRequest, res: Response,
       return res.status(403).json({ error: 'Device has been deactivated' });
     }
 
-    // Fire-and-forget: liveness tracking must never block or fail the request it's attached to.
+    // Fire-and-forget: liveness tracking must never block or fail the request it rides on.
     prisma.device
-      .update({ where: { id: device.id }, data: { lastSeenAt: new Date() } })
-      .catch((err) => console.error('deviceAuth: failed to update lastSeenAt:', err));
+      .update({ where: { id: device.id }, data: { lastSeen: new Date() } })
+      .catch((err) => console.error('deviceAuth: failed to update lastSeen:', err));
 
     req.device = {
       id: device.id,
       employeeId: device.employeeId,
       organizationId: device.organizationId,
-      machineId: device.machineId,
-      hostname: device.hostname,
+      deviceId: device.deviceId,
+      deviceName: device.deviceName,
     };
 
     next();

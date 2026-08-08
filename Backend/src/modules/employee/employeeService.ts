@@ -1,23 +1,22 @@
 import { prisma } from '../../config/db';
-import { CreateEmployeeDto, RegisterDeviceDto } from './employee.dto';
-import { generateDeviceApiKey, hashDeviceApiKey } from '../../utils/token';
+import { AssignDeviceDto, CreateEmployeeDto, UpdateEmployeeDto } from './employee.dto';
 
 const DEVICE_SELECT = {
   id: true,
-  machineId: true,
-  hostname: true,
-  os: true,
+  deviceId: true,
+  deviceName: true,
+  systemType: true,
+  edition: true,
+  version: true,
+  macAddress: true,
   agentVersion: true,
   isActive: true,
-  lastSeenAt: true,
+  lastSeen: true,
 } as const;
 
 export class EmployeeService {
   async createEmployee(dto: CreateEmployeeDto) {
-    const existing = await prisma.employee.findUnique({
-      where: { email: dto.email },
-    });
-
+    const existing = await prisma.employee.findUnique({ where: { email: dto.email } });
     if (existing) {
       throw { statusCode: 400, message: 'Employee with this email already exists' };
     }
@@ -32,10 +31,17 @@ export class EmployeeService {
     });
   }
 
+  async updateEmployee(id: string, dto: UpdateEmployeeDto) {
+    await this.getEmployeeById(id);
+    return prisma.employee.update({ where: { id }, data: dto });
+  }
+
+  /** The placeholder employee that self-enrolled devices park on is an implementation detail. */
   async getAllEmployees() {
     return prisma.employee.findMany({
+      where: { status: { not: 'placeholder' } },
       include: { devices: { select: DEVICE_SELECT } },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { name: 'asc' },
     });
   }
 
@@ -52,51 +58,42 @@ export class EmployeeService {
     return employee;
   }
 
-  /**
-   * Register a new device (Agent enrollment target — spec §2.2 option 1) and return the
-   * unhashed device API key once. It is never recoverable after this response.
-   */
-  async registerDevice(dto: RegisterDeviceDto) {
-    const employee = await prisma.employee.findUnique({
-      where: { id: dto.employeeId },
-    });
-
-    if (!employee) {
-      throw { statusCode: 404, message: 'Target employee not found' };
-    }
-
-    const existingDevice = await prisma.device.findUnique({ where: { machineId: dto.machineId } });
-    if (existingDevice) {
-      throw { statusCode: 400, message: 'A device with this machineId is already registered' };
-    }
-
-    const rawApiKey = generateDeviceApiKey();
-    const apiKeyHash = hashDeviceApiKey(rawApiKey);
-
-    const device = await prisma.device.create({
-      data: {
-        organizationId: employee.organizationId,
-        employeeId: dto.employeeId,
-        machineId: dto.machineId,
-        hostname: dto.hostname,
-        os: dto.os,
-        agentVersion: dto.agentVersion || null,
-        apiKeyHash,
+  /** Device inventory (Features.md "Device Information") — the asset-management view. */
+  async listDevices() {
+    return prisma.device.findMany({
+      orderBy: [{ isActive: 'desc' }, { lastSeen: 'desc' }],
+      select: {
+        ...DEVICE_SELECT,
+        createdAt: true,
+        employee: { select: { id: true, name: true, status: true } },
       },
     });
-
-    return {
-      deviceId: device.id,
-      employeeId: device.employeeId,
-      organizationId: device.organizationId,
-      machineId: device.machineId,
-      hostname: device.hostname,
-      rawApiKey,
-      note: 'Save this device API key securely (e.g. via DPAPI on the device). It will not be shown again.',
-    };
   }
 
-  /** Admin-controlled kill switch (Rules.md "Admin is in control") — deactivating returns 403 to that device per spec §2.3. */
+  /** Attach a self-enrolled device to a real employee. */
+  async assignDevice(deviceId: string, dto: AssignDeviceDto) {
+    const [device, employee] = await Promise.all([
+      prisma.device.findUnique({ where: { id: deviceId } }),
+      prisma.employee.findUnique({ where: { id: dto.employeeId } }),
+    ]);
+
+    if (!device) throw { statusCode: 404, message: 'Device not found' };
+    if (!employee) throw { statusCode: 404, message: 'Target employee not found' };
+    if (employee.organizationId !== device.organizationId) {
+      throw { statusCode: 400, message: 'Device and employee belong to different organizations' };
+    }
+
+    return prisma.device.update({
+      where: { id: deviceId },
+      data: { employeeId: dto.employeeId },
+      select: { ...DEVICE_SELECT, employee: { select: { id: true, name: true } } },
+    });
+  }
+
+  /**
+   * Admin kill switch. A deactivated device gets 403 on every telemetry route (see
+   * deviceAuth), which the agent treats as "stop syncing" rather than "retry".
+   */
   async setDeviceActive(deviceId: string, isActive: boolean) {
     const device = await prisma.device.findUnique({ where: { id: deviceId } });
     if (!device) {

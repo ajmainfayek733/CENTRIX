@@ -6,13 +6,16 @@ import { env } from './env';
 const pool = new Pool({ connectionString: env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
 
-const realPrisma = new PrismaClient({
-  adapter,
-  log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
-});
+/**
+ * Query logging is opt-in via PRISMA_LOG_QUERIES rather than on for the whole dev
+ * environment: every telemetry write is a wide multi-column INSERT now, so leaving it on
+ * buries application output under SQL.
+ */
+const log: Array<'query' | 'error' | 'warn'> =
+  process.env.PRISMA_LOG_QUERIES === 'true'
+    ? ['query', 'error', 'warn']
+    : env.NODE_ENV === 'development'
+      ? ['error', 'warn']
+      : ['error'];
 
-export const prisma = process.env.NODE_ENV === 'test' && (global as any).mockPrisma
-  ? (global as any).mockPrisma
-  : realPrisma;
-
-
+export const prisma = new PrismaClient({ adapter, log });

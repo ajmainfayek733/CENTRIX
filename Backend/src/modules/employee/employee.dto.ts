@@ -7,13 +7,19 @@ export const createEmployeeSchema = z.object({
   department: z.string().optional(),
 });
 
-export const registerDeviceSchema = z.object({
+export const updateEmployeeSchema = z.object({
+  name: z.string().min(2).optional(),
+  department: z.string().nullable().optional(),
+  status: z.enum(['active', 'inactive']).optional(),
+});
+
+/**
+ * Devices enroll themselves (Features.md "Device Auth") and land on the org's "Unassigned
+ * Devices" placeholder. This is how an admin then attaches one to a real person — there is no
+ * manual device-registration endpoint any more, because the agent mints its own credential.
+ */
+export const assignDeviceSchema = z.object({
   employeeId: z.string().uuid('Invalid employee ID'),
-  // Windows MachineGuid (spec §5.1) — the device's stable identity across the life of the OS install.
-  machineId: z.string().min(1, 'machineId is required'),
-  hostname: z.string().min(1, 'Hostname is required'),
-  os: z.string().min(1, 'OS is required'),
-  agentVersion: z.string().optional(),
 });
 
 export const deviceStatusSchema = z.object({
@@ -21,5 +27,6 @@ export const deviceStatusSchema = z.object({
 });
 
 export type CreateEmployeeDto = z.infer<typeof createEmployeeSchema>;
-export type RegisterDeviceDto = z.infer<typeof registerDeviceSchema>;
+export type UpdateEmployeeDto = z.infer<typeof updateEmployeeSchema>;
+export type AssignDeviceDto = z.infer<typeof assignDeviceSchema>;
 export type DeviceStatusDto = z.infer<typeof deviceStatusSchema>;
