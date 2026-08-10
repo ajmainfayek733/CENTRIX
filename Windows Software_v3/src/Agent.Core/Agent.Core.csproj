@@ -14,6 +14,9 @@
          native e_sqlite3. -->
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
+    <!-- ILoggingBuilder plumbing for the rolling-file sink in Logging/. Abstractions alone gives
+         ILogger but not the builder extension points the provider registers through. -->
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.10" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.10" />
   </ItemGroup>
 

@@ -65,6 +65,18 @@ These are architectural, not configuration:
 | `Agent.Service` | `EmployeeMonitor.Service.exe` | LocalSystem service |
 | `Agent.Host` | `EmployeeMonitor.Host.exe` | WPF app in the user session |
 
+---
+
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [docs/Features.md](docs/Features.md) | Feature requirements this agent implements |
+| [docs/CodeReference.md](docs/CodeReference.md) | Architecture, process model, data flow, invariants — start here |
+| [docs/Agent.Core.md](docs/Agent.Core.md) | Every type in the shared library |
+| [docs/Agent.Service.md](docs/Agent.Service.md) | Every type in the service |
+| [docs/Agent.Host.md](docs/Agent.Host.md) | Every type in the user-session host |
+
 Both executables publish self-contained (`win-x64`, single file, untrimmed — trimming breaks
 `System.Management`'s reflective WMI types).
 
@@ -99,6 +111,11 @@ Sign in with the seeded account (`admin@example.com` / `ChangeMe123!` unless ove
 
 ### 3. Agent
 
+The enrollment token is **org-wide** — the same token goes into every install, and each agent
+trades it once for its own per-device API key. There is no per-machine provisioning step. For a
+fleet rollout (roster import, device assignment, token rotation) see
+[Backend/docs/Deployment.md](../Backend/docs/Deployment.md).
+
 From an **elevated** PowerShell:
 
 ```powershell
@@ -128,10 +145,20 @@ reporting once an admin assigns it to an employee.
     device.key                          DPAPI-protected device API key, LocalMachine scope
     agent.db                            typed telemetry tables + offline queue
     screenshots\                        spool, deleted after successful upload
+    logs\                               service-<date>.log, host-s<session>-<date>.log
 ```
 
 The data directory is ACL'd to SYSTEM and Administrators. `screenshots\` additionally grants
 Users modify rights, because the host writes captures there as the logged-on employee.
+
+`logs\` grants Users *write* but not modify: the host has to create and append to its own file,
+yet a standard user should not be able to delete or truncate the agent's history. Ageing files
+out is therefore the service's job — `RetentionWorker` sweeps them after 14 days as SYSTEM.
+
+Both processes also log to the Windows Event Log (`EmployeeMonitorAgent`,
+`EmployeeMonitorHost`). The files are the ones to collect when diagnosing a workstation; the
+Event Log is there for anything that fails before the file sink can open, and for fleet-wide
+monitoring that already scrapes it.
 
 ---
 

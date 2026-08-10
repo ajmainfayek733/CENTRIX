@@ -1,4 +1,5 @@
 using Agent.Core.Contracts;
+using Agent.Core.Policy;
 using Agent.Core.Storage;
 using Agent.Service.Backend;
 using Microsoft.Extensions.Hosting;
@@ -26,12 +27,21 @@ public sealed class SyncWorker(
     private readonly BackendClient _backend = backend;
     private readonly ILogger<SyncWorker> _logger = logger;
 
+    /// <summary>
+    /// Set while the last cycle hit a transient failure. Drives the exponential backoff below;
+    /// cleared as soon as a cycle completes cleanly.
+    /// </summary>
+    private bool _lastCycleFailed;
+
+    /// <summary>Current backoff delay, grown on consecutive failures and reset on success.</summary>
+    private TimeSpan _backoff;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
         {
             var policy = _state.Policy.Sync;
-            var interval = TimeSpan.FromSeconds(Math.Max(policy.BatchIntervalSeconds, 10));
+            _lastCycleFailed = false;
 
             try
             {
@@ -60,11 +70,40 @@ public sealed class SyncWorker(
             catch (Exception ex)
             {
                 _state.BackendReachable = false;
+                _lastCycleFailed = true;
                 _logger.LogWarning(ex, "Sync cycle failed; queued data is retained for the next attempt");
             }
 
-            await Task.Delay(interval, stoppingToken).ConfigureAwait(false);
+            await Task.Delay(NextDelay(policy), stoppingToken).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// The normal batch interval when things are working, exponential backoff when they are not.
+    ///
+    /// Backing off matters more than it looks: thirty workstations lose the server at the same
+    /// moment and would otherwise retry in lockstep every batch interval for the whole outage,
+    /// then all reconnect together. Growing the delay thins that traffic out, and resetting on
+    /// the first success means a brief blip costs one slow cycle rather than minutes of silence.
+    /// </summary>
+    private TimeSpan NextDelay(SyncPolicy policy)
+    {
+        var min = TimeSpan.FromSeconds(Math.Max(policy.MinRetryBackoffSeconds, 1));
+        var max = TimeSpan.FromSeconds(Math.Max(policy.MaxRetryBackoffSeconds, policy.MinRetryBackoffSeconds));
+
+        if (!_lastCycleFailed)
+        {
+            _backoff = TimeSpan.Zero;
+            // Floored at 10s so a misconfigured policy cannot turn the agent into a hot loop.
+            return TimeSpan.FromSeconds(Math.Max(policy.BatchIntervalSeconds, 10));
+        }
+
+        _backoff = _backoff == TimeSpan.Zero
+            ? min
+            : TimeSpan.FromSeconds(Math.Min(_backoff.TotalSeconds * 2, max.TotalSeconds));
+
+        _logger.LogDebug("Backing off for {Backoff} before the next sync attempt", _backoff);
+        return _backoff;
     }
 
     private async Task SyncOnceAsync(int batchSize, CancellationToken ct)
@@ -89,16 +128,32 @@ public sealed class SyncWorker(
     {
         if (events.Count == 0) return;
 
-        var acknowledged = await _backend.PushEventsAsync(channel, events, ct).ConfigureAwait(false);
+        var result = await _backend.PushEventsAsync(channel, events, ct).ConfigureAwait(false);
 
-        if (acknowledged.Count == 0)
+        // Marked sent only against ids the server confirmed. Anything else stays queued and is
+        // resent verbatim; the server deduplicates on the client event id.
+        if (result.Acknowledged.Count > 0)
         {
-            _queue.RecordFailure(channel, events.Count);
-            return;
+            _queue.MarkSent(channel, result.Acknowledged);
+            _logger.LogInformation("Synced {Acked}/{Total} {Channel} event(s)",
+                result.Acknowledged.Count, events.Count, channel);
         }
 
-        _queue.MarkSent(channel, acknowledged);
-        _logger.LogInformation("Synced {Acked}/{Total} {Channel} event(s)", acknowledged.Count, events.Count, channel);
+        // Refused outright: advance the attempt counter so RetentionWorker eventually discards
+        // them instead of the queue resending them forever.
+        if (result.Rejected.Count > 0)
+        {
+            _queue.RecordRejection(channel, result.Rejected);
+            _logger.LogWarning("Server refused {Count} {Channel} event(s); they will be dropped after repeated attempts",
+                result.Rejected.Count, channel);
+        }
+
+        if (result.TransientFailure)
+        {
+            // Do not touch attempt counters — the data is fine, the server is not.
+            _lastCycleFailed = true;
+            _state.BackendReachable = false;
+        }
     }
 
     private async Task SyncConsentsAsync(int batchSize, CancellationToken ct)
@@ -125,13 +180,31 @@ public sealed class SyncWorker(
 
         foreach (var shot in _queue.DequeueScreenshots(limit))
         {
-            var ok = await _backend.UploadScreenshotAsync(
+            var outcome = await _backend.UploadScreenshotAsync(
                 shot.ClientEventId, shot.UserSid, shot.CapturedAt, shot.FilePath,
                 shot.Width, shot.Height, ct).ConfigureAwait(false);
 
-            if (!ok) break; // Server or network is unhappy; stop and retry the whole set later.
+            switch (outcome)
+            {
+                case UploadOutcome.Delivered:
+                    _queue.MarkScreenshotSent(shot.ClientEventId);
+                    break;
 
-            _queue.MarkScreenshotSent(shot.ClientEventId);
+                case UploadOutcome.Rejected:
+                    // The server will refuse these bytes identically every time. Retiring the row
+                    // is what stops the retry loop; the retention sweep then deletes the orphaned
+                    // JPEG, because Purge collects the file paths of rows it removes.
+                    _logger.LogError("Discarding screenshot {Id}: the server refused it outright", shot.ClientEventId);
+                    _queue.MarkScreenshotSent(shot.ClientEventId);
+                    break;
+
+                case UploadOutcome.Transient:
+                    // Server or network is unhappy. Stop the whole set and retry later — pushing
+                    // the remaining megabyte-scale uploads at a struggling server helps nobody.
+                    _lastCycleFailed = true;
+                    _state.BackendReachable = false;
+                    return;
+            }
         }
     }
 }

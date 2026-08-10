@@ -1,5 +1,6 @@
 using Agent.Core;
 using Agent.Core.Configuration;
+using Agent.Core.Logging;
 using Agent.Core.Storage;
 using Agent.Service;
 using Agent.Service.Backend;
@@ -25,12 +26,18 @@ builder.Services.AddWindowsService(options =>
     options.ServiceName = "EmployeeMonitorAgent";
 });
 
+AgentPaths.EnsureCreated();
+
 builder.Logging.AddEventLog(settings =>
 {
     settings.SourceName = "EmployeeMonitorAgent";
 });
 
-AgentPaths.EnsureCreated();
+// The Event Log holds warnings and errors well, but it is a poor place to read a sequence of
+// events from — and diagnosing a workstation usually means asking for a file, not for remote
+// Event Viewer access. Both sinks are registered; this is the one an admin is asked to send.
+var serviceLogOptions = new FileLogOptions { FileNamePrefix = "service" };
+builder.Logging.AddAgentFileLog(serviceLogOptions);
 
 // Configuration is a hard dependency: without a server URL and enrollment token there is
 // nothing to enroll against. Fail loudly at startup rather than running blind.
@@ -41,7 +48,14 @@ try
 }
 catch (Exception ex)
 {
-    using var startupLogger = LoggerFactory.Create(b => b.AddEventLog(s => s.SourceName = "EmployeeMonitorAgent"));
+    // This runs before the host exists, so the file sink has to be built by hand. It is worth
+    // the few lines: a service that refuses to start is precisely when the log file is the only
+    // evidence available.
+    using var startupLogger = LoggerFactory.Create(b =>
+    {
+        b.AddEventLog(s => s.SourceName = "EmployeeMonitorAgent");
+        b.AddProvider(FileLoggerBuilderExtensions.CreateStandalone(serviceLogOptions));
+    });
     startupLogger.CreateLogger("Startup").LogCritical(ex, "Agent configuration is missing or invalid; service cannot start");
     throw;
 }

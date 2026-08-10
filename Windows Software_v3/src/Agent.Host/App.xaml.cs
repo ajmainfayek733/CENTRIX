@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Threading;
 using Agent.Core;
+using Agent.Core.Logging;
 using Agent.Host.Collectors;
 using Agent.Host.Ipc;
 using Agent.Host.Services;
@@ -77,6 +79,14 @@ public partial class App : System.Windows.Application
         var builder = Microsoft.Extensions.Hosting.Host.CreateApplicationBuilder();
 
         builder.Logging.AddEventLog(settings => settings.SourceName = "EmployeeMonitorHost");
+
+        // Per terminal-services session, not per process: fast user switching runs one host per
+        // logged-on user simultaneously, and they must not append to the same handle. The
+        // single-instance mutex above guarantees at most one writer per session id.
+        builder.Logging.AddAgentFileLog(new FileLogOptions
+        {
+            FileNamePrefix = $"host-s{Process.GetCurrentProcess().SessionId}"
+        });
 
         builder.Services.AddSingleton<HostIpcClient>();
         builder.Services.AddSingleton<ForegroundWindowTracker>();

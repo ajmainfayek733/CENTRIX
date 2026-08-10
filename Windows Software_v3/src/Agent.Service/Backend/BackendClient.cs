@@ -18,6 +18,38 @@ public sealed class DeviceUnauthorizedException(string message) : Exception(mess
 public sealed class DeviceDeactivatedException(string message) : Exception(message);
 
 /// <summary>
+/// Outcome of pushing one channel's events.
+///
+/// The three-way split exists because the queue must treat the cases differently. Acknowledged
+/// events are marked sent. Rejected events are ones the server will refuse identically on every
+/// retry, so their attempt counter advances toward being dropped. A transient failure must
+/// advance nothing — otherwise a week-long network outage would age out perfectly good data.
+/// </summary>
+/// <param name="Acknowledged">Ids the server explicitly confirmed it stored.</param>
+/// <param name="Rejected">Ids the server refused for a reason retrying cannot fix.</param>
+/// <param name="TransientFailure">True when the network or server failed in a way worth retrying.</param>
+public sealed record PushResult(
+    IReadOnlyList<Guid> Acknowledged,
+    IReadOnlyList<Guid> Rejected,
+    bool TransientFailure)
+{
+    public static PushResult Nothing { get; } = new([], [], false);
+}
+
+/// <summary>Single-item equivalent of <see cref="PushResult"/>, used for screenshot uploads.</summary>
+public enum UploadOutcome
+{
+    /// <summary>Stored by the server, or unrecoverable locally. Either way, stop retrying.</summary>
+    Delivered,
+
+    /// <summary>Refused for a reason resending cannot fix.</summary>
+    Rejected,
+
+    /// <summary>Network or server failure. Worth retrying unchanged.</summary>
+    Transient
+}
+
+/// <summary>
 /// The agent's half of the backend API. Every call carries the device API key as a bearer
 /// token except enrollment, which carries the org enrollment token instead.
 ///
@@ -111,51 +143,203 @@ public sealed class BackendClient(
     }
 
     /// <summary>
-    /// Pushes one channel's batch. Returns the ids the server acknowledged; only those are
-    /// marked sent locally, which is what makes an interrupted sync safe to repeat.
+    /// Byte ceiling for one events request, measured on the encoded JSON.
+    ///
+    /// The server enforces its own limit (JSON_BODY_LIMIT, 2 MB by default) and answers 413 when
+    /// a body exceeds it. Capping here instead means the agent never builds a request it knows
+    /// will be refused: a full 500-event batch of activity sessions carrying window titles and
+    /// executable paths comfortably exceeded Express's old 100 KB default, which is exactly the
+    /// 413 this budget prevents.
+    ///
+    /// Deliberately well under the server's ceiling. The gap absorbs the difference between this
+    /// estimate and the exact encoded size, and leaves room for the server limit to be lowered
+    /// without immediately breaking uploads.
     /// </summary>
-    public async Task<IReadOnlyList<Guid>> PushEventsAsync<T>(
+    private const int MaxRequestBytes = 900_000;
+
+    /// <summary>Allowance for the `{"events":[ ]}` envelope when packing a request.</summary>
+    private const int EnvelopeOverheadBytes = 64;
+
+    /// <summary>
+    /// Pushes one channel's batch, split into as many requests as the byte budget requires.
+    ///
+    /// Only ids the server explicitly acknowledged are reported back as acknowledged, which is
+    /// what makes an interrupted sync safe to repeat: anything unconfirmed stays queued and is
+    /// resent verbatim, and the server deduplicates on the client event id.
+    ///
+    /// Chunks are sent sequentially, never in parallel. Thirty workstations draining a backlog at
+    /// once is already a burst; letting each one open several concurrent uploads would turn a
+    /// recovering server into an overloaded one.
+    /// </summary>
+    public async Task<PushResult> PushEventsAsync<T>(
         TelemetryChannel channel,
         IReadOnlyList<T> events,
         CancellationToken ct) where T : ITelemetryEvent
     {
-        if (events.Count == 0) return [];
+        if (events.Count == 0) return PushResult.Nothing;
 
+        var acknowledged = new List<Guid>();
+        var rejected = new List<Guid>();
+
+        foreach (var chunk in PackIntoRequests(channel, events, rejected))
+        {
+            var result = await PushChunkAsync(channel, chunk, ct).ConfigureAwait(false);
+
+            acknowledged.AddRange(result.Acknowledged);
+            rejected.AddRange(result.Rejected);
+
+            // A transient failure will almost certainly hit the following chunks too, so stop
+            // rather than multiplying timeouts. What was not sent stays queued.
+            //
+            // A *rejection* does not stop the loop: one malformed chunk must not block every
+            // healthy event queued behind it.
+            if (result.TransientFailure)
+            {
+                return new PushResult(acknowledged, rejected, TransientFailure: true);
+            }
+        }
+
+        return new PushResult(acknowledged, rejected, TransientFailure: false);
+    }
+
+    /// <summary>
+    /// Greedily packs events into requests that fit the byte budget.
+    ///
+    /// An event so large it cannot fit on its own is hopeless — no amount of splitting makes it
+    /// sendable — so it is reported as rejected here rather than wasting a round trip to be told
+    /// the same thing.
+    /// </summary>
+    private List<List<T>> PackIntoRequests<T>(
+        TelemetryChannel channel,
+        IReadOnlyList<T> events,
+        List<Guid> rejected) where T : ITelemetryEvent
+    {
+        var budget = MaxRequestBytes - EnvelopeOverheadBytes;
+        var requests = new List<List<T>>();
+        var current = new List<T>();
+        var currentBytes = 0;
+
+        foreach (var telemetryEvent in events)
+        {
+            // +1 for the separating comma.
+            var size = Encoding.UTF8.GetByteCount(AgentJson.Serialize(telemetryEvent)) + 1;
+
+            if (size > budget)
+            {
+                _logger.LogError(
+                    "Dropping a {Channel} event: it encodes to {Size} bytes, which no request can carry " +
+                    "(budget {Budget}). Event id {Id}",
+                    channel, size, budget, telemetryEvent.ClientEventId);
+
+                rejected.Add(telemetryEvent.ClientEventId);
+                continue;
+            }
+
+            if (currentBytes + size > budget && current.Count > 0)
+            {
+                requests.Add(current);
+                current = [];
+                currentBytes = 0;
+            }
+
+            current.Add(telemetryEvent);
+            currentBytes += size;
+        }
+
+        if (current.Count > 0) requests.Add(current);
+        return requests;
+    }
+
+    /// <summary>
+    /// Sends one request's worth of events.
+    ///
+    /// A 413 here means the packing estimate and the server's limit disagree — the server may
+    /// have been reconfigured downward. Rather than failing, the chunk is halved and retried,
+    /// which converges on something that fits. Only a single event that still will not fit is
+    /// treated as unsendable.
+    /// </summary>
+    private async Task<PushResult> PushChunkAsync<T>(
+        TelemetryChannel channel,
+        List<T> events,
+        CancellationToken ct) where T : ITelemetryEvent
+    {
         using var request = Authorized(HttpMethod.Post, $"api/v1/events/{channel.ToWireName()}");
         request.Content = JsonContent.Create(new { events }, options: AgentJson.Options);
 
         using var response = await _http.SendAsync(request, ct).ConfigureAwait(false);
         await ThrowIfCredentialRejectedAsync(response, ct).ConfigureAwait(false);
 
-        if (!response.IsSuccessStatusCode)
+        if (response.IsSuccessStatusCode)
         {
-            var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            var result = await response.Content
+                .ReadFromJsonAsync<PushEventsResponse>(AgentJson.Options, ct)
+                .ConfigureAwait(false);
 
-            // A 400 means the server will reject this batch every time it is resent. Log it
-            // loudly — it is a contract drift between the agent's DTOs and the server's Zod
-            // schemas, not a transient failure — but do not acknowledge, so the retention
-            // sweep eventually drops the rows rather than the sync worker spinning on them.
-            if (response.StatusCode == HttpStatusCode.BadRequest)
-            {
-                _logger.LogError("Server rejected a {Channel} batch as invalid: {Body}", channel, body);
-            }
-            else
-            {
-                _logger.LogWarning("Push of {Count} {Channel} event(s) failed with {Status}",
-                    events.Count, channel, (int)response.StatusCode);
-            }
-            return [];
+            return new PushResult(result?.AcknowledgedEventIds ?? [], [], TransientFailure: false);
         }
 
-        var result = await response.Content
-            .ReadFromJsonAsync<PushEventsResponse>(AgentJson.Options, ct)
-            .ConfigureAwait(false);
+        var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
 
-        return result?.AcknowledgedEventIds ?? [];
+        if (response.StatusCode == HttpStatusCode.RequestEntityTooLarge)
+        {
+            if (events.Count == 1)
+            {
+                _logger.LogError(
+                    "Server refused a single {Channel} event as too large: {Body}", channel, body);
+                return new PushResult([], [events[0].ClientEventId], TransientFailure: false);
+            }
+
+            _logger.LogWarning(
+                "Server refused a {Count}-event {Channel} request as too large; halving and retrying. {Body}",
+                events.Count, channel, body);
+
+            return await PushHalvesAsync(channel, events, ct).ConfigureAwait(false);
+        }
+
+        // A 4xx means the server will refuse this data identically every time it is resent —
+        // contract drift between the agent's DTOs and the server's Zod schemas, not a blip. Log
+        // it loudly and let the attempt counter carry these rows toward being dropped, rather
+        // than resending them every cycle until the retention window expires.
+        if ((int)response.StatusCode is >= 400 and < 500)
+        {
+            _logger.LogError("Server rejected {Count} {Channel} event(s) as invalid: {Body}",
+                events.Count, channel, body);
+
+            return new PushResult([], events.Select(e => e.ClientEventId).ToList(), TransientFailure: false);
+        }
+
+        _logger.LogWarning("Push of {Count} {Channel} event(s) failed with {Status}: {Body}",
+            events.Count, channel, (int)response.StatusCode, body);
+
+        return new PushResult([], [], TransientFailure: true);
     }
 
-    /// <summary>Uploads one screenshot as multipart form data.</summary>
-    public async Task<bool> UploadScreenshotAsync(
+    private async Task<PushResult> PushHalvesAsync<T>(
+        TelemetryChannel channel,
+        List<T> events,
+        CancellationToken ct) where T : ITelemetryEvent
+    {
+        var midpoint = events.Count / 2;
+
+        var first = await PushChunkAsync(channel, events[..midpoint], ct).ConfigureAwait(false);
+        if (first.TransientFailure) return first;
+
+        var second = await PushChunkAsync(channel, events[midpoint..], ct).ConfigureAwait(false);
+
+        return new PushResult(
+            [.. first.Acknowledged, .. second.Acknowledged],
+            [.. first.Rejected, .. second.Rejected],
+            second.TransientFailure);
+    }
+
+    /// <summary>
+    /// Uploads one screenshot as multipart form data.
+    ///
+    /// Same three-way distinction as <see cref="PushEventsAsync"/>, for the same reason: a
+    /// screenshot the server refuses must stop being retried, while one that failed because the
+    /// network dropped must not.
+    /// </summary>
+    public async Task<UploadOutcome> UploadScreenshotAsync(
         Guid clientEventId,
         string? userSid,
         DateTimeOffset capturedAt,
@@ -169,7 +353,7 @@ public sealed class BackendClient(
             _logger.LogWarning("Screenshot {Id} is queued but its file is gone: {Path}", clientEventId, filePath);
             // Treated as delivered: the bytes cannot be recovered, and leaving the row pending
             // would retry a file that will never exist.
-            return true;
+            return UploadOutcome.Delivered;
         }
 
         using var content = new MultipartFormDataContent
@@ -185,7 +369,11 @@ public sealed class BackendClient(
         await using var stream = File.OpenRead(filePath);
         var file = new StreamContent(stream);
         file.Headers.ContentType = new MediaTypeHeaderValue("image/jpeg");
-        content.Add(file, "screenshot", Path.GetFileName(filePath));
+
+        // The field name is part of the wire contract, not a label: the server's multer handler
+        // is configured for a single file under exactly "file" and rejects any other field name
+        // with LIMIT_UNEXPECTED_FILE. See Backend/src/modules/ingest/upload.ts.
+        content.Add(file, ScreenshotFileFieldName, Path.GetFileName(filePath));
 
         using var request = Authorized(HttpMethod.Post, "api/v1/screenshots");
         request.Content = content;
@@ -193,14 +381,31 @@ public sealed class BackendClient(
         using var response = await _http.SendAsync(request, ct).ConfigureAwait(false);
         await ThrowIfCredentialRejectedAsync(response, ct).ConfigureAwait(false);
 
-        if (!response.IsSuccessStatusCode)
+        if (response.IsSuccessStatusCode) return UploadOutcome.Delivered;
+
+        var responseBody = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+
+        // Same reasoning as PushChunkAsync: a 4xx is contract drift or an unacceptable file, not
+        // a transient failure, and resending the identical multipart body will fail identically.
+        // Logged with the server's own explanation so the mismatch is diagnosable from the
+        // agent's log file alone.
+        if ((int)response.StatusCode is >= 400 and < 500)
         {
-            _logger.LogWarning("Screenshot upload failed with {Status}", (int)response.StatusCode);
-            return false;
+            _logger.LogError("Server rejected screenshot {Id} ({Status}): {Body}",
+                clientEventId, (int)response.StatusCode, responseBody);
+            return UploadOutcome.Rejected;
         }
 
-        return true;
+        _logger.LogWarning("Screenshot upload failed with {Status}: {Body}",
+            (int)response.StatusCode, responseBody);
+        return UploadOutcome.Transient;
     }
+
+    /// <summary>
+    /// Multipart field carrying the JPEG bytes. Must match <c>upload.single(...)</c> in
+    /// Backend/src/modules/ingest/upload.ts — changing either side alone breaks every upload.
+    /// </summary>
+    private const string ScreenshotFileFieldName = "file";
 
     /// <summary>Records the employee's acknowledgement of the monitoring notice (spec section 3).</summary>
     public async Task<bool> PostConsentAsync(string userSid, int policyVersion, DateTimeOffset acknowledgedAt, CancellationToken ct)

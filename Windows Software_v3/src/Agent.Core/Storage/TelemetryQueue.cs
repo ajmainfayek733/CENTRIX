@@ -499,18 +499,69 @@ public sealed class TelemetryQueue(LocalStore store, ILogger<TelemetryQueue> log
     }
 
     /// <summary>
-    /// Records a failed delivery attempt. Only used for diagnostics and for the retention
-    /// sweep — the retry schedule itself is the sync worker's backoff, not a per-row counter.
+    /// Advances the attempt counter for events the server actively refused.
+    ///
+    /// Only *rejections* count here, never transient network or 5xx failures. A row's
+    /// <c>attempts</c> is what eventually causes <see cref="DropExhausted"/> to discard it, so
+    /// counting an unreachable server would age out perfectly good data during an outage — the
+    /// precise opposite of what the offline queue exists for.
+    ///
+    /// Scoped to the ids actually in the failed request rather than every pending row, so one
+    /// malformed event cannot push the whole channel toward being dropped.
     /// </summary>
-    public void RecordFailure(TelemetryChannel channel, int rowCount)
+    public void RecordRejection(TelemetryChannel channel, IReadOnlyCollection<Guid> clientEventIds)
     {
-        if (rowCount == 0) return;
+        if (clientEventIds.Count == 0) return;
 
         using var connection = _store.Open();
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            $"UPDATE {TableName(channel)} SET attempts = attempts + 1 WHERE sent_utc IS NULL;";
-        command.ExecuteNonQuery();
+        using var transaction = connection.BeginTransaction();
+
+        foreach (var id in clientEventIds)
+        {
+            using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            // Identifiers come from the closed enum switches, never caller input.
+            command.CommandText =
+                $"UPDATE {TableName(channel)} SET attempts = attempts + 1 WHERE {KeyColumn(channel)} = $id;";
+            command.Parameters.AddWithValue("$id", id.ToString());
+            command.ExecuteNonQuery();
+        }
+
+        transaction.Commit();
+    }
+
+    /// <summary>
+    /// Discards pending rows the server has refused <paramref name="maxAttempts"/> times.
+    ///
+    /// Without this, an event the server will never accept — a schema mismatch, a value outside
+    /// its enums — is resent on every sync cycle until the retention window expires weeks later.
+    /// At a two-minute batch interval that is thousands of pointless requests per poisoned row,
+    /// and it delays every healthy event queued behind it.
+    ///
+    /// Returns the number dropped per channel so the caller can log what was lost. Losing data is
+    /// the point here, so it must never happen quietly.
+    /// </summary>
+    public IReadOnlyDictionary<TelemetryChannel, int> DropExhausted(int maxAttempts)
+    {
+        var dropped = new Dictionary<TelemetryChannel, int>();
+
+        using var connection = _store.Open();
+        using var transaction = connection.BeginTransaction();
+
+        foreach (var channel in Enum.GetValues<TelemetryChannel>())
+        {
+            using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText =
+                $"DELETE FROM {TableName(channel)} WHERE sent_utc IS NULL AND attempts >= $max;";
+            command.Parameters.AddWithValue("$max", maxAttempts);
+
+            var count = command.ExecuteNonQuery();
+            if (count > 0) dropped[channel] = count;
+        }
+
+        transaction.Commit();
+        return dropped;
     }
 
     public int PendingCount(TelemetryChannel channel)

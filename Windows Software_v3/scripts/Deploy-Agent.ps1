@@ -105,6 +105,18 @@ function Write-AgentConfig {
     $spoolAcl.AddAccessRule($spoolRule)
     Set-Acl -Path $spool -AclObject $spoolAcl
 
+    # Same problem for logs: the host runs as the employee and writes host-s<session>-<date>.log
+    # here. Granted 'Write' rather than 'Modify' on purpose — a standard user can create and
+    # append to their own log file but cannot delete or truncate the agent's history. Ageing
+    # files out is the service's job (RetentionWorker), which runs as SYSTEM.
+    $logs = Join-Path $DataDir 'logs'
+    if (-not (Test-Path $logs)) { New-Item -ItemType Directory -Path $logs -Force | Out-Null }
+    $logsAcl = Get-Acl $logs
+    $logsRule = [Security.AccessControl.FileSystemAccessRule]::new(
+        'BUILTIN\Users', 'Write, ReadAndExecute', 'ContainerInherit,ObjectInherit', 'None', 'Allow')
+    $logsAcl.AddAccessRule($logsRule)
+    Set-Acl -Path $logs -AclObject $logsAcl
+
     $config = [ordered]@{
         serverUrl         = $ServerUrl
         enrollmentToken   = $EnrollmentToken
