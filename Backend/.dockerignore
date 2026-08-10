@@ -1,0 +1,21 @@
+# Anything here would either bloat the build context or leak into the image.
+
+node_modules
+dist
+npm-debug.log*
+
+# Secrets. The image must never carry them — configuration comes from the environment.
+.env
+.env.*
+!.env.example
+
+# Uploaded screenshots are runtime data on a volume, not build input.
+storage
+
+.git
+.gitignore
+Dockerfile
+.dockerignore
+docker-compose.yml
+README.md
+*.md
