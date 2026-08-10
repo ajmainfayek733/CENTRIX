@@ -2,8 +2,9 @@ import { apiGet } from '@/lib/api-client';
 import { formatRelative } from '@/lib/format';
 import { getSessionUser } from '@/lib/session';
 import { Card, TableWrap, Th, Td, StatusDot, Badge, EmptyState } from '@/components/ui';
-import type { DeviceRow } from '@/types/api';
+import type { DeviceRow, EmployeeSummary } from '@/types/api';
 import { DeviceActions } from './DeviceActions';
+import { DeviceAssignment } from './DeviceAssignment';
 
 export const metadata = { title: 'Devices · Employee Monitor' };
 export const dynamic = 'force-dynamic';
@@ -11,10 +12,17 @@ export const dynamic = 'force-dynamic';
 const ONLINE_WINDOW_MS = 5 * 60 * 1000;
 
 export default async function DevicesPage() {
-  const [devices, user] = await Promise.all([
+  const [devices, employees, user] = await Promise.all([
     apiGet<DeviceRow[]>('/v1/dashboard/employees/devices'),
+    apiGet<EmployeeSummary[]>('/v1/dashboard/employees'),
     getSessionUser(),
   ]);
+
+  const assignable = employees.map((employee) => ({
+    id: employee.id,
+    name: employee.name,
+    department: employee.department,
+  }));
 
   // Devices enroll themselves and park on a placeholder employee until an admin assigns them,
   // so unassigned ones are surfaced first — they are the actionable set.
@@ -37,8 +45,9 @@ export default async function DevicesPage() {
           <p className="mb-4 text-sm text-text-secondary">
             These workstations enrolled with the org token but are not attached to an employee yet.
             Their telemetry is being stored, but it will not appear in reports until assigned.
+            {employees.length === 0 && ' Create employees first — import a roster from the Employees screen.'}
           </p>
-          <DeviceTable devices={unassigned} isAdmin={isAdmin} />
+          <DeviceTable devices={unassigned} employees={assignable} isAdmin={isAdmin} />
         </Card>
       )}
 
@@ -46,14 +55,22 @@ export default async function DevicesPage() {
         {assigned.length === 0 ? (
           <EmptyState message="No devices assigned yet. Run Deploy-Agent.ps1 on a workstation to enroll it." />
         ) : (
-          <DeviceTable devices={assigned} isAdmin={isAdmin} />
+          <DeviceTable devices={assigned} employees={assignable} isAdmin={isAdmin} />
         )}
       </Card>
     </div>
   );
 }
 
-function DeviceTable({ devices, isAdmin }: { devices: DeviceRow[]; isAdmin: boolean }) {
+function DeviceTable({
+  devices,
+  employees,
+  isAdmin,
+}: {
+  devices: DeviceRow[];
+  employees: Array<{ id: string; name: string; department: string | null }>;
+  isAdmin: boolean;
+}) {
   return (
     <TableWrap>
       <table className="w-full min-w-[860px] border-collapse">
@@ -87,7 +104,14 @@ function DeviceTable({ devices, isAdmin }: { devices: DeviceRow[]; isAdmin: bool
                   </span>
                 </Td>
                 <Td muted>
-                  {device.employee.status === 'placeholder' ? (
+                  {isAdmin ? (
+                    <DeviceAssignment
+                      deviceId={device.id}
+                      employees={employees}
+                      currentEmployeeId={device.employee.id}
+                      isUnassigned={device.employee.status === 'placeholder'}
+                    />
+                  ) : device.employee.status === 'placeholder' ? (
                     <Badge tone="warning">Unassigned</Badge>
                   ) : (
                     device.employee.name

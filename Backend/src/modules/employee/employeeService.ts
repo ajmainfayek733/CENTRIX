@@ -1,5 +1,5 @@
 import { prisma } from '../../config/db';
-import { AssignDeviceDto, CreateEmployeeDto, UpdateEmployeeDto } from './employee.dto';
+import { AssignDeviceDto, BulkCreateEmployeesDto, CreateEmployeeDto, UpdateEmployeeDto } from './employee.dto';
 
 const DEVICE_SELECT = {
   id: true,
@@ -29,6 +29,73 @@ export class EmployeeService {
         department: dto.department || null,
       },
     });
+  }
+
+  /**
+   * Imports a roster in one request.
+   *
+   * Partial success on purpose: a spreadsheet exported from HR will have a duplicate or a typo
+   * in it, and failing the whole import for one bad row means the admin fixes one line and
+   * re-uploads all hundred. Every row gets its own outcome, so the caller can show exactly what
+   * landed and what needs attention.
+   *
+   * `skipDuplicates` makes re-running an import safe — the common case is adding ten new hires
+   * to a file that already contains ninety existing people.
+   */
+  async bulkCreateEmployees(dto: BulkCreateEmployeesDto) {
+    // Normalizing here rather than in the schema keeps the reported `email` identical to what
+    // the admin submitted, so they can find the offending line in their source file.
+    const normalized = dto.employees.map((e) => ({ ...e, normalizedEmail: e.email.trim().toLowerCase() }));
+
+    const alreadyPresent = new Set(
+      (
+        await prisma.employee.findMany({
+          where: { email: { in: normalized.map((e) => e.normalizedEmail) } },
+          select: { email: true },
+        })
+      ).map((e) => e.email)
+    );
+
+    // Decide every row's outcome in one pass, then insert exactly the rows marked created. A
+    // duplicate *within* the payload is invisible to the database's unique constraint until one
+    // of the pair is inserted, so `claimed` catches it here instead.
+    const claimed = new Set<string>();
+
+    const results = normalized.map((e) => {
+      if (alreadyPresent.has(e.normalizedEmail)) {
+        return { email: e.email, status: 'skipped' as const, reason: 'Employee already exists' };
+      }
+      if (claimed.has(e.normalizedEmail)) {
+        return { email: e.email, status: 'skipped' as const, reason: 'Duplicate row in the import' };
+      }
+
+      claimed.add(e.normalizedEmail);
+      return { email: e.email, status: 'created' as const };
+    });
+
+    const toCreate = normalized.filter((_, i) => results[i].status === 'created');
+
+    if (toCreate.length > 0) {
+      // skipDuplicates covers the narrow race where a concurrent import inserts the same address
+      // between the read above and this write. That row is reported as created when it was in
+      // fact skipped, which is a better outcome than failing the whole import.
+      await prisma.employee.createMany({
+        data: toCreate.map((e) => ({
+          organizationId: dto.organizationId,
+          name: e.name.trim(),
+          email: e.normalizedEmail,
+          department: e.department?.trim() || null,
+        })),
+        skipDuplicates: true,
+      });
+    }
+
+    return {
+      submitted: normalized.length,
+      created: toCreate.length,
+      skipped: results.length - toCreate.length,
+      results,
+    };
   }
 
   async updateEmployee(id: string, dto: UpdateEmployeeDto) {

@@ -4,7 +4,13 @@ import { userAuth } from '../../middleware/userAuth';
 import { requireRole } from '../../middleware/rbac';
 import { auditLogger } from '../../middleware/auditLogger';
 import { validate } from '../../middleware/validate';
-import { assignDeviceSchema, createEmployeeSchema, deviceStatusSchema, updateEmployeeSchema } from './employee.dto';
+import {
+  assignDeviceSchema,
+  bulkCreateEmployeesSchema,
+  createEmployeeSchema,
+  deviceStatusSchema,
+  updateEmployeeSchema,
+} from './employee.dto';
 
 const router = Router();
 
@@ -58,6 +64,16 @@ router.post(
   validate(createEmployeeSchema),
   auditLogger('CREATE_EMPLOYEE'),
   employeeController.createEmployee
+);
+
+// Roster import — onboarding 30-100+ people one request at a time is the difference between a
+// ten-minute rollout and an afternoon. Partial success is normal here; see the service.
+router.post(
+  '/bulk',
+  requireRole('super_admin'),
+  validate(bulkCreateEmployeesSchema),
+  auditLogger('BULK_CREATE_EMPLOYEES'),
+  employeeController.bulkCreateEmployees
 );
 
 router.patch(

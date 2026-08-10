@@ -135,6 +135,19 @@ export interface UsbEventRow {
   device: { deviceName: string; employee: { id: string; name: string } };
 }
 
+/**
+ * Roster entry from GET /v1/dashboard/employees. The backend already filters out the
+ * "Unassigned Devices" placeholder, so every row here is a real person a device can be
+ * assigned to.
+ */
+export interface EmployeeSummary {
+  id: string;
+  name: string;
+  email: string;
+  department: string | null;
+  status: string;
+}
+
 export interface DeviceRow {
   id: string;
   deviceId: string;

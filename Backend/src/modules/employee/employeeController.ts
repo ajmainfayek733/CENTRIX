@@ -14,6 +14,24 @@ export class EmployeeController {
     }
   }
 
+  /**
+   * POST /v1/dashboard/employees/bulk — roster import.
+   *
+   * Always 200, never 207 or 400: partial success is the expected outcome, not an error, and
+   * the per-row breakdown in the body is what the caller renders.
+   */
+  async bulkCreateEmployees(req: Request, res: Response, next: NextFunction) {
+    try {
+      const summary = await employeeService.bulkCreateEmployees(req.body);
+      return res.status(200).json({
+        message: `${summary.created} created, ${summary.skipped} skipped`,
+        data: summary,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async getAllEmployees(req: Request, res: Response, next: NextFunction) {
     try {
       const employees = await employeeService.getAllEmployees();

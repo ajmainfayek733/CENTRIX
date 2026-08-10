@@ -10,10 +10,13 @@
  * Run with: npm test   (requires DATABASE_URL to point at a dev database)
  */
 import { randomUUID } from 'crypto';
+import fs from 'fs/promises';
+import path from 'path';
 import app, { server } from '../src/server';
 import { prisma } from '../src/config/db';
 import { env } from '../src/config/env';
 import { organizationService } from '../src/modules/organization/organizationService';
+import { employeeService } from '../src/modules/employee/employeeService';
 
 const BASE = `http://127.0.0.1:${env.PORT}`;
 
@@ -234,6 +237,98 @@ async function main() {
     ]);
     check('accepts an alert', alertPush.status === 200, alertPush.body);
 
+    // -- Request size --------------------------------------------------------
+    // Express defaults to a 100kb JSON body. A full agent batch of activity sessions carrying
+    // window titles and executable paths exceeds that, and every push 413'd in normal operation.
+    console.log('\nRequest size limits');
+
+    // ~250 bytes of title per event x 600 events -> comfortably past the old 100kb default.
+    const bulkSessions = Array.from({ length: 600 }, () => ({
+      clientEventId: randomUUID(),
+      activitySessionId: randomUUID(),
+      sessionId,
+      appName: 'Visual Studio Code',
+      processName: 'Code',
+      executablePath: 'C:\\Program Files\\Microsoft VS Code\\Code.exe',
+      type: 'Application',
+      windowTitle: `schema.prisma — ${'employee-tracker/'.repeat(14)}`,
+      startTime: earlier.toISOString(),
+      endTime: now.toISOString(),
+      durationSeconds: 60,
+      productivityTag: 'Productive',
+    }));
+
+    const bulkBytes = Buffer.byteLength(JSON.stringify({ events: bulkSessions }));
+    const bulk = await push('activity-session', bulkSessions);
+    check(`accepts a ${Math.round(bulkBytes / 1024)}kb batch (over the old 100kb default)`,
+      bulk.status === 200 && bulkBytes > 102400,
+      { status: bulk.status, bulkBytes }
+    );
+    check('acknowledges every event in a large batch',
+      bulk.body?.acknowledgedEventIds?.length === bulkSessions.length,
+      { acked: bulk.body?.acknowledgedEventIds?.length, sent: bulkSessions.length }
+    );
+
+    // Past the ceiling the server still refuses — but with an actionable body, not a stack trace.
+    const oversized = await fetch(`${BASE}/api/v1/events/activity-session`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ events: [{ clientEventId: randomUUID(), filler: 'x'.repeat(3 * 1024 * 1024) }] }),
+    });
+    const oversizedBody = (await oversized.json()) as any;
+    check('rejects a body past the ceiling with an actionable 413',
+      oversized.status === 413 && typeof oversizedBody.limitBytes === 'number' && !!oversizedBody.remedy,
+      { status: oversized.status, body: oversizedBody }
+    );
+
+    // -- Screenshot upload ---------------------------------------------------
+    // Multipart, not JSON, and therefore the one endpoint whose wire contract the per-channel
+    // Zod schemas do not cover. It shipped broken once because the Agent posted the image under
+    // a different field name than multer was configured for, and every upload 400'd.
+    console.log('\nScreenshot upload');
+
+    const screenshotId = randomUUID();
+
+    async function uploadScreenshot(fieldName: string, clientEventId: string) {
+      // Smallest thing that is unambiguously a JPEG: SOI + APP0/JFIF header + EOI. The endpoint
+      // filters on the declared mimetype, and nothing downstream decodes the pixels.
+      const jpeg = new Uint8Array([
+        0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00,
+        0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0xff, 0xd9,
+      ]);
+
+      const form = new FormData();
+      form.set('clientEventId', clientEventId);
+      form.set('capturedAtUtc', now.toISOString());
+      form.set('userSid', 'S-1-5-21-smoke');
+      form.set('width', '1920');
+      form.set('height', '1080');
+      form.set(fieldName, new Blob([jpeg], { type: 'image/jpeg' }), 'capture.jpg');
+
+      // No content-type header: fetch sets it with the generated multipart boundary.
+      const res = await fetch(`${BASE}/api/v1/screenshots`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${apiKey}` },
+        body: form,
+      });
+      return { status: res.status, body: (await res.json()) as any };
+    }
+
+    const shotUpload = await uploadScreenshot('file', screenshotId);
+    check('accepts a screenshot posted under the "file" field', shotUpload.status === 200, shotUpload.body);
+
+    const storedShot = await prisma.screenshot.findUnique({ where: { clientEventId: screenshotId } });
+    check('screenshot metadata lands in typed columns',
+      storedShot?.width === 1920 && storedShot?.height === 1080 && (storedShot?.sizeBytes ?? 0) > 0,
+      storedShot
+    );
+
+    const wrongField = await uploadScreenshot('screenshot', randomUUID());
+    check('rejects a wrong field name with 400 and names the expected field',
+      wrongField.status === 400 && wrongField.body?.expectedField === 'file',
+      wrongField.body
+    );
+
     // -- Validation ----------------------------------------------------------
     console.log('\nValidation');
 
@@ -385,6 +480,112 @@ async function main() {
       blacklisted?.productivityTag
     );
 
+    // -- Fleet onboarding ----------------------------------------------------
+    // A single org holds 30-100+ people, so both of these are the difference between a
+    // ten-minute rollout and an afternoon of one-at-a-time API calls.
+    console.log('\nFleet onboarding');
+
+    const roster = [
+      { name: 'Ada Lovelace', email: `ada-${runId}@example.com`, department: 'Engineering' },
+      { name: 'Grace Hopper', email: `grace-${runId}@example.com`, department: 'Engineering' },
+      // Same address as the first row, differently cased — must be caught before the insert,
+      // because the database's unique constraint cannot see an in-payload duplicate.
+      { name: 'Ada L', email: `ADA-${runId}@example.com` },
+    ];
+
+    // Called at the service layer, like the categorization test below: these routes sit behind
+    // a Better Auth dashboard session, and minting one here would test the auth stack rather
+    // than the import logic this is about.
+    const bulkImport = await employeeService.bulkCreateEmployees({ organizationId: org.id, employees: roster });
+
+    check('bulk import creates a roster in one request', bulkImport.created === 2, bulkImport);
+    check('bulk import skips a case-insensitive duplicate inside the payload',
+      bulkImport.skipped === 1 &&
+        bulkImport.results[2]?.status === 'skipped' &&
+        /duplicate/i.test(bulkImport.results[2]?.reason ?? ''),
+      bulkImport.results
+    );
+
+    // Re-running an import is the normal case — an HR export with ten new hires appended to
+    // ninety existing people must not fail or duplicate.
+    const replayImport = await employeeService.bulkCreateEmployees({ organizationId: org.id, employees: roster });
+    check('re-importing the same roster creates nothing',
+      replayImport.created === 0 && replayImport.skipped === 3,
+      replayImport
+    );
+
+    // The device enrolled at the top of this run is still on the placeholder employee. Assigning
+    // it is the one manual step in enrollment, and until it happens the telemetry never reaches
+    // per-employee reports.
+    const targetEmployee = await prisma.employee.findUnique({ where: { email: `ada-${runId}@example.com` } });
+    await employeeService.assignDevice(deviceRowId, { employeeId: targetEmployee!.id });
+
+    const assignedDevice = await prisma.device.findUnique({ where: { id: deviceRowId } });
+    check('device can be assigned off the Unassigned placeholder',
+      assignedDevice?.employeeId === targetEmployee!.id,
+      { employeeId: assignedDevice?.employeeId }
+    );
+
+    // -- Rate limiting -------------------------------------------------------
+    // Enrollment is keyed per MachineGuid, not per source IP. This is what lets 100 machines
+    // behind one office NAT enroll simultaneously instead of sharing a 10/min budget.
+    console.log('\nRate limiting');
+
+    const enrollBurst = await Promise.all(
+      Array.from({ length: 25 }, (_, i) =>
+        fetch(`${BASE}/api/v1/device/enroll`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-enrollment-token': enrollmentToken },
+          body: JSON.stringify({
+            deviceId: `fleet-${runId}-${i}`,
+            deviceName: `FLEET-PC-${i}`,
+            macAddress: '00:11:22:33:44:66',
+          }),
+        })
+      )
+    );
+    check('25 distinct machines enroll at once without tripping the 10/min limit',
+      enrollBurst.every((r) => r.status === 201),
+      { statuses: [...new Set(enrollBurst.map((r) => r.status))] }
+    );
+
+    // ...while one machine hammering the same endpoint is still contained.
+    const repeatBurst = await Promise.all(
+      Array.from({ length: 14 }, () =>
+        fetch(`${BASE}/api/v1/device/enroll`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-enrollment-token': enrollmentToken },
+          body: JSON.stringify({
+            deviceId: `repeat-${runId}`,
+            deviceName: 'REPEAT-PC',
+            macAddress: '00:11:22:33:44:77',
+          }),
+        })
+      )
+    );
+    check('one machine hammering enrollment is still throttled',
+      repeatBurst.some((r) => r.status === 429),
+      { statuses: [...new Set(repeatBurst.map((r) => r.status))] }
+    );
+
+    // x-forwarded-for is only believed when TRUST_PROXY declares a proxy in front. Login is
+    // IP-keyed at 10/min, so with the default (false) rotating the header must not create a
+    // fresh bucket per request — the previous implementation read the header unconditionally
+    // and could be bypassed exactly this way.
+    const spoofed: number[] = [];
+    for (let i = 0; i < 14; i++) {
+      const res = await fetch(`${BASE}/v1/dashboard/auth/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-forwarded-for': `10.9.9.${i}` },
+        body: JSON.stringify({ email: `nobody-${runId}@example.com`, password: 'wrong-password' }),
+      });
+      spoofed.push(res.status);
+    }
+    check('rotating x-forwarded-for does not create a fresh rate-limit bucket',
+      spoofed.includes(429),
+      { statuses: [...new Set(spoofed)] }
+    );
+
     // -- Deactivation kill switch -------------------------------------------
     console.log('\nAdmin kill switch');
 
@@ -393,6 +594,10 @@ async function main() {
     check('deactivated device gets 403, not 401', deactivated.status === 403, deactivated.status);
   } finally {
     // -- Teardown: cascade from the organization removes every row this test made.
+    // The screenshot bytes live outside the database, so they need their own cleanup.
+    if (deviceRowId) {
+      await fs.rm(path.join(env.SCREENSHOT_STORAGE_DIR, deviceRowId), { recursive: true, force: true }).catch(() => undefined);
+    }
     await prisma.organization.delete({ where: { id: org.id } }).catch(() => undefined);
     await prisma.$disconnect();
     server.close();
