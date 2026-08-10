@@ -15,6 +15,11 @@ import organizationRoutes from "./modules/organization";
 
 const app = express();
 
+// Must be set before any middleware reads req.ip. Drives whether x-forwarded-for is believed at
+// all — see TRUST_PROXY in config/env.ts. Numeric values mean "this many proxies in front".
+const trustProxy = /^\d+$/.test(env.TRUST_PROXY) ? Number(env.TRUST_PROXY) : env.TRUST_PROXY;
+app.set('trust proxy', trustProxy === 'false' ? false : trustProxy === 'true' ? true : trustProxy);
+
 // Security and Logging middleware
 app.use(helmet());
 app.use(
@@ -29,9 +34,11 @@ app.use(morgan(env.NODE_ENV === "production" ? "combined" : "dev"));
 // Better Auth handler reads raw request body directly and MUST be registered BEFORE express.json()
 app.all("/api/auth/{*any}", toNodeHandler(auth));
 
-// Body parsing middleware for all subsequent standard API routes
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Body parsing middleware for all subsequent standard API routes.
+// The limit is raised from Express's 100kb default because agent event batches legitimately
+// exceed it — see JSON_BODY_LIMIT in config/env.ts.
+app.use(express.json({ limit: env.JSON_BODY_LIMIT }));
+app.use(express.urlencoded({ extended: true, limit: env.JSON_BODY_LIMIT }));
 
 // Health Check Endpoint
 app.get("/health", (req, res) => {

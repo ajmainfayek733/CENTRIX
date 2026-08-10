@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../config/db';
+import { env } from '../config/env';
 import { hashDeviceApiKey } from '../utils/token';
 import type { DeviceContext } from '../modules/ingest/ingestService';
 
@@ -41,9 +42,17 @@ export const deviceAuth = async (req: DeviceAuthenticatedRequest, res: Response,
     }
 
     // Fire-and-forget: liveness tracking must never block or fail the request it rides on.
-    prisma.device
-      .update({ where: { id: device.id }, data: { lastSeen: new Date() } })
-      .catch((err) => console.error('deviceAuth: failed to update lastSeen:', err));
+    //
+    // Throttled rather than written on every call. A hundred agents pushing six channels plus a
+    // heartbeat every couple of minutes would otherwise mean a row UPDATE per telemetry request
+    // — write amplification on the hottest table in the schema, repeatedly dirtying the same
+    // row. Liveness is displayed as "last seen N minutes ago", so minute granularity is all the
+    // dashboard can show anyway.
+    if (isLastSeenStale(device.lastSeen)) {
+      prisma.device
+        .update({ where: { id: device.id }, data: { lastSeen: new Date() } })
+        .catch((err) => console.error('deviceAuth: failed to update lastSeen:', err));
+    }
 
     req.device = {
       id: device.id,
@@ -58,3 +67,8 @@ export const deviceAuth = async (req: DeviceAuthenticatedRequest, res: Response,
     next(error);
   }
 };
+
+function isLastSeenStale(lastSeen: Date | null): boolean {
+  if (!lastSeen) return true;
+  return Date.now() - lastSeen.getTime() >= env.DEVICE_LAST_SEEN_MAX_STALENESS_SECONDS * 1000;
+}
