@@ -12,6 +12,7 @@ import type { CategoryTarget, ProductivityTag } from '@/types/api';
  */
 
 export interface PolicyFormValues {
+  // -- What the agent collects on employee machines -------------------------
   attendanceEnabled: boolean;
   activityEnabled: boolean;
   idleThresholdSeconds: number;
@@ -19,6 +20,8 @@ export interface PolicyFormValues {
   browserMonitorEnabled: boolean;
   screenshotEnabled: boolean;
   screenshotIntervalSeconds: number;
+  /** JPEG quality of a capture, 10–100. Trades file size and storage against legibility. */
+  screenshotJpegQuality: number;
   usbEnabled: boolean;
   usbAlertOnInsertion: boolean;
   alertEnabled: boolean;
@@ -28,16 +31,21 @@ export interface PolicyFormValues {
   alertIdleSevereSeconds: number;
   alertBlacklistEnabled: boolean;
   alertOutsideWorkingHours: boolean;
-  retentionDays: number;
   workingHoursStartLocal: string;
   workingHoursEndLocal: string;
 
-  // -- Sync and scale -------------------------------------------------------
-  // The levers that decide what the server costs under load. Configured here rather than in
-  // code because the right value depends on fleet size, which changes without a deploy.
+  // -- How the dashboard views it -------------------------------------------
+  // Read-path only. Nothing here changes what is collected or reaches an agent.
+  logPageSize: number;
+  screenshotPageSize: number;
+
+  // -- Advanced: fleet scale and data lifetime ------------------------------
+  // The levers that decide what the server costs under load and how long records survive.
+  // Configured here rather than in code because the right value depends on fleet size and on
+  // the retention the business has committed to, neither of which waits for a deploy.
+  retentionDays: number;
   syncBatchIntervalSeconds: number;
   syncMaxBatchSize: number;
-  logPageSize: number;
   realtimeEnabled: boolean;
   presenceHeartbeatSeconds: number;
 }

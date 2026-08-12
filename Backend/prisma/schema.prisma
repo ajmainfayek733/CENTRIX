@@ -694,6 +694,14 @@ model Policy {
   /// for a page of this size and fetches the next one when the operator scrolls to the end.
   logPageSize Int @default(50)
 
+  /// Captures per page in the screenshot gallery. Deliberately its own setting, and an order of
+  /// magnitude smaller than logPageSize: a page of log rows is a few kilobytes of JSON, while a
+  /// page of screenshots is that many full-size JPEGs actually fetched and decoded by the
+  /// browser. At ~500 KB a capture, a 50-item page is ~25 MB of image traffic per scroll — so
+  /// the two cannot share a number without one of them being wrong. 12 fills the 3-across grid
+  /// four rows deep, which is two screens' worth of scrolling before the next request.
+  screenshotPageSize Int @default(12)
+
   // -- Retention — spec §3.1 configurable auto-deletion --------------------
   retentionDays            Int @default(90)
   undeliveredRetentionDays Int @default(30)

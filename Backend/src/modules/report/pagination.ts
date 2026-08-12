@@ -118,14 +118,45 @@ export async function resolvePageSize(organizationId: string, requested?: number
     select: { logPageSize: true },
   });
 
-  const configured = policy?.logPageSize ?? PAGE_SIZE_DEFAULT;
-  const wanted = requested && requested > 0 ? Math.min(requested, configured) : configured;
-
-  return Math.max(1, Math.min(wanted, PAGE_SIZE_HARD_CEILING));
+  return clampPageSize(policy?.logPageSize ?? PAGE_SIZE_DEFAULT, requested, PAGE_SIZE_HARD_CEILING);
 }
 
 /**
- * Fallback when an organization has no policy row yet. Matches the schema default so the two
+ * Page size for the screenshot gallery — its own setting, not logPageSize.
+ *
+ * A page of log rows is a few kilobytes of JSON; a page of screenshots is that many full-size
+ * JPEGs the browser actually downloads and decodes. At roughly half a megabyte a capture, serving
+ * them 50 at a time is tens of megabytes of image traffic for one flick of the scroll wheel, on a
+ * screen that shows six at once. The ceiling is correspondingly lower: an admin who wants more per
+ * page is asking for more bytes in flight, not just more rows.
+ */
+const SCREENSHOT_PAGE_SIZE_HARD_CEILING = 60;
+
+export async function resolveScreenshotPageSize(
+  organizationId: string,
+  requested?: number
+): Promise<number> {
+  const policy = await prisma.policy.findUnique({
+    where: { organizationId },
+    select: { screenshotPageSize: true },
+  });
+
+  return clampPageSize(
+    policy?.screenshotPageSize ?? SCREENSHOT_PAGE_SIZE_DEFAULT,
+    requested,
+    SCREENSHOT_PAGE_SIZE_HARD_CEILING
+  );
+}
+
+/** A caller may ask for fewer rows than policy allows, never more, and never fewer than one. */
+function clampPageSize(configured: number, requested: number | undefined, ceiling: number): number {
+  const wanted = requested && requested > 0 ? Math.min(requested, configured) : configured;
+  return Math.max(1, Math.min(wanted, ceiling));
+}
+
+/**
+ * Fallbacks when an organization has no policy row yet. These match the schema defaults so the two
  * cannot drift into disagreeing about what "a page" means.
  */
 export const PAGE_SIZE_DEFAULT = 50;
+export const SCREENSHOT_PAGE_SIZE_DEFAULT = 12;

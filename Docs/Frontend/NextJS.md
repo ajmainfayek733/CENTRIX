@@ -481,7 +481,15 @@ section, so the page never renders a gallery whose first page would 403 on arriv
 the enforcement point — the UI is agreeing with it, not implementing it. Verified by demoting a
 session to `auditor`: the section disappears and a hand-made request to the proxy returns 403.
 
-### 14.3 The viewer
+### 14.3 Page size is its own setting
+
+The gallery loads `Policy.screenshotPageSize` captures at a time (default 12), not `logPageSize`
+(default 50). Twelve fills the 3-across grid four rows deep — two screens of scrolling — while a
+50-item page would have the browser download and decode fifty full-size JPEGs for one flick of the
+scroll wheel. Both are editable on the settings screen, next to each other, so the difference is
+visible rather than folklore.
+
+### 14.4 The viewer
 
 - **Zoom** is a multiplier of the fitted size, 1×–8×, geometric per step. Buttons and the keyboard
   zoom about the centre; the wheel and double-click zoom about the pointer, because zooming about
@@ -503,3 +511,30 @@ session to `auditor`: the section disappears and a hand-made request to the prox
   is up.
 - Rendered through a portal onto `<body>`: the gallery is an internally-scrolling region inside a
   card, so a viewer rendered in place would be clipped by it.
+
+## 15. The settings screen is split by who a setting acts on
+
+`PolicyForm` renders three groups, not one list. The division is the point: "screenshot interval"
+reprograms every agent in the building and changes what is recorded about people, while "screenshots
+per page" changes how many pictures this browser downloads at once. Both used to sit in the same
+undifferentiated list, where the only way to tell them apart was to already know.
+
+| Group | Contains | Who it affects |
+|---|---|---|
+| **Agent policy** | Data collected, screenshot capture (interval + JPEG quality), idle threshold, desktop alerts, idle ladder, working hours | Every employee machine. Changes what is recorded. |
+| **Dashboard** | Log rows per page, screenshots per page | This browser's read path only. No agent ever sees it. |
+| **Advanced** | Retention, sync batch size and interval, realtime + presence heartbeat | Fleet-wide, or destructive. Collapsed by default. |
+
+- **Advanced is collapsed** not because the settings are obscure but because each is felt on every
+  device at once, or deletes history that cannot be recovered. It is a native `<details>` — the
+  browser supplies the keyboard and screen-reader behaviour, and find-in-page can still reach the
+  fields in browsers that expand on search.
+- **Screenshot interval and quality sit with the toggle that governs them** and are disabled
+  alongside it, so neither can be tuned under the impression it is doing something while captures
+  are off.
+- **One Save for all three groups**, pinned to the bottom of the viewport, with an "Unsaved changes"
+  marker. The form is taller than a screen and one group is collapsed, so a button that scrolled
+  away with the first card would strand changes made in the last one.
+- Input bounds are mirrored from the backend's Zod schema so a bad value is caught at the input
+  rather than as a 400 after a round trip. The server remains the enforcement point; a change there
+  must be made here too, or a stricter server bound shows up as an unexplained save failure.

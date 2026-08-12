@@ -1,7 +1,14 @@
 import { ActivityType } from '@prisma/client';
 import { prisma } from '../../config/db';
 import { currentOrganizationId } from '../../config/tenant';
-import { decodeCursor, newestFirst, olderThan, resolvePageSize, toPage } from './pagination';
+import {
+  decodeCursor,
+  newestFirst,
+  olderThan,
+  resolvePageSize,
+  resolveScreenshotPageSize,
+  toPage,
+} from './pagination';
 
 /**
  * Dashboard read path (spec §5).
@@ -452,6 +459,9 @@ export class ReportService {
    *
    * The bytes are not served from here: rows carry the identifiers the viewer route needs, and
    * each image is fetched (and audit-logged) individually when it is actually displayed.
+   *
+   * Page size comes from Policy.screenshotPageSize, NOT logPageSize. A page here is that many
+   * JPEGs the browser downloads and decodes, not that many rows of JSON — see pagination.ts.
    */
   async getScreenshots(
     employeeId: string,
@@ -460,7 +470,7 @@ export class ReportService {
     const { start, end } = resolveRange(options.startDate, options.endDate);
 
     const organizationId = await currentOrganizationId();
-    const pageSize = await resolvePageSize(organizationId, options.limit);
+    const pageSize = await resolveScreenshotPageSize(organizationId, options.limit);
     const cursor = decodeCursor(options.cursor);
 
     const devices = await prisma.device.findMany({

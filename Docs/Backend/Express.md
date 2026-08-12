@@ -521,6 +521,13 @@ accumulate faster than any other record here (one every few minutes, per device,
 the same cursor discipline applies. Rows carry `deviceName` joined from the employee's devices, not
 per row, so a two-machine employee's interleaved captures can be told apart.
 
+Its page size is `Policy.screenshotPageSize` (default **12**), **not** `logPageSize` (default 50),
+and the two must not be merged. A page of log rows is a few kilobytes of JSON; a page of
+screenshots is that many full-size JPEGs the browser actually downloads and decodes. At roughly
+half a megabyte a capture, a 50-item page is ~25 MB of image traffic for one flick of the scroll
+wheel, on a grid that shows six at a time. The hard ceiling is correspondingly lower — 60 rather
+than 500 — because the cost being bounded is bytes in flight, not rows returned.
+
 The image bytes are **not** in the index. `GET /v1/dashboard/reports/screenshots/:deviceId/:file`
 serves one capture per request, which is what makes every view a separate `VIEW_SCREENSHOT` audit
 entry (spec §3). Both routes exclude the Auditor role (spec §6); the service also verifies the
@@ -534,6 +541,8 @@ id returns 404.
 | `Policy.syncMaxBatchSize` | 100 | Events per agent push. The main lever on peak server cost. |
 | `Policy.syncBatchIntervalSeconds` | 120 | How often an agent drains its queue. |
 | `Policy.logPageSize` | 50 | Rows per dashboard log page. |
+| `Policy.screenshotPageSize` | 12 | Captures per gallery page. Separate from `logPageSize` because the cost is image bytes, not rows — see §12.4. Ceiling 60. |
+| `Policy.screenshotJpegQuality` | 70 | Capture quality. Trades storage and bandwidth against legibility; editable from the settings screen. |
 | `Policy.realtimeEnabled` | true | Whether agents and dashboards hold a socket at all. |
 | `INGEST_MAX_BATCH_EVENTS` (env) | 500 | Server-side abuse bound. The policy value is capped to it, so an admin cannot configure batches the server would reject. |
 

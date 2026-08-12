@@ -61,6 +61,11 @@ export const updatePolicySchema = z
     // bounded read.
     logPageSize: z.number().int().min(10).max(500),
 
+    // Captures per page in the screenshot gallery. A much lower ceiling than logPageSize because
+    // the cost is image bytes, not rows: at roughly half a megabyte a capture, 60 is already ~30 MB
+    // in flight for one page. The floor is one row of the 3-across grid.
+    screenshotPageSize: z.number().int().min(3).max(60),
+
     retentionDays: z.number().int().min(1).max(3650),
     undeliveredRetentionDays: z.number().int().min(1).max(365),
 

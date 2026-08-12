@@ -45,6 +45,9 @@ export interface AgentPolicyDto {
   /// Rows a dashboard log window loads per page. Served in the same document as everything else
   /// so the settings screen has one place to read and write policy; agents simply ignore it.
   logPageSize: number;
+  /// Captures the screenshot gallery loads per page. Separate from logPageSize because a page of
+  /// screenshots costs image bytes rather than rows — also dashboard-only, also ignored by agents.
+  screenshotPageSize: number;
   retention: { retentionDays: number; undeliveredRetentionDays: number };
   workingHours: { startLocal: string; endLocal: string; workingDays: string[] };
   /// Blacklist and productivity rules, flattened from the categories table so the agent can
@@ -105,6 +108,7 @@ export function toAgentPolicy(
       heartbeatSeconds: policy.presenceHeartbeatSeconds,
     },
     logPageSize: policy.logPageSize,
+    screenshotPageSize: policy.screenshotPageSize,
     retention: {
       retentionDays: policy.retentionDays,
       undeliveredRetentionDays: policy.undeliveredRetentionDays,

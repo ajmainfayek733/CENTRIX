@@ -238,6 +238,13 @@ export interface Policy {
   realtime: { enabled: boolean; heartbeatSeconds: number };
   /** Rows a dashboard log window loads per page. */
   logPageSize: number;
+  /**
+   * Captures the screenshot gallery loads per page — its own setting, not logPageSize.
+   *
+   * A page of log rows is a few kilobytes of JSON; a page of screenshots is that many full-size
+   * JPEGs the browser downloads and decodes, so the two cannot share a number.
+   */
+  screenshotPageSize: number;
   retention: { retentionDays: number; undeliveredRetentionDays: number };
   workingHours: { startLocal: string; endLocal: string; workingDays: string[] };
   categories: CategoryRow[];
