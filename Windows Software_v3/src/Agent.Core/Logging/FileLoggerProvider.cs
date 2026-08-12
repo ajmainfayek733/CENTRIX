@@ -25,11 +25,11 @@ public sealed record FileLogOptions
 
     /// <summary>
     /// Floor applied before the message is even formatted. Standard `Logging:LogLevel` filters
-    /// still apply on top of this — this is the cheap first gate, not the only one.
+    /// still apply on top of this - this is the cheap first gate, not the only one.
     /// </summary>
     public LogLevel MinimumLevel { get; init; } = LogLevel.Information;
 
-    /// <summary>Rolls to <c>{prefix}-{date}.1.log</c>, <c>.2.log</c>, … past this size.</summary>
+    /// <summary>Rolls to <c>{prefix}-{date}.1.log</c>, <c>.2.log</c>, ... past this size.</summary>
     public long MaxFileBytes { get; init; } = 8L * 1024 * 1024;
 
     /// <summary>
@@ -46,7 +46,7 @@ public sealed record FileLogOptions
 /// Deliberately hand-rolled rather than pulling in a logging framework: the agent publishes
 /// self-contained to 30 workstations and this is the only sink it needs beyond the Event Log.
 ///
-/// The one hard rule is that logging must never take the agent down — a full disk, a revoked
+/// The one hard rule is that logging must never take the agent down - a full disk, a revoked
 /// ACL or a file deleted underneath us all end in a dropped line and a retry on the next write,
 /// never an exception escaping to the caller.
 /// </summary>
@@ -262,7 +262,7 @@ internal sealed class FileLogger(
 /// Rolling-file logging provider for both agent processes.
 ///
 /// <see cref="AgentPaths.EnsureCreated"/> makes the directory at startup, but this provider does
-/// not depend on that having run — the directory is created on first write, which is what lets
+/// not depend on that having run - the directory is created on first write, which is what lets
 /// it be registered before configuration has even been read.
 /// </summary>
 [ProviderAlias("File")]
@@ -308,7 +308,7 @@ public static class FileLoggerBuilderExtensions
     }
 
     /// <summary>
-    /// Standalone factory for code that runs before (or instead of) a host — the service's
+    /// Standalone factory for code that runs before (or instead of) a host - the service's
     /// configuration-load failure path, where the whole point is to leave a record on disk of why
     /// the service refused to start.
     /// </summary>

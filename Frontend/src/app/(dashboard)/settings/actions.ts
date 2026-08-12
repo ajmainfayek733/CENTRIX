@@ -20,7 +20,7 @@ export interface PolicyFormValues {
   browserMonitorEnabled: boolean;
   screenshotEnabled: boolean;
   screenshotIntervalSeconds: number;
-  /** JPEG quality of a capture, 10–100. Trades file size and storage against legibility. */
+  /** JPEG quality of a capture, 10-100. Trades file size and storage against legibility. */
   screenshotJpegQuality: number;
   usbEnabled: boolean;
   usbAlertOnInsertion: boolean;

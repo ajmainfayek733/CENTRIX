@@ -14,7 +14,7 @@ public sealed record CapturedScreenshot(Guid ClientEventId, string FilePath, lon
 /// published build.
 ///
 /// Captures the full virtual desktop (all monitors) as one JPEG. The file is written to the
-/// shared spool directory and only its path crosses the IPC boundary — the service uploads the
+/// shared spool directory and only its path crosses the IPC boundary - the service uploads the
 /// bytes. That keeps a multi-megabyte frame out of the pipe that also carries time-sensitive
 /// activity events.
 /// </summary>

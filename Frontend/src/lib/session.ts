@@ -15,7 +15,7 @@ export interface SessionUser {
  * Resolves the current user by asking the API, not by decoding the token.
  *
  * The session cookie holds a Better Auth session token, which is an opaque identifier rather
- * than a JWT — there are no claims in it to read. That is a feature here: role comes from the
+ * than a JWT - there are no claims in it to read. That is a feature here: role comes from the
  * server on every request, so revoking a session or demoting a user takes effect immediately
  * instead of when a cached token expires.
  */
@@ -26,7 +26,7 @@ export interface SessionUser {
  * The distinction is the whole point. This used to swallow every failure into `null`, which the
  * layout reads as "logged out" and answers with a redirect to /login. So an API restart signed
  * out every open dashboard in the building and sent them to a page that could not log them back
- * in either — an outage presented as a credentials problem, with the actual cause nowhere on
+ * in either - an outage presented as a credentials problem, with the actual cause nowhere on
  * screen. Unavailability now propagates so callers can say what is really wrong.
  */
 export async function getSessionUser(): Promise<SessionUser | null> {
@@ -35,7 +35,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
 
   const response = await serverFetch('/v1/dashboard/auth/me');
 
-  // A 5xx says nothing about this session — the service simply cannot answer right now.
+  // A 5xx says nothing about this session - the service simply cannot answer right now.
   if (response.status >= 500) {
     throw new ApiUnavailableError(`The monitoring service returned ${response.status} for /auth/me`);
   }

@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 
 /**
- * Last-resort boundary for anything outside the dashboard shell — the login screen, the root
+ * Last-resort boundary for anything outside the dashboard shell - the login screen, the root
  * redirect, and any failure in the dashboard layout itself (which sits above
  * `(dashboard)/error.tsx` and so cannot be caught by it).
  *

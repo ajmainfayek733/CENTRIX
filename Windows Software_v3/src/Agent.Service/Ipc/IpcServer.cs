@@ -14,7 +14,7 @@ namespace Agent.Service.Ipc;
 /// Named-pipe server the per-user host connects to.
 ///
 /// Security: the pipe ACL grants full control to SYSTEM and Administrators and read/write to
-/// authenticated interactive users — the host runs as the logged-on employee, so it cannot be
+/// authenticated interactive users - the host runs as the logged-on employee, so it cannot be
 /// restricted to elevated callers. That means a determined user could in principle connect and
 /// submit fabricated events. The mitigation is scope rather than secrecy: nothing on this pipe
 /// can change policy, disable collection, or reach the backend credential, so the worst case is

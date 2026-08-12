@@ -2,9 +2,9 @@ import crypto from 'crypto';
 import { env } from '../config/env';
 
 /**
- * Device API keys (spec §9) are long-lived bearer credentials issued once at enrollment and
+ * Device API keys (spec section 9) are long-lived bearer credentials issued once at enrollment and
  * sent by the Agent as `Authorization: Bearer <key>` on every request. Only the HMAC is ever
- * persisted — the raw key is returned to the caller once, at enrollment time, and never again.
+ * persisted - the raw key is returned to the caller once, at enrollment time, and never again.
  */
 export function hashDeviceApiKey(rawKey: string): string {
   return crypto.createHmac('sha256', env.DEVICE_TOKEN_PEPPER).update(rawKey).digest('hex');
@@ -15,9 +15,9 @@ export function generateDeviceApiKey(): string {
 }
 
 /**
- * The org-wide enrollment token from the agent's install-time config (spec §11). Hashed with
+ * The org-wide enrollment token from the agent's install-time config (spec section 11). Hashed with
  * the same pepper but a distinct domain-separation prefix, so an enrollment token can never
- * collide with — or be replayed as — a device API key.
+ * collide with - or be replayed as - a device API key.
  */
 export function hashEnrollmentToken(rawToken: string): string {
   return crypto.createHmac('sha256', env.DEVICE_TOKEN_PEPPER).update(`enrollment:${rawToken}`).digest('hex');

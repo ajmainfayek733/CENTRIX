@@ -24,7 +24,7 @@
     Traded once for a per-device API key; it is not itself a telemetry credential.
 
 .PARAMETER AllowInsecureHttp
-    Permit a plain-HTTP ServerUrl. For a local test server only — spec section 9 requires TLS.
+    Permit a plain-HTTP ServerUrl. For a local test server only - spec section 9 requires TLS.
 
 .PARAMETER PurgeData
     With Uninstall, also delete the local database, screenshot spool and stored credential.
@@ -96,7 +96,7 @@ function Write-AgentConfig {
     Set-Acl -Path $DataDir -AclObject $acl
 
     # The host writes screenshots here before the service uploads them, and the host runs as
-    # the logged-on user — so this one subdirectory has to stay writable by users.
+    # the logged-on user - so this one subdirectory has to stay writable by users.
     $spool = Join-Path $DataDir 'screenshots'
     if (-not (Test-Path $spool)) { New-Item -ItemType Directory -Path $spool -Force | Out-Null }
     $spoolAcl = Get-Acl $spool
@@ -106,7 +106,7 @@ function Write-AgentConfig {
     Set-Acl -Path $spool -AclObject $spoolAcl
 
     # Same problem for logs: the host runs as the employee and writes host-s<session>-<date>.log
-    # here. Granted 'Write' rather than 'Modify' on purpose — a standard user can create and
+    # here. Granted 'Write' rather than 'Modify' on purpose - a standard user can create and
     # append to their own log file but cannot delete or truncate the agent's history. Ageing
     # files out is the service's job (RetentionWorker), which runs as SYSTEM.
     $logs = Join-Path $DataDir 'logs'
@@ -187,7 +187,7 @@ function Invoke-Uninstall {
         Write-Host 'Service is not installed.' -ForegroundColor Yellow
     }
 
-    # The service supervises the host, so the host has to be stopped explicitly — otherwise
+    # The service supervises the host, so the host has to be stopped explicitly - otherwise
     # it keeps running in the user's session until logoff.
     Get-Process -Name 'EmployeeMonitor.Host' -ErrorAction SilentlyContinue |
         Stop-Process -Force -ErrorAction SilentlyContinue
@@ -214,7 +214,7 @@ function Invoke-Status {
         Write-Host 'Service : not installed' -ForegroundColor Yellow
     }
 
-    # Not $host — that is a reserved PowerShell automatic variable and assigning to it throws.
+    # Not $host - that is a reserved PowerShell automatic variable and assigning to it throws.
     $hostProcess = Get-Process -Name 'EmployeeMonitor.Host' -ErrorAction SilentlyContinue
     Write-Host "Host    : $(if ($hostProcess) { "running (pid $($hostProcess.Id))" } else { 'not running' })" -ForegroundColor Cyan
 

@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import { LoginForm } from './LoginForm';
 
-export const metadata = { title: 'Sign in · Employee Monitor' };
+export const metadata = { title: 'Sign in - Employee Monitor' };
 
 export default function LoginPage() {
   return (

@@ -15,7 +15,7 @@ export class EmployeeController {
   }
 
   /**
-   * POST /v1/dashboard/employees/bulk — roster import.
+   * POST /v1/dashboard/employees/bulk - roster import.
    *
    * Always 200, never 207 or 400: partial success is the expected outcome, not an error, and
    * the per-row breakdown in the body is what the caller renders.

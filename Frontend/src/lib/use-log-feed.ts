@@ -6,13 +6,13 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
  * Keyset paging for a scroll window, shared by every feed the dashboard renders.
  *
  * WHY A HOOK AND NOT A COMPONENT: the paging behaviour (cursor, de-duplication, in-flight guard,
- * sentinel observer) is identical for a log table and a screenshot grid, but the markup is not —
+ * sentinel observer) is identical for a log table and a screenshot grid, but the markup is not -
  * one is rows in a <table>, the other is cells in a grid, and the grid also has to hand the loaded
  * rows to a full-screen viewer. Keeping the behaviour here means both render whatever they like
  * over one implementation, instead of the second surface re-deriving the tricky parts.
  *
  * The page size is not decided here. The server reads it from policy, so an admin changes it on
- * the settings screen — the client only ever asks for "the next page".
+ * the settings screen - the client only ever asks for "the next page".
  */
 
 /** One page of a keyset-paginated feed, matching the backend's `Page<T>`. */
@@ -29,7 +29,7 @@ interface UseLogFeedOptions<T> {
   /** First page, fetched on the server so the window is populated before any JavaScript runs. */
   initial: LogPage<T>;
   feed: LogFeedName;
-  /** Extra query parameters (employeeId, date range, …). */
+  /** Extra query parameters (employeeId, date range, ...). */
   params?: Record<string, string | undefined>;
   /** Stable identity for a row, used as the React key and to drop duplicates. */
   rowKey: (row: T) => string;
@@ -91,15 +91,15 @@ export function useLogFeed<T>({
   // Compared by content, NOT by object identity. RealtimeProvider calls router.refresh() on every
   // ingest event, and each refresh hands down a new object even when the first page is byte for
   // byte what is already on screen. Resetting on identity therefore threw away every page the
-  // operator had scrolled in and returned them to the top roughly once a minute — infinite scroll
+  // operator had scrolled in and returned them to the top roughly once a minute - infinite scroll
   // that cannot outlive a live dashboard's own refresh cycle. Comparing the content resets when
   // something actually changed and leaves the reader alone when nothing did.
   //
   // Adjusted during render rather than in an effect: React discards the in-progress render and
   // restarts with the new state, so the stale page is never painted. The same reset in an effect
-  // paints the old rows first and then replaces them — a visible flash of the previous range.
+  // paints the old rows first and then replaces them - a visible flash of the previous range.
   // Only the three fields the window actually renders. An endpoint may wrap its page in extra
-  // metadata — the screenshot and USB feeds return the resolved period alongside it — and
+  // metadata - the screenshot and USB feeds return the resolved period alongside it - and
   // `period.end` is "now", so hashing the whole object would report a change on every single
   // refresh and put us straight back to resetting the reader's scroll position.
   const signature = JSON.stringify([initial.rows, initial.nextCursor, initial.hasMore]);
@@ -127,7 +127,7 @@ export function useLogFeed<T>({
 
       const response = await fetch(`/api/logs/${feed}?${query}`);
 
-      // 503 is the monitoring service being unreachable, which is worth saying plainly — the
+      // 503 is the monitoring service being unreachable, which is worth saying plainly - the
       // page itself is fine and retrying shortly will work. Anything else is reported generically.
       if (response.status === SERVICE_UNAVAILABLE) {
         throw new LoadError(

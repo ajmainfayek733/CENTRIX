@@ -6,10 +6,10 @@ import { LiveOnlineTile } from '@/components/LiveOnlineTile';
 import { LiveActiveTimeTile } from '@/components/LiveTotals';
 import type { Overview, Roster } from '@/types/api';
 
-export const metadata = { title: 'Overview Â· Employee Monitor' };
+export const metadata = { title: 'Overview - Employee Monitor' };
 
 // Live operational data. Never served from Next's fetch cache, or a manager sees a stale
-// "who is online now" â€” see Docs/Frontend/NextJS.md section 3.
+// "who is online now" - see Docs/Frontend/NextJS.md section 3.
 export const dynamic = 'force-dynamic';
 
 export default async function OverviewPage() {
@@ -29,7 +29,7 @@ export default async function OverviewPage() {
       <div>
         <h1 className="text-lg font-semibold">Overview</h1>
         <p className="mt-0.5 text-sm text-text-secondary">
-          Last 7 days Â· {overview.employeesTracked} of {overview.headcount} employees reporting
+          Last 7 days - {overview.employeesTracked} of {overview.headcount} employees reporting
         </p>
       </div>
 
@@ -85,7 +85,7 @@ export default async function OverviewPage() {
         title="Most active"
         action={
           <Link href="/employees" className="text-xs text-text-secondary hover:text-text-primary">
-            View all â†’
+            View all {'->'}
           </Link>
         }
       >
@@ -116,7 +116,7 @@ export default async function OverviewPage() {
                         {employee.name}
                       </Link>
                     </Td>
-                    <Td muted>{employee.department ?? 'â€”'}</Td>
+                    <Td muted>{employee.department ?? '-'}</Td>
                     <Td align="right" numeric>
                       {formatDuration(employee.activeSeconds)}
                     </Td>

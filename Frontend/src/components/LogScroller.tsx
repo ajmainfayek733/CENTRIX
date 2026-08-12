@@ -7,12 +7,12 @@ import { useLogFeed, type LogFeedName, type LogPage } from '@/lib/use-log-feed';
  * A fixed-height, scrolling log window that loads the next page when the reader reaches the end.
  *
  * WHY FIXED HEIGHT AND WHY PAGED: a log table that renders its whole range grows without bound
- * as history accumulates — an unbounded query on the server, an unbounded payload on the wire,
+ * as history accumulates - an unbounded query on the server, an unbounded payload on the wire,
  * and thousands of DOM nodes for rows nobody scrolls to. This holds a bounded window instead:
  * the first page arrives with the server-rendered page, and each subsequent page is fetched only
  * when the operator actually scrolls to the bottom.
  *
- * The paging itself lives in useLogFeed, which the screenshot gallery shares — this component is
+ * The paging itself lives in useLogFeed, which the screenshot gallery shares - this component is
  * the table-shaped presentation of it.
  */
 
@@ -23,12 +23,12 @@ interface LogScrollerProps<T> {
   initial: LogPage<T>;
   /** Feed name, resolved by /api/logs/[feed]. */
   feed: Extract<LogFeedName, 'activity' | 'alerts' | 'usb'>;
-  /** Extra query parameters (employeeId, date range, …). */
+  /** Extra query parameters (employeeId, date range, ...). */
   params?: Record<string, string | undefined>;
   /** Stable identity for a row, used as the React key and to drop duplicates. */
   rowKey: (row: T) => string;
   children: (rows: T[]) => ReactNode;
-  /** Height of the scroll window. A CSS length — the window is fixed, the content scrolls. */
+  /** Height of the scroll window. A CSS length - the window is fixed, the content scrolls. */
   height?: string;
   emptyMessage?: string;
 }
@@ -68,7 +68,7 @@ export function LogScroller<T>({
 
       <div ref={sentinelRef} aria-hidden />
 
-      {loading && <p className="py-3 text-center text-xs text-text-secondary">Loading more…</p>}
+      {loading && <p className="py-3 text-center text-xs text-text-secondary">Loading more...</p>}
 
       {error && (
         <p className="py-3 text-center text-xs text-danger">

@@ -17,8 +17,8 @@ namespace Agent.Service.Workers;
 /// WHAT THIS IS EMPHATICALLY NOT: a source of truth about whether the backend is available.
 /// Nothing in this file writes <see cref="AgentState.BackendReachable"/>, and that is deliberate.
 /// A Socket.IO connection can stay open long after the server has stopped being able to serve
-/// writes — the transport survives a database outage, a deploy, a half-open TCP connection that
-/// will not surface for minutes — so treating "connected" as "available" would have the agent
+/// writes - the transport survives a database outage, a deploy, a half-open TCP connection that
+/// will not surface for minutes - so treating "connected" as "available" would have the agent
 /// confidently pushing telemetry at a server that is dropping it. Availability is decided by
 /// GET /api/v1/heartbeat in ConnectivityWorker, which proves the credential is accepted *and*
 /// that the server reached its database to answer.
@@ -44,7 +44,7 @@ public sealed class RealtimeWorker(
     /// <summary>Handshake field carrying the device API key. Must match AGENT_AUTH_FIELD.</summary>
     private const string ApiKeyAuthField = "apiKey";
 
-    // Event names — must match AgentEvent / AgentClientEvent in Backend/src/realtime/events.ts.
+    // Event names - must match AgentEvent / AgentClientEvent in Backend/src/realtime/events.ts.
     private const string PolicyUpdatedEvent = "policy:updated";
     private const string SyncForceEvent = "sync:force";
     private const string DeviceDeactivatedEvent = "device:deactivated";
@@ -52,7 +52,7 @@ public sealed class RealtimeWorker(
     private const string HeartbeatEvent = "agent:heartbeat";
 
     /// <summary>
-    /// How long to wait before checking again when there is nothing to connect with — no
+    /// How long to wait before checking again when there is nothing to connect with - no
     /// credential yet, or realtime switched off in policy. Short enough to pick up an enrollment
     /// promptly, long enough not to spin.
     /// </summary>
@@ -69,7 +69,7 @@ public sealed class RealtimeWorker(
         while (!stoppingToken.IsCancellationRequested)
         {
             // Nothing to authenticate with, or an admin has turned signalling off for the fleet.
-            // Either way this is a normal state, not a failure — wait and look again.
+            // Either way this is a normal state, not a failure - wait and look again.
             if (!_state.Policy.Realtime.Enabled || !_credentials.HasCredential)
             {
                 await DelayAsync(IdlePollInterval, stoppingToken).ConfigureAwait(false);
@@ -90,7 +90,7 @@ public sealed class RealtimeWorker(
             catch (Exception ex)
             {
                 // Logged at Debug, not Warning. A workstation that cannot reach the websocket
-                // endpoint — a proxy that blocks upgrades, an office firewall — is still fully
+                // endpoint - a proxy that blocks upgrades, an office firewall - is still fully
                 // functional, and logging this at Warning would train operators to ignore the
                 // agent log.
                 _logger.LogDebug(ex, "Realtime channel unavailable; retrying in {Backoff}", backoff);
@@ -125,12 +125,12 @@ public sealed class RealtimeWorker(
         client.OnDisconnected += (_, reason) =>
         {
             _logger.LogInformation("Realtime channel closed ({Reason})", reason);
-            // ReSharper disable once AccessToDisposedClosure — the handler cannot outlive the
+            // ReSharper disable once AccessToDisposedClosure - the handler cannot outlive the
             // using block: DisposeAsync detaches it before the source is disposed.
             if (!disconnected.IsCancellationRequested) disconnected.Cancel();
         };
 
-        // Handlers do no work of their own beyond raising a signal — the workers that own each
+        // Handlers do no work of their own beyond raising a signal - the workers that own each
         // job pick it up on their own thread. Anything slow here would stall the client's single
         // receive loop and delay every subsequent event.
         client.On(PolicyUpdatedEvent, _ =>

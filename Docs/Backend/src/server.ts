@@ -24,7 +24,7 @@ app.use(
 );
 app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
-// CRITICAL MOUNT ORDER (per Express.md §6):
+// CRITICAL MOUNT ORDER (per Express.md section 6):
 // Better Auth handler reads raw request body directly and MUST be registered BEFORE express.json()
 app.all('/api/auth/*splat', toNodeHandler(auth));
 
@@ -42,7 +42,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Route Handlers following strict route prefixing specification (Express.md §1)
+// Route Handlers following strict route prefixing specification (Express.md section 1)
 // Write Path for Unattended Windows Agents
 app.use('/v1/ingest', ingestRoutes);
 app.use('/api/agents', ingestRoutes); // Alias for agent compatibility
@@ -61,8 +61,8 @@ app.use('/api/dashboard/reports', reportRoutes);
 app.use(errorHandler);
 
 const server = app.listen(env.PORT, () => {
-  console.log(`🚀 Monitoring Server active at http://localhost:${env.PORT}`);
-  console.log(`🔒 Better Auth endpoints mounted at http://localhost:${env.PORT}/api/auth/*`);
+  console.log(` Monitoring Server active at http://localhost:${env.PORT}`);
+  console.log(` Better Auth endpoints mounted at http://localhost:${env.PORT}/api/auth/*`);
 });
 
 export default app;

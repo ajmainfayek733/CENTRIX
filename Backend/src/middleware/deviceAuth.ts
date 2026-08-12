@@ -9,9 +9,9 @@ export interface DeviceAuthenticatedRequest extends Request {
 }
 
 /**
- * Authenticates the Windows Agent via its device API key (spec §9). 401 for a missing,
+ * Authenticates the Windows Agent via its device API key (spec section 9). 401 for a missing,
  * malformed or unrecognized credential; 403 only for a device that authenticated
- * successfully but has been deliberately deactivated by an admin — the agent treats those
+ * successfully but has been deliberately deactivated by an admin - the agent treats those
  * differently (retry vs. stop).
  *
  * Lookup is by HMAC on a unique indexed column, so this is a single indexed read and is

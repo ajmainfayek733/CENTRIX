@@ -13,7 +13,7 @@ namespace Agent.Host.Services;
 /// indicator. This is that indicator: it is always present while monitoring runs, and it is
 /// what raises the alert notifications Features.md describes.
 ///
-/// Windows Forms NotifyIcon rather than a WPF equivalent because WPF has no tray API at all —
+/// Windows Forms NotifyIcon rather than a WPF equivalent because WPF has no tray API at all -
 /// every WPF tray library wraps this same control.
 /// </summary>
 public sealed class TrayIconService(ILogger<TrayIconService> logger) : IDisposable
@@ -31,7 +31,7 @@ public sealed class TrayIconService(ILogger<TrayIconService> logger) : IDisposab
         menu.Items.Add(new ToolStripSeparator());
 
         // No "Exit" item. The service restarts the host within seconds anyway, so offering an
-        // exit that silently undoes itself would be misleading. Task Manager still works —
+        // exit that silently undoes itself would be misleading. Task Manager still works -
         // the agent is not hiding, it is just not offering a self-defeating button.
         var about = new ToolStripMenuItem($"Employee Monitor {Agent.Core.DeviceIdentity.GetAgentVersion()}")
         {
@@ -42,7 +42,7 @@ public sealed class TrayIconService(ILogger<TrayIconService> logger) : IDisposab
         _icon = new NotifyIcon
         {
             Icon = BuildIcon(),
-            Text = "Employee Monitor — monitoring is active",
+            Text = "Employee Monitor - monitoring is active",
             Visible = true,
             ContextMenuStrip = menu
         };
@@ -62,7 +62,7 @@ public sealed class TrayIconService(ILogger<TrayIconService> logger) : IDisposab
             _ => ToolTipIcon.Info
         };
 
-        // The timeout argument has been ignored by Windows since Vista — the shell decides how
+        // The timeout argument has been ignored by Windows since Vista - the shell decides how
         // long a balloon stays up. Passed for API compatibility only.
         _icon.ShowBalloonTip(5000, notification.Title, notification.Message, icon);
         _logger.LogInformation("Notification shown: {Title}", notification.Title);
@@ -89,7 +89,7 @@ public sealed class TrayIconService(ILogger<TrayIconService> logger) : IDisposab
         }
 
         // Icon.FromHandle does not own the GDI handle, so the icon is cloned and the original
-        // handle destroyed — otherwise every construction leaks one.
+        // handle destroyed - otherwise every construction leaks one.
         var handle = bitmap.GetHicon();
         try
         {

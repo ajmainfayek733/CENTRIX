@@ -5,7 +5,7 @@ import { DeviceAuthenticatedRequest } from '../../middleware/deviceAuth';
 import { Channel } from './ingest.dto';
 
 export class IngestController {
-  /** POST /api/v1/device/enroll — Features.md "Device Auth". */
+  /** POST /api/v1/device/enroll - Features.md "Device Auth". */
   async enroll(req: Request, res: Response, next: NextFunction) {
     try {
       const token = req.header('x-enrollment-token');
@@ -31,7 +31,7 @@ export class IngestController {
     }
   }
 
-  /** GET /api/v1/heartbeat — availability + authorization check before the agent starts syncing. */
+  /** GET /api/v1/heartbeat - availability + authorization check before the agent starts syncing. */
   async heartbeat(req: DeviceAuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       return res.status(200).json(await ingestService.heartbeat(req.device!));
@@ -44,7 +44,7 @@ export class IngestController {
    * POST /api/v1/events/:channel
    *
    * `replay` is reported back so the agent's log distinguishes "the server stored these" from
-   * "the server had already stored these" — the two look identical from the queue's point of
+   * "the server had already stored these" - the two look identical from the queue's point of
    * view, and only one of them means the previous response was lost.
    */
   async pushEvents(req: DeviceAuthenticatedRequest, res: Response, next: NextFunction) {

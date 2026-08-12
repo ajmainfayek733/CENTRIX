@@ -1,7 +1,7 @@
 /**
  * Mirrors the backend's response DTOs field for field.
  *
- * A drifted type here does not fail the build — it silently renders `undefined` in a report.
+ * A drifted type here does not fail the build - it silently renders `undefined` in a report.
  * Treat any contract change as a two-repo commit, as Docs/Frontend/NextJS.md section 8 says.
  */
 
@@ -106,7 +106,7 @@ export interface EmployeeDetail {
   period: { start: string; end: string };
   totals: Totals;
   /**
-   * First page only. `totals` above is not derived from it — it comes from the daily rollup, so
+   * First page only. `totals` above is not derived from it - it comes from the daily rollup, so
    * the percentages describe the whole period rather than whatever rows happen to be loaded.
    */
   timeline: LogPageOf<TimelineRow>;
@@ -116,7 +116,7 @@ export interface EmployeeDetail {
 }
 
 /**
- * One capture in the screenshot index. The bytes are not in here — `deviceId` and `clientEventId`
+ * One capture in the screenshot index. The bytes are not in here - `deviceId` and `clientEventId`
  * address the image, which is fetched (and audit-logged) one request at a time when displayed.
  *
  * width/height are nullable because an older agent may not have reported them; the gallery must
@@ -239,7 +239,7 @@ export interface Policy {
   /** Rows a dashboard log window loads per page. */
   logPageSize: number;
   /**
-   * Captures the screenshot gallery loads per page — its own setting, not logPageSize.
+   * Captures the screenshot gallery loads per page - its own setting, not logPageSize.
    *
    * A page of log rows is a few kilobytes of JSON; a page of screenshots is that many full-size
    * JPEGs the browser downloads and decodes, so the two cannot share a number.

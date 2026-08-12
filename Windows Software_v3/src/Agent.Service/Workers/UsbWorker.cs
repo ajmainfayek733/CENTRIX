@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 namespace Agent.Service.Workers;
 
 /// <summary>
-/// Features.md "USB Logs". Records device connection and removal only — the service never
+/// Features.md "USB Logs". Records device connection and removal only - the service never
 /// enumerates, opens, reads or copies the contents of a connected device.
 ///
 /// Runs in the service rather than the host because WMI device events are machine-scoped: they
@@ -125,7 +125,7 @@ public sealed partial class UsbWorker(
                 EventTime = DateTimeOffset.UtcNow
             };
 
-            // Volume details only exist for storage, and only while it is attached — on
+            // Volume details only exist for storage, and only while it is attached - on
             // removal the drive letter is already gone, so enrichment is arrival-only.
             if (deviceType == UsbDeviceType.UsbStorage && eventType == UsbEventType.Connected)
             {
@@ -294,7 +294,7 @@ public sealed partial class UsbWorker(
     /// <summary>
     /// The last segment of a PNPDeviceID is the serial for most devices. Windows appends
     /// "&amp;0" style interface suffixes, and marks devices with no real serial by putting
-    /// an ampersand in the second character position — those are reported as null rather than
+    /// an ampersand in the second character position - those are reported as null rather than
     /// as a fake identifier that would collide across devices.
     /// </summary>
     private static string? ExtractSerialNumber(string pnpDeviceId)

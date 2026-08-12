@@ -8,8 +8,8 @@ namespace Agent.Core.Configuration;
 /// <see cref="AgentPaths.ConfigPath"/> and read by the service at startup.
 ///
 /// This file holds the org-wide enrollment token, which is traded once for a per-device API
-/// key. It is not itself a telemetry credential — the backend refuses it on every route except
-/// enrollment — but it does let a machine join the fleet, so the installer must ACL the
+/// key. It is not itself a telemetry credential - the backend refuses it on every route except
+/// enrollment - but it does let a machine join the fleet, so the installer must ACL the
 /// directory to Administrators and SYSTEM.
 /// </summary>
 public sealed record AgentConfiguration

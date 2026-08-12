@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 namespace Agent.Host.Collectors;
 
 /// <summary>
-/// Features.md "Activity Level Metric" — keystroke and mouse-click counts as an activity score.
+/// Features.md "Activity Level Metric" - keystroke and mouse-click counts as an activity score.
 ///
 /// PRIVACY, and the single most important constraint in this file: this class counts events and
 /// never inspects them. The keyboard callback increments a counter and returns; it does not
@@ -44,7 +44,7 @@ public sealed class InputCounter : IDisposable
     }
 
     /// <summary>
-    /// Installs the hooks. Must be called from a thread with a running message pump —
+    /// Installs the hooks. Must be called from a thread with a running message pump -
     /// low-level hooks are dispatched to the installing thread's message queue, and installing
     /// them from a worker thread yields a hook that silently never fires.
     /// </summary>
@@ -63,7 +63,7 @@ public sealed class InputCounter : IDisposable
             return;
         }
 
-        _logger.LogInformation("Input counters started (counts only — no key content is read)");
+        _logger.LogInformation("Input counters started (counts only - no key content is read)");
     }
 
     private IntPtr KeyboardCallback(int nCode, IntPtr wParam, IntPtr lParam)

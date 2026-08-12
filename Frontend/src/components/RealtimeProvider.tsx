@@ -32,14 +32,14 @@ import {
  *   truth.
  *
  * THE RATE LIMIT IS A DEBOUNCE, NOT A SCHEDULE. Nothing here runs on a timer when nothing is
- * happening — a refresh is only ever triggered by an event. What the limit does is cap how often
+ * happening - a refresh is only ever triggered by an event. What the limit does is cap how often
  * events may cause a refetch: a hundred agents on a two-minute cycle produce clustered bursts of
  * `telemetry:ingested`, and refreshing per event would mean several full server-component renders
  * per second, which costs more than the polling this replaced.
  *
  * It fires on the LEADING edge. The first event refreshes immediately and only a burst behind it
  * is collapsed into one trailing refresh. A trailing-only debounce would have delayed every update
- * by the full window — including a lone event on a quiet system, which is the case where the
+ * by the full window - including a lone event on a quiet system, which is the case where the
  * dashboard most obviously ought to feel instant.
  */
 
@@ -50,7 +50,7 @@ import {
  * bounds how closely two refreshes may follow each other.
  *
  * Comfortably longer than it would need to be if refetching were how the numbers updated. It is
- * not — totals move from the aggregate pushed with each event. This exists for what a delta
+ * not - totals move from the aggregate pushed with each event. This exists for what a delta
  * cannot express: a new row appearing in a log table, a device changing hands, an employee being
  * added. Those tolerate a few seconds; the figures do not, and no longer wait.
  */
@@ -64,7 +64,7 @@ const RECONNECT_MAX_MS = 30_000;
  * What the dashboard knows about one workstation right now.
  *
  * `live` is the answer to "is this device active", and it is derived from a heartbeat having
- * arrived — not from a socket existing. A half-open connection outlives an unplugged cable or a
+ * arrived - not from a socket existing. A half-open connection outlives an unplugged cable or a
  * suspended laptop by minutes, so connection state alone would keep a dead machine green.
  */
 export interface DeviceLiveness {
@@ -85,7 +85,7 @@ interface RealtimeContextValue {
    * Everything ingested since this page was server-rendered, summed across the whole fleet.
    *
    * Added to a server-rendered figure to get the current one. Reset on every refetch, because at
-   * that moment the server-rendered baseline already includes it — not resetting is how the same
+   * that moment the server-rendered baseline already includes it - not resetting is how the same
    * telemetry would end up counted twice.
    */
   liveDelta: RollupDeltaPayload;
@@ -94,7 +94,7 @@ interface RealtimeContextValue {
 }
 
 /**
- * Fallback until the server's snapshot arrives — the schema's 30s heartbeat with the same 2.5x
+ * Fallback until the server's snapshot arrives - the schema's 30s heartbeat with the same 2.5x
  * grace the server applies. Only used for the fraction of a second before the socket is up.
  */
 const DEFAULT_MAX_SILENCE_MS = 30_000 * 2.5;
@@ -116,7 +116,7 @@ export function useRealtime(): RealtimeContextValue {
  *
  * Expires client-side: a device whose last heartbeat is older than the silence window stops
  * counting as live even though no event said so. That matters because the event announcing a
- * departure is exactly the one that cannot arrive when a workstation vanishes — a laptop that
+ * departure is exactly the one that cannot arrive when a workstation vanishes - a laptop that
  * loses power sends no disconnect, so a UI waiting to be told would show it active indefinitely.
  */
 export function useDeviceLiveness(deviceId: string): DeviceLiveness | null {
@@ -166,7 +166,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // `cancelled` guards every async continuation. Without it, a provider unmounted during the
-    // ticket fetch would still open a socket, and nothing would ever close it — the classic
+    // ticket fetch would still open a socket, and nothing would ever close it - the classic
     // leak in this shape of effect.
     let cancelled = false;
     let socket: Socket | null = null;
@@ -189,7 +189,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
      *
      * Leading edge: an event arriving after a quiet period refreshes immediately. Only events
      * that land inside the cooldown are collapsed, and they produce exactly one refresh when it
-     * expires — so a burst costs one refetch rather than one per event, and an isolated event
+     * expires - so a burst costs one refetch rather than one per event, and an isolated event
      * costs no delay at all.
      */
     const requestRefresh = () => {
@@ -220,7 +220,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         if (!response.ok) throw new Error('ticket refused');
         ({ ticket } = (await response.json()) as { ticket: string });
       } catch {
-        // No ticket means no live updates — never means the page is broken. Every screen still
+        // No ticket means no live updates - never means the page is broken. Every screen still
         // renders from its own server-side fetch; it just will not update on its own.
         retry();
         return;
@@ -242,7 +242,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         setConnected(true);
         reconnectDelay = RECONNECT_MIN_MS;
         // Data may have changed while the socket was down, and nothing will announce what was
-        // missed — so treat every (re)connection as a reason to refetch once.
+        // missed - so treat every (re)connection as a reason to refetch once.
         requestRefresh();
       });
 
@@ -250,7 +250,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         setConnected(false);
         // Cleared rather than frozen. Holding the last known table would leave every device
-        // showing as it was at the moment this browser lost touch, with nothing to correct it —
+        // showing as it was at the moment this browser lost touch, with nothing to correct it -
         // stale green dots are worse than an honest "not known".
         setDevices(new Map());
         retry();
@@ -262,7 +262,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         retry();
       });
 
-      // The aggregate arrives with the event, so the totals on screen move immediately — no
+      // The aggregate arrives with the event, so the totals on screen move immediately - no
       // request, no waiting for a refetch. The refresh below is a correctness backstop for the
       // things a delta cannot express (new rows in a log table, a device changing hands), not
       // the path that updates the numbers.

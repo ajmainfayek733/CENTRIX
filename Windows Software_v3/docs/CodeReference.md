@@ -1,4 +1,4 @@
-# Employee Monitor Agent v3 — Code Reference
+# Employee Monitor Agent v3 - Code Reference
 
 Reference documentation for the Windows agent in `Windows Software_v3/`. Every module, type and
 member is covered here or in the per-project documents:
@@ -35,29 +35,29 @@ The agent is two executables, deliberately.
 
 ```
 Windows boot
-  └─ EmployeeMonitor.Service.exe          LocalSystem, session 0
-       ├─ ConnectivityWorker              enroll → heartbeat → policy
-       ├─ SyncWorker                      drain the offline queue to the backend
-       ├─ UsbWorker                       WMI device arrival/removal
-       ├─ RetentionWorker                 sweep synced rows, screenshots, log files
-       ├─ HostSupervisorWorker            keep one host alive on the desktop
-       ├─ IpcServer  ──────────────┐      named pipe, Global\EmployeeMonitor.Agent
-       └─ LocalStore / TelemetryQueue     SQLite: typed tables + offline queue
-                                   │
-User logon                         │
-  └─ EmployeeMonitor.Host.exe  ────┘      interactive session, standard user
-       ├─ MonitoringOrchestrator          the single sampling loop
-       ├─ ForegroundWindowTracker         what app is in focus
-       ├─ BrowserUrlExtractor             address bar via UI Automation
-       ├─ InputCounter                    key/click counts — counts only
-       ├─ ScreenshotCapturer              full virtual desktop → JPEG on disk
-       ├─ SessionEventMonitor             lock/unlock/sleep/logoff
-       ├─ AlertEngine                     idle escalation + blacklist hits
-       ├─ TrayIconService                 visible indicator + balloons
-       └─ MainWindow                      disclosure + consent
+  +- EmployeeMonitor.Service.exe          LocalSystem, session 0
+       +- ConnectivityWorker              enroll -> heartbeat -> policy
+       +- SyncWorker                      drain the offline queue to the backend
+       +- UsbWorker                       WMI device arrival/removal
+       +- RetentionWorker                 sweep synced rows, screenshots, log files
+       +- HostSupervisorWorker            keep one host alive on the desktop
+       +- IpcServer  --------------+      named pipe, Global\EmployeeMonitor.Agent
+       +- LocalStore / TelemetryQueue     SQLite: typed tables + offline queue
+                                   |
+User logon                         |
+  +- EmployeeMonitor.Host.exe  ----+      interactive session, standard user
+       +- MonitoringOrchestrator          the single sampling loop
+       +- ForegroundWindowTracker         what app is in focus
+       +- BrowserUrlExtractor             address bar via UI Automation
+       +- InputCounter                    key/click counts - counts only
+       +- ScreenshotCapturer              full virtual desktop -> JPEG on disk
+       +- SessionEventMonitor             lock/unlock/sleep/logoff
+       +- AlertEngine                     idle escalation + blacklist hits
+       +- TrayIconService                 visible indicator + balloons
+       +- MainWindow                      disclosure + consent
 ```
 
-**Why two processes.** Session 0 — where Windows services run — has no desktop. It cannot read a
+**Why two processes.** Session 0 - where Windows services run - has no desktop. It cannot read a
 foreground window title, cannot measure user idle time, and cannot capture the screen. Those
 collectors *must* live in the user's session. A SYSTEM service on top provides what a user-session
 process cannot: start at boot before anyone logs on, survival across logoff, supervision with
@@ -71,8 +71,8 @@ that a standard user cannot read.
 - The service **decides and persists**. It owns the database, the device API key, policy, and all
   backend traffic.
 
-The service starts the host with `WTSQueryUserToken` → `DuplicateTokenEx` →
-`CreateEnvironmentBlock` → `CreateProcessAsUser` on `winsta0\default`
+The service starts the host with `WTSQueryUserToken` -> `DuplicateTokenEx` ->
+`CreateEnvironmentBlock` -> `CreateProcessAsUser` on `winsta0\default`
 (`Agent.Service/Interop/SessionLauncher.cs`).
 
 ---
@@ -81,14 +81,14 @@ The service starts the host with `WTSQueryUserToken` → `DuplicateTokenEx` →
 
 ```
 collector observes
-   → MonitoringOrchestrator builds a typed event record
-   → HostIpcClient.SendAsync           length-prefixed JSON over the named pipe
-   → IpcServer.Handle                  service side
-   → TelemetryQueue.Enqueue            SQLite row, sent_utc = NULL
-   → SyncWorker.SyncOnceAsync          POST /api/v1/events/{channel}
-   → BackendClient                     returns acknowledgedEventIds
-   → TelemetryQueue.MarkSent           only the ids the server confirmed
-   → RetentionWorker.Sweep             deletes rows already marked sent
+   -> MonitoringOrchestrator builds a typed event record
+   -> HostIpcClient.SendAsync           length-prefixed JSON over the named pipe
+   -> IpcServer.Handle                  service side
+   -> TelemetryQueue.Enqueue            SQLite row, sent_utc = NULL
+   -> SyncWorker.SyncOnceAsync          POST /api/v1/events/{channel}
+   -> BackendClient                     returns acknowledgedEventIds
+   -> TelemetryQueue.MarkSent           only the ids the server confirmed
+   -> RetentionWorker.Sweep             deletes rows already marked sent
 ```
 
 Three properties fall out of this shape:
@@ -99,7 +99,7 @@ Three properties fall out of this shape:
 2. **Offline tolerance.** Collection never waits on the network. A workstation that boots offline
    runs on its cached policy (or the compiled-in defaults) and queues locally; the queue drains
    when connectivity returns.
-3. **Delete-after-sync.** Local copies are removed only after successful synchronization — which
+3. **Delete-after-sync.** Local copies are removed only after successful synchronization - which
    is why acknowledged rows are *marked* rather than deleted inline, and swept later.
 
 Screenshots take a parallel path: the host writes the JPEG to the shared spool directory and
@@ -116,20 +116,20 @@ mechanism responsible for it:
 
 | Failure mode | Mechanism | Where |
 |---|---|---|
-| Huge backlog | **Batching** — `MaxBatchSize` events per channel per cycle (default 500) | `SyncPolicy`, `SyncWorker.SyncOnceAsync` |
-| Request too large | **Hard byte budget** — events are packed into requests under `MaxRequestBytes` (900 KB), measured on the encoded JSON, so the agent never builds a body the server will refuse | `BackendClient.PackIntoRequests` |
-| Network dies after upload | **Idempotency** — an unacknowledged batch is resent verbatim and the server upserts | `ClientEventId` + backend upserts |
-| Duplicate events | **Unique event id** — client-generated per event, the dedup key server-side | `ITelemetryEvent.ClientEventId` |
-| Server unavailable | **Exponential backoff** — `MinRetryBackoffSeconds` doubling to `MaxRetryBackoffSeconds`, reset on first success | `SyncWorker.NextDelay` |
-| Client crashes | **Persistent local queue** — SQLite in WAL mode, written before anything is sent | `TelemetryQueue`, `LocalStoreSchema` |
-| Partial failure | **Per-event ACK** — the server returns `acknowledgedEventIds`, not a status for the batch | `PushEventsResponse`, `PushResult` |
-| Lost events | **Mark only after ACK** — rows are marked sent solely against confirmed ids, and deleted later still | `TelemetryQueue.MarkSent` → `Purge` |
-| Server overload | **Sequential, no concurrency** — channels in order, chunks in order, screenshots one at a time | `SyncWorker`, `BackendClient.PushEventsAsync` |
-| Massive long-term backlog | **Retention and poison-drop** — age-based `Purge`, plus `DropExhausted` for events the server keeps refusing | `RetentionWorker` |
+| Huge backlog | **Batching** - `MaxBatchSize` events per channel per cycle (default 500) | `SyncPolicy`, `SyncWorker.SyncOnceAsync` |
+| Request too large | **Hard byte budget** - events are packed into requests under `MaxRequestBytes` (900 KB), measured on the encoded JSON, so the agent never builds a body the server will refuse | `BackendClient.PackIntoRequests` |
+| Network dies after upload | **Idempotency** - an unacknowledged batch is resent verbatim and the server upserts | `ClientEventId` + backend upserts |
+| Duplicate events | **Unique event id** - client-generated per event, the dedup key server-side | `ITelemetryEvent.ClientEventId` |
+| Server unavailable | **Exponential backoff** - `MinRetryBackoffSeconds` doubling to `MaxRetryBackoffSeconds`, reset on first success | `SyncWorker.NextDelay` |
+| Client crashes | **Persistent local queue** - SQLite in WAL mode, written before anything is sent | `TelemetryQueue`, `LocalStoreSchema` |
+| Partial failure | **Per-event ACK** - the server returns `acknowledgedEventIds`, not a status for the batch | `PushEventsResponse`, `PushResult` |
+| Lost events | **Mark only after ACK** - rows are marked sent solely against confirmed ids, and deleted later still | `TelemetryQueue.MarkSent` -> `Purge` |
+| Server overload | **Sequential, no concurrency** - channels in order, chunks in order, screenshots one at a time | `SyncWorker`, `BackendClient.PushEventsAsync` |
+| Massive long-term backlog | **Retention and poison-drop** - age-based `Purge`, plus `DropExhausted` for events the server keeps refusing | `RetentionWorker` |
 
 Two distinctions do most of the work here.
 
-**Rejected is not the same as failed.** Every upload returns a three-way outcome — acknowledged,
+**Rejected is not the same as failed.** Every upload returns a three-way outcome - acknowledged,
 rejected (4xx: the server will refuse this identically forever), or transient (network, timeout,
 5xx: the data is fine, the server is not). Only *rejections* advance an event's attempt counter.
 Collapsing the two would mean a week-long outage aged out perfectly good data, which is the exact
@@ -138,11 +138,11 @@ opposite of what an offline queue is for.
 **A poisoned event must not block the queue behind it.** A rejection does not stop the chunk loop,
 and after `MaxRejectionsBeforeDrop` (5) refusals the row is discarded with an error-level log.
 Without that, one event the server will never accept is resent every cycle until the retention
-window expires weeks later — thousands of pointless requests, delaying every healthy event queued
+window expires weeks later - thousands of pointless requests, delaying every healthy event queued
 behind it.
 
 **413 is treated as recoverable, not fatal.** If the packing estimate and the server's limit
-disagree — most likely because the server was reconfigured downward — the chunk is halved and
+disagree - most likely because the server was reconfigured downward - the chunk is halved and
 retried until it fits. Only a single event that still will not fit is unsendable.
 
 ---
@@ -162,7 +162,7 @@ Timestamps are stored as ISO-8601 UTC round-trip strings (`"o"`). SQLite has no 
 format sorts lexicographically in chronological order and survives a timezone change on the
 workstation, which a local-time or tick-count column would not.
 
-JSON still exists as the *transport* encoding — HTTP bodies and IPC frames. The rule is about
+JSON still exists as the *transport* encoding - HTTP bodies and IPC frames. The rule is about
 storage.
 
 ---
@@ -173,12 +173,12 @@ These are architectural, not configuration. They cannot be switched on or off by
 
 | Guarantee | How it is enforced |
 |---|---|
-| No keystroke content | `InputCounter` installs a low-level keyboard hook that increments a counter and returns. It never dereferences `lParam`, never decodes a virtual key code. No type in the pipeline — event DTO, SQLite column, Postgres column — has a field that could hold a character. |
+| No keystroke content | `InputCounter` installs a low-level keyboard hook that increments a counter and returns. It never dereferences `lParam`, never decodes a virtual key code. No type in the pipeline - event DTO, SQLite column, Postgres column - has a field that could hold a character. |
 | No USB contents | `UsbWorker` records connection/removal metadata only. It never enumerates, opens, reads or copies a device. |
 | Not hidden | Own process name in Task Manager, entry in Installed Programs, permanent tray icon, and a window listing exactly what is and is not collected. No obfuscation. |
 | Consent is recorded | Per policy version, in `consent_records`, and uploaded. A policy version change re-prompts. |
 | Out-of-hours restraint | Desktop notifications are suppressed outside configured working hours unless policy explicitly allows them. |
-| Only http/https URLs | `BrowserUrlExtractor` rejects `file://` and `chrome://` — local navigation is not web browsing, and file paths would capture document names. |
+| Only http/https URLs | `BrowserUrlExtractor` rejects `file://` and `chrome://` - local navigation is not web browsing, and file paths would capture document names. |
 
 ---
 
@@ -187,7 +187,7 @@ These are architectural, not configuration. They cannot be switched on or off by
 **Install-time config** (`%ProgramData%\EmployeeMonitor\agent.config.json`, written by
 `Deploy-Agent.ps1`): `serverUrl`, `enrollmentToken`, `allowInsecureHttp`. The service refuses to
 start without a valid server URL and token, and refuses a plain-HTTP URL unless
-`allowInsecureHttp` is set (test only — spec section 9 requires TLS).
+`allowInsecureHttp` is set (test only - spec section 9 requires TLS).
 
 **Device identity** is the Windows `MachineGuid`
 (`HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid`), not the MAC address. MAC is collected and
@@ -212,7 +212,7 @@ must never be ignored.
 
 Category rules (productivity / blacklist) are flattened into the policy so the agent can raise a
 blacklist notification locally without a round trip. The backend re-derives the same tags at
-ingest and **its answer wins** for reporting — the agent's tag is a best guess that the server
+ingest and **its answer wins** for reporting - the agent's tag is a best guess that the server
 overrides whenever a rule matches.
 
 ---
@@ -233,7 +233,7 @@ ACLs are set by `Deploy-Agent.ps1`:
 
 - The root is protected (inheritance disabled) and granted only to SYSTEM and Administrators, so a
   standard user cannot read or tamper with collected data on their own machine.
-- `screenshots\` additionally grants Users **Modify** — the host writes captures there as the
+- `screenshots\` additionally grants Users **Modify** - the host writes captures there as the
   logged-on employee.
 - `logs\` grants Users **Write + ReadAndExecute**, not Modify. The host must create and append to
   its own log file, but a standard user should not be able to delete or truncate the agent's
@@ -243,7 +243,7 @@ ACLs are set by `Deploy-Agent.ps1`:
 
 ## 10. Build and deploy
 
-Both executables publish self-contained, `win-x64`, single-file, **untrimmed** — trimming breaks
+Both executables publish self-contained, `win-x64`, single-file, **untrimmed** - trimming breaks
 `System.Management`'s reflectively-resolved WMI types and silently disables USB collection.
 `Directory.Build.props` fixes the target framework, RID, version metadata and
 `TreatWarningsAsErrors`.

@@ -40,7 +40,7 @@ router.post(
   organizationController.rotateEnrollmentToken
 );
 
-// -- Policy & category settings (spec §5 "Settings", §6 "Super Admin") -------
+// -- Policy & category settings (spec section 5 "Settings", section 6 "Super Admin") -------
 // Managers may read the policy so they understand what is being collected, but only a
 // super_admin can change what the agents do.
 

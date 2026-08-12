@@ -4,7 +4,7 @@ node_modules
 dist
 npm-debug.log*
 
-# Secrets. The image must never carry them — configuration comes from the environment.
+# Secrets. The image must never carry them - configuration comes from the environment.
 .env
 .env.*
 !.env.example

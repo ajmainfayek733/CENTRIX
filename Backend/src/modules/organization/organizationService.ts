@@ -11,8 +11,8 @@ export class OrganizationService {
    * something to read. Every policy column carries a database default matching Features.md,
    * so an empty `create` produces a complete, valid policy.
    *
-   * The enrollment token is returned exactly once, here — it goes into the agent's
-   * install-time config (spec §11) and only its HMAC is stored.
+   * The enrollment token is returned exactly once, here - it goes into the agent's
+   * install-time config (spec section 11) and only its HMAC is stored.
    */
   async createOrganization(dto: CreateOrganizationDto) {
     const enrollmentToken = generateEnrollmentToken();
@@ -65,7 +65,7 @@ export class OrganizationService {
   }
 
   // -------------------------------------------------------------------------
-  // Policy — Features.md "Configuring Policies"
+  // Policy - Features.md "Configuring Policies"
   // -------------------------------------------------------------------------
 
   async getPolicy(organizationId: string) {
@@ -81,7 +81,7 @@ export class OrganizationService {
   }
 
   /**
-   * Applies a partial settings change. `version` is incremented on every write — agents use it
+   * Applies a partial settings change. `version` is incremented on every write - agents use it
    * to decide whether to re-prompt for consent, so an update that left it alone would silently
    * skip that prompt.
    */
@@ -95,7 +95,7 @@ export class OrganizationService {
     });
 
     // Push the version bump to every connected agent instead of leaving them to discover it on
-    // the next heartbeat. Agents still poll — this only shortens the window, it does not replace
+    // the next heartbeat. Agents still poll - this only shortens the window, it does not replace
     // it, because an agent that was offline for the broadcast must still converge on its own.
     broadcastPolicyUpdated(organizationId, updated.version);
 
@@ -130,7 +130,7 @@ export class OrganizationService {
       update: { tag: dto.tag, isBlacklisted: dto.isBlacklisted },
     });
 
-    // Agents pull categories with the policy, and ingest re-categorizes against the cache —
+    // Agents pull categories with the policy, and ingest re-categorizes against the cache -
     // both must see the new rule immediately, so drop the cache and bump the policy version.
     categoryService.invalidate(organizationId);
     await this.touchPolicyVersion(organizationId);

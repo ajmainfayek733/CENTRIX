@@ -5,7 +5,7 @@ import { env } from '../config/env';
  * Terminal error handler.
  *
  * Client errors and server errors are logged differently on purpose. A 4xx is the API doing its
- * job — a rejected batch, an oversized body — and printing a stack trace for each one buries the
+ * job - a rejected batch, an oversized body - and printing a stack trace for each one buries the
  * 5xx that actually needs attention. Only 5xx gets the stack.
  */
 export const errorHandler = (err: any, req: Request, res: Response, next: NextFunction) => {

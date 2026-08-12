@@ -39,7 +39,7 @@ export class EmployeeService {
    * re-uploads all hundred. Every row gets its own outcome, so the caller can show exactly what
    * landed and what needs attention.
    *
-   * `skipDuplicates` makes re-running an import safe — the common case is adding ten new hires
+   * `skipDuplicates` makes re-running an import safe - the common case is adding ten new hires
    * to a file that already contains ninety existing people.
    */
   async bulkCreateEmployees(dto: BulkCreateEmployeesDto) {
@@ -125,7 +125,7 @@ export class EmployeeService {
     return employee;
   }
 
-  /** Device inventory (Features.md "Device Information") — the asset-management view. */
+  /** Device inventory (Features.md "Device Information") - the asset-management view. */
   async listDevices() {
     return prisma.device.findMany({
       orderBy: [{ isActive: 'desc' }, { lastSeen: 'desc' }],

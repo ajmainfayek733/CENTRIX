@@ -1,10 +1,10 @@
-// Employee Monitoring — v3 schema.
+// Employee Monitoring - v3 schema.
 //
 // Hard rule for this schema: NO Json columns. Every telemetry field the Agent sends gets its
 // own typed column, so the database is queryable by the reporting layer without unpacking a
 // blob, and a malformed field fails at ingest validation rather than silently landing in a
 // document nobody can index. Scalar lists (Postgres `text[]`) are used for genuinely
-// repeated scalars in policy — they are real array columns, not serialized documents.
+// repeated scalars in policy - they are real array columns, not serialized documents.
 //
 // Field names track "Windows Software_v3/docs/Features.md"; table names are snake_case via
 // @@map so raw SQL / BI tools see conventional names.
@@ -18,11 +18,11 @@ datasource db {
 }
 
 // ---------------------------------------------------------------------------
-// Enums — every constrained field in Features.md is an enum rather than a free
+// Enums - every constrained field in Features.md is an enum rather than a free
 // string, so bad values are rejected by Postgres itself.
 // ---------------------------------------------------------------------------
 
-/// Features.md "Activity Logs" → Type
+/// Features.md "Activity Logs" -> Type
 enum ActivityType {
   Application
   Desktop
@@ -32,7 +32,7 @@ enum ActivityType {
   Disconnected
 }
 
-/// Features.md "Activity Logs" → Reason (why the activity session ended)
+/// Features.md "Activity Logs" -> Reason (why the activity session ended)
 enum ActivityEndReason {
   UserInactivity
   ScreenLock
@@ -42,7 +42,7 @@ enum ActivityEndReason {
   SessionEnd
 }
 
-/// Features.md "Activity Logs"/"Browser Activity log" → ProductivityTag
+/// Features.md "Activity Logs"/"Browser Activity log" -> ProductivityTag
 enum ProductivityTag {
   Productive
   Unproductive
@@ -61,7 +61,7 @@ enum SessionEndReason {
   Sleep
   PowerLoss
   Disconnect
-  /// Session was still open when the agent restarted — logout time is a recovered estimate.
+  /// Session was still open when the agent restarted - logout time is a recovered estimate.
   Recovered
 }
 
@@ -70,7 +70,7 @@ enum UsbEventType {
   Disconnected
 }
 
-/// Features.md "USB Logs" → DeviceType
+/// Features.md "USB Logs" -> DeviceType
 enum UsbDeviceType {
   UsbStorage
   MobileDevice
@@ -109,7 +109,7 @@ enum AlertState {
 }
 
 /// What an alert fired about. Determines which of the nullable context columns on Alert
-/// are populated — see the comments on that model.
+/// are populated - see the comments on that model.
 enum AlertType {
   IdleThreshold
   BlacklistedApp
@@ -139,7 +139,7 @@ model Organization {
   createdAt DateTime @default(now())
 
   /// HMAC of the shared enrollment token baked into the agent's install-time config
-  /// (spec §11). Presented once at POST /api/v1/device/enroll to trade for a per-device
+  /// (spec section 11). Presented once at POST /api/v1/device/enroll to trade for a per-device
   /// API key; it is NOT accepted as a credential on any telemetry route. Only the HMAC is
   /// stored, so a database read cannot recover the token.
   enrollmentTokenHash String? @unique
@@ -171,11 +171,11 @@ model Employee {
 }
 
 // ---------------------------------------------------------------------------
-// Devices — Features.md "Device Information".
+// Devices - Features.md "Device Information".
 //
 // Identity note: `deviceId` is the Windows MachineGuid and is the primary stable key.
 // `macAddress` is recorded because Features.md calls it out as burned-into-hardware and
-// stable across IP changes, but it is NOT used as the identity key — MAC is spoofable and
+// stable across IP changes, but it is NOT used as the identity key - MAC is spoofable and
 // multi-NIC machines report several.
 // ---------------------------------------------------------------------------
 
@@ -186,7 +186,7 @@ model Device {
   employeeId     String
   employee       Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
-  /// Windows MachineGuid — HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid.
+  /// Windows MachineGuid - HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid.
   deviceId     String  @unique
   deviceName   String
   /// e.g. "64-bit operating system, x64-based processor"
@@ -223,7 +223,7 @@ model Device {
 }
 
 // ---------------------------------------------------------------------------
-// Ingest idempotency — one row per batch the agent successfully delivered.
+// Ingest idempotency - one row per batch the agent successfully delivered.
 //
 // The agent's queue is at-least-once: a batch that was committed but whose HTTP response was
 // lost is resent verbatim. Per-row `skipDuplicates` already prevented duplicate *rows*, but the
@@ -235,7 +235,7 @@ model Device {
 // from here without touching the telemetry tables at all. Critically, the row is written inside
 // the same transaction as the events, so it can never claim a batch that did not land.
 //
-// `eventIdsHash` guards against a batch id being reused for different content — a replay must
+// `eventIdsHash` guards against a batch id being reused for different content - a replay must
 // prove it is the same batch before it is short-circuited, otherwise a client bug that recycles
 // ids would silently discard real telemetry.
 // ---------------------------------------------------------------------------
@@ -269,7 +269,7 @@ model IngestBatch {
 }
 
 // ---------------------------------------------------------------------------
-// Daily rollup — the read path's aggregate, maintained on write.
+// Daily rollup - the read path's aggregate, maintained on write.
 //
 // Reporting used to sum activity_sessions over a date range on every dashboard load. That is
 // the query that does not survive the jump from 30 devices to 100+: a month of ten-second app
@@ -296,7 +296,7 @@ model DailyActivityRollup {
   deviceId String
   device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
-  /// Local calendar date the activity is attributed to — the agent's own date, not the
+  /// Local calendar date the activity is attributed to - the agent's own date, not the
   /// server's, so a fleet spanning timezones still rolls up to the employee's working day.
   workDate DateTime @db.Date
 
@@ -308,7 +308,7 @@ model DailyActivityRollup {
   neutralSeconds      Int @default(0)
   blacklistedSeconds  Int @default(0)
 
-  // -- Input counts — from activity_metrics, counts only, never content ----
+  // -- Input counts - from activity_metrics, counts only, never content ----
   keyCount   Int @default(0)
   mouseCount Int @default(0)
 
@@ -335,7 +335,7 @@ model DailyActivityRollup {
 }
 
 // ---------------------------------------------------------------------------
-// Attendance — Features.md "Attendace report".
+// Attendance - Features.md "Attendace report".
 //
 // One row per OS logon session. `logoutTime` is written repeatedly (last-write-wins) as
 // the agent observes lock/sleep/shutdown, so an unexpected power loss still leaves the
@@ -347,7 +347,7 @@ model AttendanceSession {
   deviceId String
   device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
-  /// Windows SID of the logged-on user — the agent never sends usernames.
+  /// Windows SID of the logged-on user - the agent never sends usernames.
   userSid String
   /// Agent-generated GUID identifying this logon session; the dedup/idempotency key.
   sessionId String @unique
@@ -376,10 +376,10 @@ model AttendanceSession {
 }
 
 // ---------------------------------------------------------------------------
-// Activity level metric — Features.md "Activity Level Metric".
+// Activity level metric - Features.md "Activity Level Metric".
 //
 // PRIVACY: counts only. There is deliberately no column here that could hold a key,
-// a character, or a sequence — spec §1.2 and §6 exclude keystroke content entirely.
+// a character, or a sequence - spec section 1.2 and section 6 exclude keystroke content entirely.
 // ---------------------------------------------------------------------------
 
 model ActivityMetric {
@@ -413,7 +413,7 @@ model ActivityMetric {
 }
 
 // ---------------------------------------------------------------------------
-// Activity log — Features.md "Activity Logs".
+// Activity log - Features.md "Activity Logs".
 // One row per foreground-application session (or idle/lock/sleep interval).
 // ---------------------------------------------------------------------------
 
@@ -452,7 +452,7 @@ model ActivitySession {
 }
 
 // ---------------------------------------------------------------------------
-// Browser activity — Features.md "Browser Activity log".
+// Browser activity - Features.md "Browser Activity log".
 // Linked to its owning ActivitySession via activitySessionId, per Features.md.
 // ---------------------------------------------------------------------------
 
@@ -492,7 +492,7 @@ model BrowserActivity {
 }
 
 // ---------------------------------------------------------------------------
-// USB device events — Features.md "USB Logs".
+// USB device events - Features.md "USB Logs".
 // Connection/removal metadata only; contents are never inspected.
 // ---------------------------------------------------------------------------
 
@@ -531,14 +531,14 @@ model UsbEvent {
 }
 
 // ---------------------------------------------------------------------------
-// Alerts — Features.md "Alert Notification".
+// Alerts - Features.md "Alert Notification".
 //
 // The old schema carried a `contextJson` string. It is replaced by the nullable typed
 // columns below; which ones are populated depends on `type`:
-//   IdleThreshold      → idleSeconds, thresholdSeconds
-//   BlacklistedApp     → contextAppName, contextProcessName
-//   BlacklistedWebsite → contextDomain, contextUrl
-//   UsbDeviceConnected → contextUsbSerialNumber, contextUsbFriendlyName
+//   IdleThreshold      -> idleSeconds, thresholdSeconds
+//   BlacklistedApp     -> contextAppName, contextProcessName
+//   BlacklistedWebsite -> contextDomain, contextUrl
+//   UsbDeviceConnected -> contextUsbSerialNumber, contextUsbFriendlyName
 //
 // Upserted on clientEventId because an escalating incident reuses its id rather than
 // creating a new row.
@@ -586,7 +586,7 @@ model Alert {
 }
 
 // ---------------------------------------------------------------------------
-// Screenshots — Features.md "Periodic ScreenShots". Image bytes live on disk;
+// Screenshots - Features.md "Periodic ScreenShots". Image bytes live on disk;
 // only metadata and the path are stored here.
 // ---------------------------------------------------------------------------
 
@@ -611,11 +611,11 @@ model Screenshot {
 }
 
 // ---------------------------------------------------------------------------
-// Policy — Features.md "Configuring Policies".
+// Policy - Features.md "Configuring Policies".
 //
 // Previously a single Json document. Now one row per organization with a column per
 // setting, so the dashboard settings screen can update individual fields and the
-// database can enforce types. `version` MUST increment on every write — the agent
+// database can enforce types. `version` MUST increment on every write - the agent
 // compares it to decide whether to re-prompt for consent.
 // ---------------------------------------------------------------------------
 
@@ -654,7 +654,7 @@ model Policy {
   usbReconciliationIntervalSeconds Int   @default(5)
   usbAlertOnInsertion            Boolean @default(false)
 
-  // -- Alerts — Features.md: 30 Normal / 45 Moderate / 60 Severe ----------
+  // -- Alerts - Features.md: 30 Normal / 45 Moderate / 60 Severe ----------
   alertEnabled              Boolean @default(true)
   alertIdleEnabled          Boolean @default(true)
   alertIdleNormalSeconds    Int     @default(1800)
@@ -676,7 +676,7 @@ model Policy {
 
   // -- Realtime -----------------------------------------------------------
   /// Whether agents and dashboards should hold a Socket.IO connection at all. Turning this off
-  /// falls the fleet back to poll-only behaviour without a redeploy — the HTTP paths are the
+  /// falls the fleet back to poll-only behaviour without a redeploy - the HTTP paths are the
   /// system of record either way, so this is a safe switch to flip under load.
   realtimeEnabled Boolean @default(true)
 
@@ -685,7 +685,7 @@ model Policy {
   /// This is what makes "active now" on the dashboard mean something: an open socket survives an
   /// unplugged cable or a suspended laptop for minutes, so liveness is derived from a heartbeat
   /// having arrived, not from a connection existing. 30s is a full order of magnitude below the
-  /// old five-minute online window while costing one tiny frame per device — 100 devices is
+  /// old five-minute online window while costing one tiny frame per device - 100 devices is
   /// roughly three frames a second across the whole fleet.
   presenceHeartbeatSeconds Int @default(30)
 
@@ -697,19 +697,19 @@ model Policy {
   /// Captures per page in the screenshot gallery. Deliberately its own setting, and an order of
   /// magnitude smaller than logPageSize: a page of log rows is a few kilobytes of JSON, while a
   /// page of screenshots is that many full-size JPEGs actually fetched and decoded by the
-  /// browser. At ~500 KB a capture, a 50-item page is ~25 MB of image traffic per scroll — so
+  /// browser. At ~500 KB a capture, a 50-item page is ~25 MB of image traffic per scroll - so
   /// the two cannot share a number without one of them being wrong. 12 fills the 3-across grid
   /// four rows deep, which is two screens' worth of scrolling before the next request.
   screenshotPageSize Int @default(12)
 
-  // -- Retention — spec §3.1 configurable auto-deletion --------------------
+  // -- Retention - spec section 3.1 configurable auto-deletion --------------------
   retentionDays            Int @default(90)
   undeliveredRetentionDays Int @default(30)
 
   // -- Working hours ------------------------------------------------------
   workingHoursStartLocal String   @default("08:00")
   workingHoursEndLocal   String   @default("17:00")
-  /// Postgres text[] — a real array column, not a serialized document.
+  /// Postgres text[] - a real array column, not a serialized document.
   workingDays            String[] @default(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])
 
   createdAt DateTime @default(now())
@@ -719,7 +719,7 @@ model Policy {
 }
 
 // ---------------------------------------------------------------------------
-// Productivity categorization — spec §4 "Productivity categorization", admin-editable.
+// Productivity categorization - spec section 4 "Productivity categorization", admin-editable.
 // Also drives the blacklist alerts, via `isBlacklisted`.
 // ---------------------------------------------------------------------------
 
@@ -743,7 +743,7 @@ model Category {
 }
 
 // ---------------------------------------------------------------------------
-// Consent — spec §3. Proof the employee was notified before monitoring began.
+// Consent - spec section 3. Proof the employee was notified before monitoring began.
 // ---------------------------------------------------------------------------
 
 model ConsentRecord {
@@ -761,7 +761,7 @@ model ConsentRecord {
 }
 
 // ---------------------------------------------------------------------------
-// Dashboard users (Better Auth) — managers/HR/auditors. Unrelated to device identity.
+// Dashboard users (Better Auth) - managers/HR/auditors. Unrelated to device identity.
 // ---------------------------------------------------------------------------
 
 model User {
@@ -825,7 +825,7 @@ model Verification {
   @@map("verifications")
 }
 
-/// spec §9 — full audit log of who viewed what and when.
+/// spec section 9 - full audit log of who viewed what and when.
 model AuditLog {
   id        String   @id @default(uuid())
   userId    String

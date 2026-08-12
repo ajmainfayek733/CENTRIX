@@ -6,7 +6,7 @@ import type { DeviceRow, EmployeeSummary } from '@/types/api';
 import { DeviceActions } from './DeviceActions';
 import { DeviceAssignment } from './DeviceAssignment';
 
-export const metadata = { title: 'Devices · Employee Monitor' };
+export const metadata = { title: 'Devices - Employee Monitor' };
 export const dynamic = 'force-dynamic';
 
 export default async function DevicesPage() {
@@ -23,7 +23,7 @@ export default async function DevicesPage() {
   }));
 
   // Devices enroll themselves and park on a placeholder employee until an admin assigns them,
-  // so unassigned ones are surfaced first — they are the actionable set.
+  // so unassigned ones are surfaced first - they are the actionable set.
   const unassigned = devices.filter((device) => device.employee.status === 'placeholder');
   const assigned = devices.filter((device) => device.employee.status !== 'placeholder');
 
@@ -34,7 +34,7 @@ export default async function DevicesPage() {
       <div>
         <h1 className="text-lg font-semibold">Devices</h1>
         <p className="mt-0.5 text-sm text-text-secondary">
-          {devices.length} enrolled · {unassigned.length} awaiting assignment
+          {devices.length} enrolled - {unassigned.length} awaiting assignment
         </p>
       </div>
 
@@ -43,7 +43,7 @@ export default async function DevicesPage() {
           <p className="mb-4 text-sm text-text-secondary">
             These workstations enrolled with the org token but are not attached to an employee yet.
             Their telemetry is being stored, but it will not appear in reports until assigned.
-            {employees.length === 0 && ' Create employees first — import a roster from the Employees screen.'}
+            {employees.length === 0 && ' Create employees first - import a roster from the Employees screen.'}
           </p>
           <DeviceTable devices={unassigned} employees={assignable} isAdmin={isAdmin} />
         </Card>
@@ -115,14 +115,14 @@ function DeviceTable({
                   )}
                 </Td>
                 <Td muted>
-                  {device.edition ?? '—'}
+                  {device.edition ?? '-'}
                   <span className="block text-xs">{device.version ?? ''}</span>
                 </Td>
                 <Td muted>
-                  <span className="font-mono text-xs">{device.macAddress ?? '—'}</span>
+                  <span className="font-mono text-xs">{device.macAddress ?? '-'}</span>
                 </Td>
                 <Td align="right" muted numeric>
-                  {device.agentVersion ?? '—'}
+                  {device.agentVersion ?? '-'}
                 </Td>
                 <Td align="right" muted>
                   <LiveDeviceStatus

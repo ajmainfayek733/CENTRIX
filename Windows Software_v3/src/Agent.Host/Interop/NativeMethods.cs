@@ -4,7 +4,7 @@ using System.Text;
 namespace Agent.Host.Interop;
 
 /// <summary>
-/// Win32 entry points used by the interactive collectors. All of these are session-bound —
+/// Win32 entry points used by the interactive collectors. All of these are session-bound -
 /// they only return meaningful values from a process running on the user's desktop, which is
 /// why this half of the agent exists as a separate executable from the service.
 /// </summary>

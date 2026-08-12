@@ -54,8 +54,8 @@ export default async function EmployeeDetailPage({
 
   /*
     Screenshots are the most invasive surface in the product and the Auditor role is excluded from
-    them by spec §6. The gate is here as well as on the API because a section that renders and then
-    fails to load its images is worse than one that was never offered — and asking for the first
+    them by spec section 6. The gate is here as well as on the API because a section that renders and then
+    fails to load its images is worse than one that was never offered - and asking for the first
     page at all would just earn a 403. The API remains the enforcement point; this is the UI
     agreeing with it.
   */
@@ -71,12 +71,12 @@ export default async function EmployeeDetailPage({
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <Link href="/employees" className="text-xs text-text-secondary hover:text-text-primary">
-            ← Employees
+            Back to employees
           </Link>
           <h1 className="mt-1 text-lg font-semibold">{employee.name}</h1>
           <p className="mt-0.5 text-sm text-text-secondary">
             {employee.email}
-            {employee.department ? ` · ${employee.department}` : ''}
+            {employee.department ? ` - ${employee.department}` : ''}
           </p>
         </div>
         <DateRangePicker startDate={range.startDate} endDate={range.endDate} />
@@ -162,7 +162,7 @@ export default async function EmployeeDetailPage({
                     <Td numeric>
                       {row.logoutTime ? formatTime(row.logoutTime) : <Badge tone="brand">Still signed in</Badge>}
                     </Td>
-                    <Td muted>{row.endReason ?? '—'}</Td>
+                    <Td muted>{row.endReason ?? '-'}</Td>
                   </tr>
                 ))}
               </tbody>
@@ -175,7 +175,7 @@ export default async function EmployeeDetailPage({
         "showing N" rather than "N entries": only the first page is loaded here, so a total is a
         number this page does not have. The window fetches the rest as it is scrolled.
       */}
-      <Card title={`Timeline · showing ${timeline.rows.length}${timeline.hasMore ? '+' : ''}`}>
+      <Card title={`Timeline - showing ${timeline.rows.length}${timeline.hasMore ? '+' : ''}`}>
         <TimelineTable
           initial={timeline}
           employeeId={employee.id}
@@ -186,7 +186,7 @@ export default async function EmployeeDetailPage({
 
       {screenshots && (
         <Card
-          title={`Screenshots · showing ${screenshots.rows.length}${screenshots.hasMore ? '+' : ''}`}
+          title={`Screenshots - showing ${screenshots.rows.length}${screenshots.hasMore ? '+' : ''}`}
         >
           <ScreenshotGallery
             initial={screenshots}

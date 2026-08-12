@@ -9,15 +9,15 @@
  * set before first paint by the inline script in layout.tsx.
  *
  * A class rather than only a prefers-color-scheme media query, because the theme toggle has
- * to be able to override the OS preference in both directions — a media query alone can
+ * to be able to override the OS preference in both directions - a media query alone can
  * express "follow the system" but not "I want light on a dark machine".
  *
  * Two token layers live below:
- *   1. The palette — the real colours, one definition per theme. This is the source of truth.
- *   2. The shadcn/ui contract — the names shadcn components hardcode (--card, --primary,
- *      --muted, …), defined as var() aliases onto the palette. Aliases are never restated in
+ *   1. The palette - the real colours, one definition per theme. This is the source of truth.
+ *   2. The shadcn/ui contract - the names shadcn components hardcode (--card, --primary,
+ *      --muted, ...), defined as var() aliases onto the palette. Aliases are never restated in
  *      .dark: they resolve at use site, so overriding a palette token switches both layers.
- *      This relies on `dark` sitting on <html>, the same element as :root — see layout.tsx.
+ *      This relies on `dark` sitting on <html>, the same element as :root - see layout.tsx.
  */
 
 :root {
@@ -77,7 +77,7 @@
 }
 
 .dark {
-  /* Palette only — the contract aliases above follow automatically. */
+  /* Palette only - the contract aliases above follow automatically. */
   --background: #09090b;
   --surface: #18181b;
   --surface-muted: #27272a;
@@ -152,14 +152,14 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* The font stack itself comes from `html { @apply font-sans }` in the base layer below —
+/* The font stack itself comes from `html { @apply font-sans }` in the base layer below -
    `@theme inline` inlines its values into utilities instead of exposing --font-sans as a
    readable custom property, so referencing var(--font-sans) here would resolve to nothing. */
 body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Tabular figures everywhere numbers are compared down a column — without this, proportional
+/* Tabular figures everywhere numbers are compared down a column - without this, proportional
    digits make a table of durations impossible to scan. */
 .tnum {
   font-variant-numeric: tabular-nums;

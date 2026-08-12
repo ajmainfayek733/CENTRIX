@@ -44,7 +44,7 @@ export class EnrollmentError extends Error {
 
 /** What a push did, so the controller can answer the agent and log honestly. */
 export interface PushOutcome {
-  /** Ids now durably stored — freshly written or already present. */
+  /** Ids now durably stored - freshly written or already present. */
   acknowledged: string[];
   /** True when the whole batch was recognized as a replay and no work was redone. */
   replay: boolean;
@@ -105,7 +105,7 @@ class IngestService {
 
       if (existing) {
         // Same id, different payload. Trusting the ledger here would silently discard real
-        // telemetry, so the batch is processed on its merits and the ledger row is left alone —
+        // telemetry, so the batch is processed on its merits and the ledger row is left alone -
         // per-event deduplication still guarantees correctness, it is just the slower path.
         console.warn(
           `ingest: device ${device.deviceId} reused batch ${ledgerBatchId} with different contents; ` +
@@ -150,7 +150,7 @@ class IngestService {
     // dashboards can move their totals without querying anything. The work was done once here;
     // making every viewer recompute it was the cost this replaces.
     //
-    // A failure here cannot fail the ingest — the data is already durable, and the worst case is
+    // A failure here cannot fail the ingest - the data is already durable, and the worst case is
     // a dashboard whose numbers wait for its next refresh.
     broadcastTelemetryIngested(device.organizationId, {
       deviceId: device.id,
@@ -162,7 +162,7 @@ class IngestService {
     });
 
     // Atomic-batch contract: once the write above resolves, every row in this push is durably
-    // stored — freshly inserted, or already present from an earlier partially-acked retry.
+    // stored - freshly inserted, or already present from an earlier partially-acked retry.
     return { acknowledged: eventIds, replay: false };
   }
 
@@ -187,7 +187,7 @@ class IngestService {
   // Work-date attribution.
   //
   // The rollup is keyed on the employee's local calendar date, which only the workstation knows
-  // — a fleet spanning timezones would otherwise have days that start at the server's midnight.
+  // - a fleet spanning timezones would otherwise have days that start at the server's midnight.
   // Attendance carries that date, so telemetry that references an attendance session inherits
   // it. Everything else falls back to the UTC date of its own timestamp, which is correct for a
   // single-timezone office and never worse than guessing.
@@ -256,8 +256,8 @@ class IngestService {
   }
 
   // -------------------------------------------------------------------------
-  // Attendance — upsert on sessionId. The agent re-sends the row as logoutTime
-  // firms up (lock → sleep → shutdown), so later writes must overwrite earlier ones.
+  // Attendance - upsert on sessionId. The agent re-sends the row as logoutTime
+  // firms up (lock -> sleep -> shutdown), so later writes must overwrite earlier ones.
   //
   // Contributes no seconds to the rollup: totalActiveSeconds here is the agent's own sum of the
   // activity sessions it already sent, and counting both would double every working day. It only
@@ -296,7 +296,7 @@ class IngestService {
   }
 
   // -------------------------------------------------------------------------
-  // Activity metric — insert-only counts. No content is accepted by the schema.
+  // Activity metric - insert-only counts. No content is accepted by the schema.
   // -------------------------------------------------------------------------
 
   private async prepareActivityMetrics(
@@ -412,7 +412,7 @@ class IngestService {
   // -------------------------------------------------------------------------
   // Browser activity. Same server-side re-categorization as activity sessions.
   //
-  // activitySessionId is a foreign key to a row that may not have arrived yet — the
+  // activitySessionId is a foreign key to a row that may not have arrived yet - the
   // app session closes after the browser visit it contains. Unknown parents are nulled
   // rather than rejected, so an out-of-order batch is not lost.
   // -------------------------------------------------------------------------
@@ -477,7 +477,7 @@ class IngestService {
   }
 
   // -------------------------------------------------------------------------
-  // USB events — connection/removal metadata only, never contents.
+  // USB events - connection/removal metadata only, never contents.
   // -------------------------------------------------------------------------
 
   private async prepareUsbEvents(device: DeviceContext, events: UsbEventDto[]): Promise<PreparedBatch> {
@@ -529,7 +529,7 @@ class IngestService {
   }
 
   // -------------------------------------------------------------------------
-  // Alerts — upsert, because an escalating incident (idle 30 → 45 → 60 min)
+  // Alerts - upsert, because an escalating incident (idle 30 -> 45 -> 60 min)
   // reuses one clientEventId rather than creating a new row per escalation.
   //
   // Every alert is written, but only first sightings are counted: an escalation is the same
@@ -586,12 +586,12 @@ class IngestService {
   // Policy / consent / screenshots
   // -------------------------------------------------------------------------
 
-  /** GET /api/v1/policy — always the full document, never a diff. */
+  /** GET /api/v1/policy - always the full document, never a diff. */
   async getPolicy(organizationId: string) {
     return getOrCreatePolicy(organizationId);
   }
 
-  /** POST /api/v1/consent — idempotent on (device, userSid, policyVersion). */
+  /** POST /api/v1/consent - idempotent on (device, userSid, policyVersion). */
   async recordConsent(device: DeviceContext, dto: ConsentDto) {
     return prisma.consentRecord.upsert({
       where: {
@@ -611,7 +611,7 @@ class IngestService {
     });
   }
 
-  /** POST /api/v1/screenshots — idempotent on clientEventId: overwrite, not append. */
+  /** POST /api/v1/screenshots - idempotent on clientEventId: overwrite, not append. */
   async storeScreenshot(device: DeviceContext, fields: ScreenshotFieldsDto, tempFilePath: string) {
     const { storagePath, sizeBytes } = await persistScreenshot(device.id, fields.clientEventId, tempFilePath);
 
@@ -635,7 +635,7 @@ class IngestService {
   }
 
   // -------------------------------------------------------------------------
-  // Device enrollment — Features.md "Device Auth".
+  // Device enrollment - Features.md "Device Auth".
   //
   // Trades the install-time org enrollment token for a per-device API key. The MAC address
   // is recorded as Features.md asks, but identity is keyed on the Windows MachineGuid:
@@ -717,12 +717,12 @@ class IngestService {
   }
 
   /**
-   * GET /api/v1/heartbeat — Features.md "Device Auth". The agent must pass this before it
+   * GET /api/v1/heartbeat - Features.md "Device Auth". The agent must pass this before it
    * starts syncing, so it doubles as a check that the credential is still valid and a cheap
    * way for the agent to learn the current policy version without pulling the whole document.
    *
    * This, not the Socket.IO connection, is the agent's availability gate. It proves the
-   * credential is accepted *and* that the server can reach Postgres to answer — neither of
+   * credential is accepted *and* that the server can reach Postgres to answer - neither of
    * which an open socket implies.
    */
   async heartbeat(device: DeviceContext) {
@@ -757,7 +757,7 @@ class IngestService {
  *
  * Sorted before hashing so a retry that repacked the same events in a different order is still
  * recognized as the same batch. This is a contents check against one agent's own previous batch,
- * not a security boundary — nothing here is trusted on the strength of the hash alone.
+ * not a security boundary - nothing here is trusted on the strength of the hash alone.
  */
 function hashEventIds(ids: string[]): string {
   return createHash('sha256').update([...ids].sort().join(',')).digest('hex');

@@ -8,8 +8,8 @@ import { StatTile } from '@/components/ui';
  * Figures that move as telemetry lands, without asking the server anything.
  *
  * Each takes the server-rendered value as its baseline and adds what has been ingested since the
- * page was built. The addend arrives with the ingest event itself — the backend aggregated the
- * batch once, inside the write transaction, and pushed the result — so no viewer recomputes it
+ * page was built. The addend arrives with the ingest event itself - the backend aggregated the
+ * batch once, inside the write transaction, and pushed the result - so no viewer recomputes it
  * and no viewer waits for a round trip.
  *
  * The baseline is not decoration. It is what makes this correct across a reconnect: the deltas
@@ -33,7 +33,7 @@ export function LiveActiveTimeTile({ baseline }: { baseline: number }) {
 /**
  * Productivity share, recomputed from live totals rather than adjusted.
  *
- * A percentage cannot be updated by adding a delta to it — the denominator moves too. Both parts
+ * A percentage cannot be updated by adding a delta to it - the denominator moves too. Both parts
  * are tracked, so this recomputes from numerator and denominator, which is the only way to keep
  * it honest as work arrives.
  */
@@ -63,7 +63,7 @@ export function LiveProductivityTile({
 /**
  * Threshold at which the productive share is shown in the brand colour.
  *
- * A presentation cue only — nothing decides anything on it. Half of active time being productive
+ * A presentation cue only - nothing decides anything on it. Half of active time being productive
  * is a deliberately unremarkable bar, because this tile is glanced at, not judged by.
  */
 const PRODUCTIVE_TARGET_PERCENT = 50;

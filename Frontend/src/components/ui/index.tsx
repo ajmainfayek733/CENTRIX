@@ -164,7 +164,7 @@ export function EmptyState({ message }: { message: string }) {
 }
 
 /**
- * Proportional productivity bar. Purely decorative reinforcement of the numbers beside it â€”
+ * Proportional productivity bar. Purely decorative reinforcement of the numbers beside it -
  * the segments carry a title attribute but the figures are always shown as text too, so the
  * information is never colour-only.
  */

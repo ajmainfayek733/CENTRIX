@@ -9,7 +9,7 @@ namespace Agent.Service.Workers;
 /// <summary>
 /// Owns the agent's relationship with the backend: enrollment, the heartbeat gate, and policy
 /// refresh. Features.md "Device Auth" requires the agent to pass a heartbeat before it starts
-/// syncing, and to retry enrollment indefinitely with backoff if the server is unreachable —
+/// syncing, and to retry enrollment indefinitely with backoff if the server is unreachable -
 /// without ever interrupting local data collection.
 ///
 /// Enrollment, heartbeat and policy live in one worker rather than three because they are
@@ -77,7 +77,7 @@ public sealed class ConnectivityWorker(
             }
             catch (DeviceUnauthorizedException ex)
             {
-                // The stored key is no longer valid — most often because the workstation was
+                // The stored key is no longer valid - most often because the workstation was
                 // re-imaged or the device row was deleted. Drop it and let the next cycle
                 // re-enroll from the install-time token.
                 _logger.LogWarning(ex, "Device credential rejected; discarding it and re-enrolling");

@@ -19,7 +19,7 @@ import organizationRoutes from "./modules/organization";
 const app = express();
 
 // Must be set before any middleware reads req.ip. Drives whether x-forwarded-for is believed at
-// all — see TRUST_PROXY in config/env.ts. Numeric values mean "this many proxies in front".
+// all - see TRUST_PROXY in config/env.ts. Numeric values mean "this many proxies in front".
 const trustProxy = /^\d+$/.test(env.TRUST_PROXY) ? Number(env.TRUST_PROXY) : env.TRUST_PROXY;
 app.set('trust proxy', trustProxy === 'false' ? false : trustProxy === 'true' ? true : trustProxy);
 
@@ -33,18 +33,18 @@ app.use(
 );
 app.use(morgan(env.NODE_ENV === "production" ? "combined" : "dev"));
 
-// CRITICAL MOUNT ORDER (per Express.md §6):
+// CRITICAL MOUNT ORDER (per Express.md section 6):
 // Better Auth handler reads raw request body directly and MUST be registered BEFORE express.json()
 app.all("/api/auth/{*any}", toNodeHandler(auth));
 
 // Body parsing middleware for all subsequent standard API routes.
 // The limit is raised from Express's 100kb default because agent event batches legitimately
-// exceed it — see JSON_BODY_LIMIT in config/env.ts.
+// exceed it - see JSON_BODY_LIMIT in config/env.ts.
 app.use(express.json({ limit: env.JSON_BODY_LIMIT }));
 app.use(express.urlencoded({ extended: true, limit: env.JSON_BODY_LIMIT }));
 
 /**
- * Health check — the availability oracle for anything that needs to know whether this server can
+ * Health check - the availability oracle for anything that needs to know whether this server can
  * actually do work.
  *
  * It runs a real query rather than returning a constant. A process that is listening but cannot
@@ -52,7 +52,7 @@ app.use(express.urlencoded({ extended: true, limit: env.JSON_BODY_LIMIT }));
  * than no health check: it tells the agent to push telemetry into a hole.
  *
  * This is deliberately the only thing the agent and any load balancer should trust for
- * availability. An open Socket.IO connection proves none of it — see src/realtime/events.ts.
+ * availability. An open Socket.IO connection proves none of it - see src/realtime/events.ts.
  */
 app.get("/health", async (_req, res) => {
   try {
@@ -72,12 +72,12 @@ app.get("/health", async (_req, res) => {
   }
 });
 
-// Write path for the Windows Agent — exactly the surface documented in
-// docs/backend-api-specification.md §4 (events/{channel}, policy, screenshots, consent).
+// Write path for the Windows Agent - exactly the surface documented in
+// docs/backend-api-specification.md section 4 (events/{channel}, policy, screenshots, consent).
 app.use("/api/v1", ingestRoutes);
 
 // Read/admin path for the human dashboard (managers, admins, auditors). Out of scope of the
-// Agent API spec (§1.1) — this is backend-owned surface.
+// Agent API spec (section 1.1) - this is backend-owned surface.
 app.use("/v1/dashboard/auth", authRoutes);
 app.use("/v1/dashboard/organizations", organizationRoutes);
 app.use("/v1/dashboard/employees", employeeRoutes);
@@ -87,16 +87,16 @@ app.use("/v1/dashboard/reports", reportRoutes);
 app.use(errorHandler);
 
 // Socket.IO shares the Express port, so it needs the raw http.Server rather than the shorthand
-// app.listen() returns. Signalling only — telemetry and policy still travel over the REST API
+// app.listen() returns. Signalling only - telemetry and policy still travel over the REST API
 // above, which is the durable, acknowledged, idempotent path.
 export const server = createServer(app);
 
 export const io = initRealtime(server);
 
 server.listen(env.PORT, () => {
-  console.log(`🚀 Monitoring Server active at http://localhost:${env.PORT}`);
-  console.log(`🔒 Better Auth endpoints mounted at http://localhost:${env.PORT}/api/auth/*`);
-  console.log(`📡 Realtime signalling on /agents and /dashboard`);
+  console.log(` Monitoring Server active at http://localhost:${env.PORT}`);
+  console.log(` Better Auth endpoints mounted at http://localhost:${env.PORT}/api/auth/*`);
+  console.log(` Realtime signalling on /agents and /dashboard`);
 });
 
 export default app;

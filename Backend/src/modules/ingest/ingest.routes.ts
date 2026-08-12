@@ -58,7 +58,7 @@ const validateEventBatch = async (req: Request, res: Response, next: NextFunctio
 };
 
 // -- Enrollment (Features.md "Device Auth") ---------------------------------
-// No device credential yet — authorized by the install-time org enrollment token instead.
+// No device credential yet - authorized by the install-time org enrollment token instead.
 // Rate limited hard because this endpoint mints credentials, but keyed on the MachineGuid in
 // the body rather than the source IP: capping *distinct machines joining per minute* would
 // throttle a whole fleet rolling out from behind one NAT, which is the opposite of the intent.

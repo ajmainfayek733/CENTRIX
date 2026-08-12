@@ -6,7 +6,7 @@
     <AssemblyName>EmployeeMonitor.Service</AssemblyName>
 
     <!-- Self-contained: the 30 target workstations must not need a .NET runtime installed
-         (spec section 11). Not trimmed — System.Management resolves WMI types by reflection
+         (spec section 11). Not trimmed - System.Management resolves WMI types by reflection
          and trimming silently breaks USB collection. -->
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>

@@ -12,7 +12,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-// Employee Monitor Agent — service half.
+// Employee Monitor Agent - service half.
 //
 // Runs as LocalSystem in session 0. Owns policy, backend sync, USB events, the SQLite store and
 // supervision of the per-user host. It deliberately never touches the interactive desktop: see
@@ -34,7 +34,7 @@ builder.Logging.AddEventLog(settings =>
 });
 
 // The Event Log holds warnings and errors well, but it is a poor place to read a sequence of
-// events from — and diagnosing a workstation usually means asking for a file, not for remote
+// events from - and diagnosing a workstation usually means asking for a file, not for remote
 // Event Viewer access. Both sinks are registered; this is the one an admin is asked to send.
 var serviceLogOptions = new FileLogOptions { FileNamePrefix = "service" };
 builder.Logging.AddAgentFileLog(serviceLogOptions);

@@ -11,7 +11,7 @@ import type { ScreenshotRow } from '@/types/api';
  *
  * Rendered through a portal onto <body>. The gallery it opens from is an internally-scrolling
  * region inside a card, so a viewer rendered in place would be clipped by that container and
- * would scroll with it — the portal is what lets it cover the page.
+ * would scroll with it - the portal is what lets it cover the page.
  */
 
 /**
@@ -20,7 +20,7 @@ import type { ScreenshotRow } from '@/types/api';
  * a viewer that can shrink it further just wastes the screen it was opened to fill.
  */
 const MIN_ZOOM = 1;
-/** A 1080p capture at 8x is roughly pixel-doubled — past that there is no more detail to reveal. */
+/** A 1080p capture at 8x is roughly pixel-doubled - past that there is no more detail to reveal. */
 const MAX_ZOOM = 8;
 /** Multiplier per button press. Geometric so each step feels the same size at any zoom level. */
 const ZOOM_STEP = 1.4;
@@ -86,7 +86,7 @@ export function ScreenshotViewer({
    * Keeps the image from being dragged out of its own frame.
    *
    * The bound is half the overflow on each axis: at 1x there is no overflow, so both collapse to
-   * zero and the image re-centres itself — which is also what makes "reset" need no special case.
+   * zero and the image re-centres itself - which is also what makes "reset" need no special case.
    */
   const clampView = useCallback((next: View): View => {
     const frame = frameRef.current;
@@ -160,7 +160,7 @@ export function ScreenshotViewer({
   // picture that is no longer on screen, so carrying them over lands the operator on a random
   // corner of the next one.
   //
-  // Adjusted during render, not in an effect — an effect would paint one frame of the new image
+  // Adjusted during render, not in an effect - an effect would paint one frame of the new image
   // transformed by the old view, which is a visible jump on every arrow press.
   const [shownId, setShownId] = useState(current?.id);
   if (current?.id !== shownId) {
@@ -169,7 +169,7 @@ export function ScreenshotViewer({
     setStatus('loading');
   }
 
-  // The page behind the overlay must not scroll while it is open — the wheel belongs to the
+  // The page behind the overlay must not scroll while it is open - the wheel belongs to the
   // viewer, and a scrolled-away background is disorienting on close.
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -209,7 +209,7 @@ export function ScreenshotViewer({
         return;
       }
 
-      // '=' and '_' are the unshifted and shifted faces of the same two keys — an operator
+      // '=' and '_' are the unshifted and shifted faces of the same two keys - an operator
       // pressing shift-plus expects to zoom in, not to be told the key does nothing.
       const shortcuts: Record<string, (() => void) | undefined> = {
         Escape: onClose,
@@ -314,8 +314,8 @@ export function ScreenshotViewer({
           <p className="truncate text-sm font-medium">{formatDateTime(current.capturedAt)}</p>
           <p className="truncate text-xs text-white/60">
             {current.deviceName ?? 'Unknown device'}
-            {current.width && current.height ? ` · ${current.width}×${current.height}` : ''}
-            {` · ${formatBytes(current.sizeBytes)}`}
+            {current.width && current.height ? ` - ${current.width}x${current.height}` : ''}
+            {` - ${formatBytes(current.sizeBytes)}`}
           </p>
         </div>
 
@@ -374,14 +374,14 @@ export function ScreenshotViewer({
           onPointerUp={endPan}
           onPointerCancel={endPan}
           onWheel={onWheel}
-          // Double-click toggles between fitted and a useful magnification — the fastest way to
+          // Double-click toggles between fitted and a useful magnification - the fastest way to
           // read a window title without three presses of the zoom button.
           onDoubleClick={(event) =>
             zoomed ? resetView() : zoomBy(ZOOM_STEP * ZOOM_STEP, anchorFromEvent(event))
           }
         >
           {status === 'loading' && (
-            <p className="absolute inset-0 grid place-items-center text-sm text-white/60">Loading…</p>
+            <p className="absolute inset-0 grid place-items-center text-sm text-white/60">Loading...</p>
           )}
 
           {status === 'failed' ? (
@@ -402,7 +402,7 @@ export function ScreenshotViewer({
               className="absolute inset-0 m-auto max-h-full max-w-full object-contain"
               style={{
                 transform: `translate3d(${view.x}px, ${view.y}px, 0) scale(${view.scale})`,
-                // Instant while dragging, eased for a zoom step — a transition on a pan turns the
+                // Instant while dragging, eased for a zoom step - a transition on a pan turns the
                 // image into a rubber band that lags the pointer.
                 transition: panning ? 'none' : 'transform 120ms ease-out',
                 visibility: status === 'ready' ? 'visible' : 'hidden',
@@ -421,7 +421,7 @@ export function ScreenshotViewer({
       </div>
 
       <footer className="px-4 py-2 text-center text-[11px] text-white/40">
-        ← → to move between captures · + − to zoom · 0 to reset · drag to pan · Esc to close
+        Arrow keys move between captures - plus and minus zoom - 0 resets - drag to pan - Esc closes
       </footer>
     </div>
   );

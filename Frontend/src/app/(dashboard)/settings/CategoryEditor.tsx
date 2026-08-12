@@ -38,7 +38,7 @@ export function CategoryEditor({
           pattern: trimmed,
           target,
           tag,
-          // "Blacklisted" is not just a label â€” it is what makes the agent warn the employee,
+          // "Blacklisted" is not just a label - it is what makes the agent warn the employee,
           // so selecting it here sets the flag the alert engine actually reads.
           isBlacklisted: tag === 'Blacklisted',
         });
@@ -64,7 +64,7 @@ export function CategoryEditor({
     'rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-brand';
 
   return (
-    <Card title={`Productivity rules Â· ${categories.length}`}>
+    <Card title={`Productivity rules - ${categories.length}`}>
       <div className="mb-5 flex flex-wrap items-end gap-2">
         <label className="block">
           <span className="mb-1 block text-xs text-text-secondary">Matches</span>

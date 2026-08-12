@@ -6,17 +6,17 @@ import { env } from '../config/env';
  *
  * WHY NOT JUST SEND THE SESSION TOKEN: the dashboard keeps its Better Auth session in an
  * httpOnly cookie precisely so that a script on the page cannot read it (Docs/Frontend/NextJS.md
- * §3). A Socket.IO handshake runs in the browser, so handing it the session token would mean
- * putting that token somewhere JavaScript can reach — undoing the one protection the httpOnly
+ * section 3). A Socket.IO handshake runs in the browser, so handing it the session token would mean
+ * putting that token somewhere JavaScript can reach - undoing the one protection the httpOnly
  * cookie provides, in exchange for a live-updates feature.
  *
  * A ticket is the narrow alternative. The Next.js server, which *can* read the cookie, exchanges
  * it for one of these; the browser receives only the ticket. It is signed rather than stored, so
  * there is no table to sweep, and it is deliberately useless for anything but opening a socket:
  *
- *   • it expires in seconds, not days, so a leaked one is stale before it is useful;
- *   • the REST API does not accept it, so it cannot read or write anything;
- *   • it carries no secret — only the user id and role, which the socket needs for its rooms
+ *   - it expires in seconds, not days, so a leaked one is stale before it is useful;
+ *   - the REST API does not accept it, so it cannot read or write anything;
+ *   - it carries no secret - only the user id and role, which the socket needs for its rooms
  *     and its admin check.
  *
  * Signed with BETTER_AUTH_SECRET so an attacker cannot mint one; verification is constant-time so
@@ -70,7 +70,7 @@ export function verifyRealtimeTicket(ticket: unknown): TicketClaims | null {
   const expected = Buffer.from(sign(payload));
   const presented = Buffer.from(signature);
 
-  // Length is checked first because timingSafeEqual throws on a mismatch — and the length of a
+  // Length is checked first because timingSafeEqual throws on a mismatch - and the length of a
   // base64url HMAC is fixed and public, so leaking it reveals nothing.
   if (expected.length !== presented.length) return null;
   if (!timingSafeEqual(expected, presented)) return null;

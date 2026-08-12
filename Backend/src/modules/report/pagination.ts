@@ -5,7 +5,7 @@ import { prisma } from '../../config/db';
  *
  * OFFSET pagination is what this deliberately is not. `OFFSET 5000` makes Postgres walk and
  * discard five thousand rows to return fifty, so the cost of a page grows with how far the
- * operator has scrolled — exactly backwards for a log where the interesting rows are at the end.
+ * operator has scrolled - exactly backwards for a log where the interesting rows are at the end.
  * It is also unstable: rows arriving while someone reads shift the window, so page 2 repeats or
  * skips entries.
  *
@@ -13,8 +13,8 @@ import { prisma } from '../../config/db';
  * strictly after this key". Every page costs the same indexed seek, and a live feed cannot
  * duplicate or drop rows underneath the reader.
  *
- * The sort key is (timestamp, id) rather than the timestamp alone. Timestamps collide — an agent
- * can close several app sessions in the same millisecond — and a cursor on a non-unique key
+ * The sort key is (timestamp, id) rather than the timestamp alone. Timestamps collide - an agent
+ * can close several app sessions in the same millisecond - and a cursor on a non-unique key
  * either loses the tied rows or repeats them forever.
  */
 
@@ -83,7 +83,7 @@ export interface Page<T> {
 /**
  * Turns an over-fetched result into a page.
  *
- * Callers ask for `limit + 1` rows. The extra row is never returned — its only job is to answer
+ * Callers ask for `limit + 1` rows. The extra row is never returned - its only job is to answer
  * "is there more?" without a second COUNT query over the same predicate, which on a log table is
  * as expensive as the page itself.
  */
@@ -122,7 +122,7 @@ export async function resolvePageSize(organizationId: string, requested?: number
 }
 
 /**
- * Page size for the screenshot gallery — its own setting, not logPageSize.
+ * Page size for the screenshot gallery - its own setting, not logPageSize.
  *
  * A page of log rows is a few kilobytes of JSON; a page of screenshots is that many full-size
  * JPEGs the browser actually downloads and decodes. At roughly half a megabyte a capture, serving

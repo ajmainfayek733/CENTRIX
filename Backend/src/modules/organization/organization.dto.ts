@@ -8,7 +8,7 @@ export const createOrganizationSchema = z.object({
 const seconds = z.number().int().min(0);
 
 /**
- * Policy settings screen (spec §5). Every field is optional — the screen PATCHes only what
+ * Policy settings screen (spec section 5). Every field is optional - the screen PATCHes only what
  * changed, and the service bumps `version` on any write so agents notice.
  */
 export const updatePolicySchema = z

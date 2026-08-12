@@ -12,7 +12,7 @@ import { ServiceUnavailable } from '@/components/ServiceUnavailable';
 
 /**
  * The RBAC-protected shell. Resolves the session server-side once per navigation and passes
- * the role down as a prop — client components never hold auth state of their own.
+ * the role down as a prop - client components never hold auth state of their own.
  *
  * RealtimeProvider wraps the whole dashboard so every screen updates as telemetry lands, without
  * the operator refreshing. Totals move from the aggregates pushed with each ingest event; the
@@ -27,7 +27,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     if (!(error instanceof ApiUnavailableError)) throw error;
 
     // The service is down, which says nothing about whether this user is signed in. Redirecting
-    // to /login here — as this did before — signs out every open dashboard on an API restart and
+    // to /login here - as this did before - signs out every open dashboard on an API restart and
     // sends people to a page that cannot authenticate them either. Instead the shell renders and
     // the outage is stated plainly, so the session survives and returns when the service does.
     console.error('Dashboard layout: monitoring service unreachable:', error);
@@ -66,7 +66,7 @@ function Shell({ user, children }: { user?: SessionUser; children: ReactNode }) 
           </Link>
 
           {/* No role means no session was resolved, and a nav that cannot honour RBAC is worse
-              than none — it would offer links that 403 on arrival. */}
+              than none - it would offer links that 403 on arrival. */}
           {user && <NavLinks role={user.role} />}
 
           <div className="ml-auto flex items-center gap-3">

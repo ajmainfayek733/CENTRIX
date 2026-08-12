@@ -4,7 +4,7 @@ namespace Agent.Core;
 /// Well-known on-disk locations, all under ProgramData.
 ///
 /// The service runs as SYSTEM and the host runs as the logged-on user, but only the service
-/// touches the database and credential files — the host submits everything over the named pipe.
+/// touches the database and credential files - the host submits everything over the named pipe.
 /// That split is deliberate: it means the ACL on this directory can deny ordinary users write
 /// access to collected data without breaking the host.
 /// </summary>

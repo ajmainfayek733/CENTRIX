@@ -4,14 +4,14 @@ import { apiGet, ApiUnavailableError } from '@/lib/api-client';
 /**
  * Paging proxy for the dashboard's log tables.
  *
- * The scroll windows are client components — they fetch the next page in response to a scroll,
+ * The scroll windows are client components - they fetch the next page in response to a scroll,
  * which server components cannot do. They also must not hold the session token (see
- * Docs/Frontend/NextJS.md §3), so they call this same-origin handler and it attaches the
+ * Docs/Frontend/NextJS.md section 3), so they call this same-origin handler and it attaches the
  * credential server-side.
  *
  * The feed is resolved through an explicit map rather than by interpolating the path segment
  * into a URL. A catch-all proxy would turn this route into an open door onto every API endpoint,
- * reachable by anyone who can guess a path — the allowlist is what keeps it a paging endpoint.
+ * reachable by anyone who can guess a path - the allowlist is what keeps it a paging endpoint.
  */
 const FEEDS = {
   activity: (params: URLSearchParams) => {
@@ -21,7 +21,7 @@ const FEEDS = {
   },
   alerts: () => '/v1/dashboard/reports/alerts',
   usb: () => '/v1/dashboard/reports/usb-events',
-  // Index only — never the image bytes, which have their own route so each view is audited
+  // Index only - never the image bytes, which have their own route so each view is audited
   // individually. The API restricts this to super_admin/manager; an Auditor gets a 403 here,
   // which is the same answer they get for the first page rendered on the server.
   screenshots: (params: URLSearchParams) => {

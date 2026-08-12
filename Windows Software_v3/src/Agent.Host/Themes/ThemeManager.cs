@@ -15,7 +15,7 @@ public enum AppTheme
 /// Swaps the palette dictionary at runtime.
 ///
 /// The application's merged dictionaries are ordered [palette, Controls.xaml]. Only slot 0 is
-/// replaced, so the control styles are parsed once and keep working — they resolve colours
+/// replaced, so the control styles are parsed once and keep working - they resolve colours
 /// through DynamicResource, which re-evaluates when the dictionary underneath changes.
 /// </summary>
 public static class ThemeManager
@@ -42,7 +42,7 @@ public static class ThemeManager
         if (dictionaries.Count > PaletteSlot) dictionaries[PaletteSlot] = palette;
         else dictionaries.Insert(PaletteSlot, palette);
 
-        // Only subscribe while actually following the system, and only once — leaving the
+        // Only subscribe while actually following the system, and only once - leaving the
         // handler attached after the user picks an explicit theme would let a Windows theme
         // change silently override their choice.
         if (theme == AppTheme.System && !_followingSystem)
@@ -57,7 +57,7 @@ public static class ThemeManager
         }
     }
 
-    /// <summary>Cycles System → Light → Dark → System, which is what the toggle button does.</summary>
+    /// <summary>Cycles System -> Light -> Dark -> System, which is what the toggle button does.</summary>
     public static AppTheme Cycle()
     {
         var next = Current switch

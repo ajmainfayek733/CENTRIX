@@ -21,7 +21,7 @@ public sealed class AgentState : IDisposable
     /// Each is a semaphore capped at one permit, which coalesces on purpose: ten force-sync
     /// commands arriving while a sync is already running should produce one more cycle, not ten
     /// queued ones. A worker waits on its signal *instead of* sleeping, so a nudge shortens the
-    /// current wait rather than adding a second timer racing the first — no extra thread, and
+    /// current wait rather than adding a second timer racing the first - no extra thread, and
     /// nothing to leak if the signal never comes.
     /// </summary>
     private readonly SemaphoreSlim _syncRequested = new(0, 1);
@@ -52,7 +52,7 @@ public sealed class AgentState : IDisposable
 
     /// <summary>
     /// Set when an admin deactivates this device. The sync worker stops uploading, but
-    /// collection continues locally — re-activating the device should not leave a hole in the
+    /// collection continues locally - re-activating the device should not leave a hole in the
     /// record for the period it was switched off.
     /// </summary>
     public bool Deactivated { get; set; }
@@ -78,7 +78,7 @@ public sealed class AgentState : IDisposable
     // Wake-up signals.
     //
     // NOTE FOR ANYONE ADDING A CALLER: requesting a sync is a request to try *sooner*, not an
-    // assertion that the backend is available. Nothing here may set BackendReachable — that is
+    // assertion that the backend is available. Nothing here may set BackendReachable - that is
     // decided by the HTTP heartbeat, and only by it.
     // -----------------------------------------------------------------------
 

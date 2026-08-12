@@ -12,7 +12,7 @@ public interface ITelemetryEvent
     Guid ClientEventId { get; }
 }
 
-/// <summary>Features.md "Attendace report" — one per Windows logon session.</summary>
+/// <summary>Features.md "Attendace report" - one per Windows logon session.</summary>
 public sealed record AttendanceEvent : ITelemetryEvent
 {
     public required Guid ClientEventId { get; init; }
@@ -33,7 +33,7 @@ public sealed record AttendanceEvent : ITelemetryEvent
 /// Features.md "Activity Level Metric".
 ///
 /// PRIVACY: counts only. There is deliberately no field on this type that could carry a key,
-/// a character or a sequence — spec section 1.2 and section 6 exclude keystroke content, and the
+/// a character or a sequence - spec section 1.2 and section 6 exclude keystroke content, and the
 /// collector increments these counters without ever inspecting the virtual key code.
 /// </summary>
 public sealed record ActivityMetricEvent : ITelemetryEvent
@@ -52,7 +52,7 @@ public sealed record ActivityMetricEvent : ITelemetryEvent
     public required DateTimeOffset WindowEndUtc { get; init; }
 }
 
-/// <summary>Features.md "Activity Logs" — one per foreground app, idle, lock or sleep interval.</summary>
+/// <summary>Features.md "Activity Logs" - one per foreground app, idle, lock or sleep interval.</summary>
 public sealed record ActivitySessionEvent : ITelemetryEvent
 {
     public required Guid ClientEventId { get; init; }
@@ -105,7 +105,7 @@ public sealed record BrowserActivityEvent : ITelemetryEvent
 }
 
 /// <summary>
-/// Features.md "USB Logs". Connection and removal metadata only — the agent never enumerates,
+/// Features.md "USB Logs". Connection and removal metadata only - the agent never enumerates,
 /// reads or copies the contents of a connected device.
 /// </summary>
 public sealed record UsbEvent : ITelemetryEvent
@@ -138,7 +138,7 @@ public sealed record UsbEvent : ITelemetryEvent
 
 /// <summary>
 /// Features.md "Alert Notification". An escalating incident reuses one
-/// <see cref="ClientEventId"/> across escalations — the server upserts rather than inserts,
+/// <see cref="ClientEventId"/> across escalations - the server upserts rather than inserts,
 /// so the dashboard shows one incident that grew rather than three separate alerts.
 /// </summary>
 public sealed record AlertEvent : ITelemetryEvent
@@ -152,7 +152,7 @@ public sealed record AlertEvent : ITelemetryEvent
     public required string Title { get; init; }
     public required string Message { get; init; }
 
-    // Typed context. Which fields are set depends on Type — see the backend's Alert model.
+    // Typed context. Which fields are set depends on Type - see the backend's Alert model.
     public int? IdleSeconds { get; init; }
     public int? ThresholdSeconds { get; init; }
     public string? ContextAppName { get; init; }
@@ -171,7 +171,7 @@ public sealed record AlertEvent : ITelemetryEvent
     public int NotificationCount { get; init; }
 }
 
-/// <summary>Device profile sent at enrollment — Features.md "Device Information".</summary>
+/// <summary>Device profile sent at enrollment - Features.md "Device Information".</summary>
 public sealed record DeviceRegistration
 {
     public required string DeviceId { get; init; }
@@ -180,8 +180,8 @@ public sealed record DeviceRegistration
     public string? Edition { get; init; }
     public string? Version { get; init; }
     /// <summary>
-    /// Nullable on purpose. There are real moments — a service starting before the NIC is up,
-    /// a machine whose only adapter is virtual — when no hardware address can be determined,
+    /// Nullable on purpose. There are real moments - a service starting before the NIC is up,
+    /// a machine whose only adapter is virtual - when no hardware address can be determined,
     /// and the honest answer is "unknown". The previous contract required a string, so those
     /// cases sent 00:00:00:00:00:00 and every such device looked identical in the dashboard
     /// while hiding the fact that detection had failed. The server maps null to a null column.

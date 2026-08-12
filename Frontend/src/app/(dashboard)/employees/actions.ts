@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { apiSend } from '@/lib/api-client';
 
 /**
- * Roster mutations, as server actions — same rule as the devices screen: no client component
+ * Roster mutations, as server actions - same rule as the devices screen: no client component
  * ever calls the monitoring API directly, because the session token lives in an httpOnly cookie
  * only server code can read.
  */

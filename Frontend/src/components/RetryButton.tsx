@@ -11,7 +11,7 @@ import { useState, useTransition } from 'react';
  * reload throws all of that away to answer the same question.
  *
  * `onRetry` lets an error boundary pass its own `reset()`, which must be called for React to
- * leave the error state — a refresh alone would fetch new data into a boundary still showing the
+ * leave the error state - a refresh alone would fetch new data into a boundary still showing the
  * error.
  */
 export function RetryButton({ onRetry }: { onRetry?: () => void }) {
@@ -33,7 +33,7 @@ export function RetryButton({ onRetry }: { onRetry?: () => void }) {
         }}
         className="rounded-md bg-brand px-3 py-1.5 text-sm font-semibold text-brand-contrast transition-opacity hover:opacity-90 disabled:opacity-50"
       >
-        {pending ? 'Retrying…' : 'Try again'}
+        {pending ? 'Retrying...' : 'Try again'}
       </button>
 
       {/*
@@ -41,7 +41,7 @@ export function RetryButton({ onRetry }: { onRetry?: () => void }) {
         unreachable" before anyone has tried would be asserting something we have not checked.
       */}
       {attempted && !pending && (
-        <span className="text-xs text-text-secondary">Still unreachable — the service may be restarting.</span>
+        <span className="text-xs text-text-secondary">Still unreachable - the service may be restarting.</span>
       )}
     </div>
   );

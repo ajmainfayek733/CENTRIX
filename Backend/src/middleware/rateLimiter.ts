@@ -12,13 +12,13 @@ import type { DeviceAuthenticatedRequest } from './deviceAuth';
  *    proxy is actually configured.
  *
  * 2. It keyed everything on IP. Thirty to a hundred workstations behind one office NAT share a
- *    single source address, so a per-IP limit throttles the whole fleet collectively — the
+ *    single source address, so a per-IP limit throttles the whole fleet collectively - the
  *    enrollment route allowed 10/minute *for the entire company*. Callers now choose the key,
  *    so the limit applies per device where that is the fair unit.
  *
  * Scope: counters live in this process's memory. That is correct for a single instance and for
  * the load this backend targets. Run more than one replica and each enforces its own budget
- * independently, so the effective limit multiplies by the replica count — deliberately traded
+ * independently, so the effective limit multiplies by the replica count - deliberately traded
  * for not requiring Redis. See `keyByDevice` for the reason that is safe here: the authenticated
  * limits exist to stop one broken agent from monopolising the server, not to meter billing.
  */
@@ -62,7 +62,7 @@ export function rateLimiter(
 
   const { max, windowMs, key = keyByIp, name = 'request' } = options;
 
-  // Scoped per rateLimiter(...) call, not module-wide — otherwise every route sharing this
+  // Scoped per rateLimiter(...) call, not module-wide - otherwise every route sharing this
   // middleware (login at 10/min, ingest at 200/min, ...) would collide on the same counter and
   // get checked against whichever limit happened to run, instead of its own.
   const buckets = new Map<string, Bucket>();
@@ -126,7 +126,7 @@ export function keyByIp(req: Request): string {
  * per minute. A hundred workstations rolling out simultaneously from behind one public IP are a
  * hundred different keys, and each gets its own budget.
  *
- * Falls back to the IP when the body has no deviceId — a malformed request should still be
+ * Falls back to the IP when the body has no deviceId - a malformed request should still be
  * limited, just not able to escape limiting by omitting a field.
  */
 export function keyByEnrollingDevice(req: Request): string {

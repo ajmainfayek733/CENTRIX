@@ -22,7 +22,7 @@ export function SignOutButton() {
       disabled={pending}
       className="rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary transition-colors hover:bg-surface-muted hover:text-text-primary disabled:opacity-50"
     >
-      {pending ? '…' : 'Sign out'}
+      {pending ? '...' : 'Sign out'}
     </button>
   );
 }

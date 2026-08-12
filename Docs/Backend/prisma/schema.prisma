@@ -23,7 +23,7 @@ model Device {
   hostname     String
   os           String
   agentVersion String
-  tokenHash    String        // device token, hashed — never store raw
+  tokenHash    String        // device token, hashed - never store raw
   lastSeen     DateTime?
   activityLogs ActivityLog[]
 }

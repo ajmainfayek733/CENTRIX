@@ -17,7 +17,7 @@ public static class IpcChannel
 {
     /// <summary>
     /// Ceiling on a single frame. Screenshots travel as file paths, not bytes, so nothing
-    /// legitimate approaches this — it exists to bound a malformed or hostile length prefix.
+    /// legitimate approaches this - it exists to bound a malformed or hostile length prefix.
     /// </summary>
     private const int MaxFrameBytes = 4 * 1024 * 1024;
 

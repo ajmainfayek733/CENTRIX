@@ -169,7 +169,7 @@ public sealed class BrowserUrlExtractor(ILogger<BrowserUrlExtractor> logger)
     }
 
     /// <summary>
-    /// Browser window titles are "Page title - Browser Name" (or " — Mozilla Firefox").
+    /// Browser window titles are "Page title - Browser Name" (or " - Mozilla Firefox").
     /// Strips the browser suffix so the stored page title is just the page.
     /// </summary>
     private static string? DerivePageTitle(string windowTitle, BrowserKind browser)
@@ -179,8 +179,8 @@ public sealed class BrowserUrlExtractor(ILogger<BrowserUrlExtractor> logger)
         string[] suffixes = browser switch
         {
             BrowserKind.Chrome => [" - Google Chrome"],
-            BrowserKind.Edge => [" - Microsoft​ Edge", " - Microsoft Edge"],
-            BrowserKind.Firefox => [" — Mozilla Firefox", " - Mozilla Firefox"],
+            BrowserKind.Edge => [" - Microsoft Edge", " - Microsoft Edge"],
+            BrowserKind.Firefox => [" - Mozilla Firefox", " - Mozilla Firefox"],
             BrowserKind.Brave => [" - Brave"],
             BrowserKind.Opera => [" - Opera"],
             BrowserKind.Vivaldi => [" - Vivaldi"],

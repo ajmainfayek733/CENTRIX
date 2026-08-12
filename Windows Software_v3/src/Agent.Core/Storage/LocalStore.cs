@@ -232,7 +232,7 @@ public sealed class LocalStore
 
     /// <summary>
     /// The cached policy, or <c>null</c> if the agent has never successfully fetched one.
-    /// Callers fall back to <c>new AgentPolicy()</c>, whose defaults match Features.md — the
+    /// Callers fall back to <c>new AgentPolicy()</c>, whose defaults match Features.md - the
     /// agent must collect from first boot rather than wait for the network.
     /// </summary>
     public AgentPolicy? LoadPolicy()

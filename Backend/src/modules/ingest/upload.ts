@@ -8,7 +8,7 @@ import { env } from '../../config/env';
  * Uploads are staged inside the screenshot storage root rather than the OS temp directory.
  *
  * `persistScreenshot` finishes the upload with a rename, and a rename only works within one
- * volume — with the default Windows temp dir on C: and a storage root on another drive, every
+ * volume - with the default Windows temp dir on C: and a storage root on another drive, every
  * upload failed with EXDEV. Staging here keeps the final move atomic and on-volume, which is
  * also what makes a half-written file impossible to observe as a stored screenshot.
  */
@@ -17,7 +17,7 @@ const STAGING_DIR = path.join(env.SCREENSHOT_STORAGE_DIR, '.incoming');
 /**
  * Multipart field the JPEG bytes must arrive under.
  *
- * This is contract, not convention — the Agent sets the same name in
+ * This is contract, not convention - the Agent sets the same name in
  * `Agent.Service/Backend/BackendClient.cs` (`ScreenshotFileFieldName`). Multer rejects any other
  * field name outright, so a change here without the matching change there fails every upload.
  */

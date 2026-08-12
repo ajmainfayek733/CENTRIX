@@ -47,8 +47,8 @@ router.get(
   reportController.getUsbEvents
 );
 
-// Screenshots are the most invasive surface in the product, so per spec §6 the Auditor role
-// is deliberately excluded from both the index and the image itself — they get aggregate
+// Screenshots are the most invasive surface in the product, so per spec section 6 the Auditor role
+// is deliberately excluded from both the index and the image itself - they get aggregate
 // reports and the audit log, never a picture of someone's desktop.
 
 router.get(

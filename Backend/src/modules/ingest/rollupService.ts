@@ -14,7 +14,7 @@ import { isActiveType, isIdleType } from '../report/activityClassification';
  *
  *   1. Batch-level idempotency (ingest_batches) short-circuits a replayed batch before any of
  *      this runs.
- *   2. Callers pass only events that were genuinely newly inserted — the ones that survived the
+ *   2. Callers pass only events that were genuinely newly inserted - the ones that survived the
  *      pre-filter against existing clientEventIds. A row already in the database contributed to
  *      the rollup when it first arrived, so re-sending it must contribute nothing.
  *
@@ -64,7 +64,7 @@ export function emptyDelta(): RollupDelta {
  * Accumulates deltas keyed by work date (YYYY-MM-DD).
  *
  * A batch normally covers one day but can straddle midnight, and an agent coming back from a
- * long offline stretch can carry a week — so the unit of accumulation is the day, not the batch.
+ * long offline stretch can carry a week - so the unit of accumulation is the day, not the batch.
  */
 export class RollupAccumulator {
   private readonly byDate = new Map<string, RollupDelta>();

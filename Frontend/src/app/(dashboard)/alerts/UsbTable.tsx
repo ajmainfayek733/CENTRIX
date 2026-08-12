@@ -57,12 +57,12 @@ export function UsbTable({ initial }: { initial: LogPage<UsbEventRow> }) {
                     {event.friendlyName ?? 'Unknown device'}
                     <span className="block text-xs text-text-secondary">
                       {event.deviceType}
-                      {event.driveLetter ? ` · ${event.driveLetter}` : ''}
+                      {event.driveLetter ? ` - ${event.driveLetter}` : ''}
                       {event.volumeLabel ? ` ${event.volumeLabel}` : ''}
                     </span>
                   </Td>
                   <Td muted>
-                    <span className="font-mono text-xs">{event.serialNumber ?? '—'}</span>
+                    <span className="font-mono text-xs">{event.serialNumber ?? '-'}</span>
                   </Td>
                   <Td align="right" numeric muted>
                     {formatBytes(event.capacityBytes)}

@@ -11,13 +11,13 @@ namespace Agent.Core;
 ///
 /// Identity is the Windows MachineGuid, not the MAC address. Features.md notes MAC is burned
 /// into hardware while IPs change, which is true, but MAC is also trivially spoofable and a
-/// laptop with Wi-Fi, Ethernet and a dock reports three of them — so MAC is collected and
+/// laptop with Wi-Fi, Ethernet and a dock reports three of them - so MAC is collected and
 /// reported as an attribute, while MachineGuid is the key the backend uniques on.
 /// </summary>
 public static class DeviceIdentity
 {
     /// <summary>
-    /// HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid — stable for the life of the OS install
+    /// HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid - stable for the life of the OS install
     /// and unchanged by hardware swaps, renames or re-IPing.
     /// </summary>
     public static string GetMachineGuid()
@@ -48,11 +48,11 @@ public static class DeviceIdentity
     ///
     /// WHY THIS IS NOT A ONE-LINER: the previous version required an adapter that was
     /// <see cref="OperationalStatus.Up"/> *and* physical *and* not virtual-sounding, and returned
-    /// 00:00:00:00:00:00 when nothing matched. All three conditions fail routinely —
+    /// 00:00:00:00:00:00 when nothing matched. All three conditions fail routinely -
     ///
-    ///   • the service starts at boot and enrolls before any adapter reaches Up;
-    ///   • a laptop on Wi-Fi with the dock unplugged has no Ethernet at all;
-    ///   • on a host with Hyper-V or WSL2 the adapter carrying traffic is described as virtual.
+    ///   - the service starts at boot and enrolls before any adapter reaches Up;
+    ///   - a laptop on Wi-Fi with the dock unplugged has no Ethernet at all;
+    ///   - on a host with Hyper-V or WSL2 the adapter carrying traffic is described as virtual.
     ///
     /// so the zero address was not an edge case, it was the common result. And because it is a
     /// well-formed string, nothing downstream could tell it apart from a real address: every
@@ -60,7 +60,7 @@ public static class DeviceIdentity
     /// them all at each other.
     ///
     /// The fix is to widen the search in tiers rather than fail to a placeholder, and to return
-    /// null — which the whole chain now models — when even the widest tier finds nothing.
+    /// null - which the whole chain now models - when even the widest tier finds nothing.
     /// </summary>
     public static string? GetPrimaryMacAddress()
     {
@@ -71,7 +71,7 @@ public static class DeviceIdentity
             .Where(nic => HasUsableAddress(nic))
             .ToList();
 
-        // Tier 1: a real, connected, physical adapter — the answer we want.
+        // Tier 1: a real, connected, physical adapter - the answer we want.
         // Tier 2: a physical adapter that simply is not up yet, or is currently unplugged. Its
         //         address is burned into the same hardware either way, which is the property
         //         Features.md actually cares about.
@@ -138,7 +138,7 @@ public static class DeviceIdentity
     /// <summary>e.g. "10.0.26200".</summary>
     public static string GetOsVersion() => Environment.OSVersion.Version.ToString();
 
-    /// <summary>e.g. "64-bit operating system, x64-based processor" — the System Information wording.</summary>
+    /// <summary>e.g. "64-bit operating system, x64-based processor" - the System Information wording.</summary>
     public static string GetSystemType()
     {
         var bitness = Environment.Is64BitOperatingSystem ? "64-bit" : "32-bit";

@@ -4,7 +4,7 @@
  *
  * Run with: npm run seed
  *
- * Idempotent — re-running reuses the existing organization and user rather than failing, so it
+ * Idempotent - re-running reuses the existing organization and user rather than failing, so it
  * is safe to call repeatedly while setting up a machine. Re-running does rotate the enrollment
  * token, which is deliberate: the token is only printed once, so a developer who lost it can
  * get a working one back.
@@ -96,7 +96,7 @@ async function main() {
   }
   console.log(`  Category rules ${rules.length} ensured`);
 
-  console.log('\n  Agent enrollment token (store this — it is not recoverable):');
+  console.log('\n  Agent enrollment token (store this - it is not recoverable):');
   console.log(`  ${enrollmentToken}\n`);
   console.log('  Install an agent with:');
   console.log(

@@ -220,7 +220,7 @@ public sealed class AlertEngine(HostIpcClient ipc, ILogger<AlertEngine> logger)
 
     /// <summary>
     /// Raises the desktop notification. Suppressed outside working hours unless policy says
-    /// otherwise — spec section 3.1 asks the agent to respect work-hours settings where feasible,
+    /// otherwise - spec section 3.1 asks the agent to respect work-hours settings where feasible,
     /// and a popup at 11pm is monitoring intruding on personal time.
     /// </summary>
     private void NotifyDesktop(AgentPolicy policy, string title, string message, AlertSeverity severity)

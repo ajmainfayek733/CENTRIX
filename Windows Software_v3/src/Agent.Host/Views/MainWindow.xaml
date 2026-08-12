@@ -53,7 +53,7 @@
                                Style="{StaticResource BodyText}"
                                FontWeight="SemiBold"
                                Margin="8,0,0,0"
-                               Text="Connecting to the monitoring service…" />
+                               Text="Connecting to the monitoring service..." />
                 </StackPanel>
 
                 <Grid>
@@ -64,12 +64,12 @@
 
                     <StackPanel Grid.Column="0">
                         <TextBlock Text="POLICY VERSION" Style="{StaticResource LabelText}" />
-                        <TextBlock x:Name="PolicyVersionText" Style="{StaticResource BodyText}" Text="—" />
+                        <TextBlock x:Name="PolicyVersionText" Style="{StaticResource BodyText}" Text="-" />
                     </StackPanel>
 
                     <StackPanel Grid.Column="1">
                         <TextBlock Text="SIGNED IN AS" Style="{StaticResource LabelText}" />
-                        <TextBlock x:Name="UserText" Style="{StaticResource BodyText}" Text="—" />
+                        <TextBlock x:Name="UserText" Style="{StaticResource BodyText}" Text="-" />
                     </StackPanel>
                 </Grid>
             </StackPanel>
@@ -84,7 +84,7 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <TextBlock Style="{StaticResource BodyText}" Margin="0,0,0,6">
-                                    <Run Text="•" Foreground="{DynamicResource AccentBrush}" />
+                                    <Run Text="-" Foreground="{DynamicResource AccentBrush}" />
                                     <Run Text="{Binding Mode=OneWay}" />
                                 </TextBlock>
                             </DataTemplate>
@@ -96,7 +96,7 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <TextBlock Style="{StaticResource BodyText}" Margin="0,0,0,6">
-                                    <Run Text="•" Foreground="{DynamicResource DangerBrush}" />
+                                    <Run Text="-" Foreground="{DynamicResource DangerBrush}" />
                                     <Run Text="{Binding Mode=OneWay}" />
                                 </TextBlock>
                             </DataTemplate>

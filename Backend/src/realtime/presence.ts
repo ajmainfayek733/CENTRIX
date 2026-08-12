@@ -4,15 +4,15 @@
  * THE DISTINCTION THAT MATTERS. There are two different signals here and they are not the same
  * strength:
  *
- *   • A socket being *open* is weak evidence. A half-open TCP connection can survive for minutes
- *     after a workstation has been unplugged, suspended or lost its network — the operating
+ *   - A socket being *open* is weak evidence. A half-open TCP connection can survive for minutes
+ *     after a workstation has been unplugged, suspended or lost its network - the operating
  *     system has no reason to notice until something is sent. A dashboard that showed "online"
  *     purely because a socket object existed would lie for as long as that takes.
  *
- *   • A heartbeat *received* is strong evidence. It is positive proof that the agent was running
+ *   - A heartbeat *received* is strong evidence. It is positive proof that the agent was running
  *     and reachable at a known instant. That is why agents emit one on a fixed interval rather
- *     than relying on the connection to speak for them, and why `lastHeartbeatAt` — not the
- *     presence of an entry in this map — is what liveness is derived from.
+ *     than relying on the connection to speak for them, and why `lastHeartbeatAt` - not the
+ *     presence of an entry in this map - is what liveness is derived from.
  *
  * So a device is reported as live when its most recent heartbeat is inside the expected interval
  * plus a grace margin. Holding a socket without heartbeating is treated as not live, which is
@@ -32,7 +32,7 @@ interface DevicePresence {
    * Owning organization, recorded so a snapshot can be scoped to one tenant.
    *
    * Without it `snapshot()` returns every connected device to whichever dashboard asks, which is
-   * a cross-tenant disclosure the moment a second organization exists — and one that would not
+   * a cross-tenant disclosure the moment a second organization exists - and one that would not
    * show up in a single-org deployment until it was too late to notice quietly.
    */
   organizationId: string;
@@ -50,7 +50,7 @@ class DevicePresenceRegistry {
       return false;
     }
 
-    // Connecting counts as being heard from — the handshake was authenticated traffic.
+    // Connecting counts as being heard from - the handshake was authenticated traffic.
     this.byDevice.set(deviceId, {
       socketIds: new Set([socketId]),
       lastHeartbeatAt: Date.now(),
@@ -67,7 +67,7 @@ class DevicePresenceRegistry {
     presence.socketIds.delete(socketId);
     if (presence.socketIds.size > 0) return false;
 
-    // Drop the key as well as the set — leaving empty entries behind is how this map would grow
+    // Drop the key as well as the set - leaving empty entries behind is how this map would grow
     // without bound across a long uptime with churning devices.
     this.byDevice.delete(deviceId);
     return true;
@@ -82,7 +82,7 @@ class DevicePresenceRegistry {
   /**
    * Whether the agent is live right now.
    *
-   * Not "is a socket open" — see the note at the top of this file. A device holding a socket it
+   * Not "is a socket open" - see the note at the top of this file. A device holding a socket it
    * has stopped heartbeating on is reported as not live, because that is the shape a silently
    * dead connection takes.
    */

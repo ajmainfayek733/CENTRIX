@@ -30,7 +30,7 @@ export const channelParamSchema = z.object({
 /**
  * Sanity ceiling, kept well above the policy default MaxBatchSize (100) so we never reject a
  * batch the agent was configured to send, while still bounding request size against abuse.
- * Configurable because the right value depends on fleet size — see INGEST_MAX_BATCH_EVENTS.
+ * Configurable because the right value depends on fleet size - see INGEST_MAX_BATCH_EVENTS.
  */
 const MAX_EVENTS_PER_PUSH = env.INGEST_MAX_BATCH_EVENTS;
 
@@ -41,9 +41,9 @@ const utc = z.coerce.date();
 const count = z.number().int().min(0);
 
 // ---------------------------------------------------------------------------
-// Attendance — Features.md "Attendace report".
+// Attendance - Features.md "Attendace report".
 // Upserted on sessionId: the agent re-sends the row as logoutTime firms up across
-// lock → sleep → shutdown, and last write wins.
+// lock -> sleep -> shutdown, and last write wins.
 // ---------------------------------------------------------------------------
 
 export const attendanceEventSchema = z.object({
@@ -63,7 +63,7 @@ export const attendanceEventSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
-// Activity level metric — Features.md "Activity Level Metric".
+// Activity level metric - Features.md "Activity Level Metric".
 // PRIVACY: counts only, never content. There is no field here for a key or character.
 // ---------------------------------------------------------------------------
 
@@ -81,7 +81,7 @@ export const activityMetricEventSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
-// Activity log — Features.md "Activity Logs".
+// Activity log - Features.md "Activity Logs".
 // ---------------------------------------------------------------------------
 
 export const activitySessionEventSchema = z.object({
@@ -101,7 +101,7 @@ export const activitySessionEventSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
-// Browser activity — Features.md "Browser Activity log".
+// Browser activity - Features.md "Browser Activity log".
 // ---------------------------------------------------------------------------
 
 export const browserActivityEventSchema = z.object({
@@ -124,7 +124,7 @@ export const browserActivityEventSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
-// USB events — Features.md "USB Logs".
+// USB events - Features.md "USB Logs".
 // ---------------------------------------------------------------------------
 
 export const usbEventSchema = z.object({
@@ -150,7 +150,7 @@ export const usbEventSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
-// Alerts — Features.md "Alert Notification".
+// Alerts - Features.md "Alert Notification".
 // Upserted on clientEventId: an escalating incident reuses its id.
 // ---------------------------------------------------------------------------
 
@@ -164,7 +164,7 @@ export const alertEventSchema = z.object({
   message: z.string().min(1),
 
   // Typed replacement for the old free-form contextJson string. Which of these is populated
-  // depends on `type` — see the Alert model comment in schema.prisma.
+  // depends on `type` - see the Alert model comment in schema.prisma.
   idleSeconds: count.nullish(),
   thresholdSeconds: count.nullish(),
   contextAppName: z.string().nullish(),
@@ -198,7 +198,7 @@ export const EVENT_SCHEMA_BY_CHANNEL = {
  * `{ batchId, events: [...] }` validator for one channel.
  *
  * `batchId` identifies this push so a replay is recognized as one and answered without redoing
- * the work — see IngestBatch in the Prisma schema. Optional so an older agent that predates it
+ * the work - see IngestBatch in the Prisma schema. Optional so an older agent that predates it
  * still ingests: those batches fall back to per-event deduplication, which is correct but does
  * the expensive work again on every replay.
  */
@@ -238,7 +238,7 @@ export type ScreenshotFieldsDto = z.infer<typeof screenshotFieldsSchema>;
 export type ConsentDto = z.infer<typeof consentSchema>;
 
 /**
- * Hardware addresses arrive in whichever notation the source used — `00:11:22:33:44:55`,
+ * Hardware addresses arrive in whichever notation the source used - `00:11:22:33:44:55`,
  * `00-11-22-33-44-55`, `00.11.22.33.44.55` or bare hex. They are normalized to one canonical
  * uppercase colon form here so the same NIC cannot appear as several distinct values, which
  * would make the `devices.macAddress` index useless for finding a machine.
@@ -246,8 +246,8 @@ export type ConsentDto = z.infer<typeof consentSchema>;
  * The all-zero address is normalized to null rather than stored. It is not an address: it is
  * what an enumeration returns when it found nothing, and persisting it makes every such device
  * look identical in the dashboard while quietly hiding the fact that detection failed. Null says
- * "unknown", which is the truth. The agent has its own fix for producing it — see
- * Agent.Core/DeviceIdentity.cs — but the server must not depend on every agent being current.
+ * "unknown", which is the truth. The agent has its own fix for producing it - see
+ * Agent.Core/DeviceIdentity.cs - but the server must not depend on every agent being current.
  */
 const MAC_HEX_DIGITS = 12;
 const ALL_ZERO_MAC = '0'.repeat(MAC_HEX_DIGITS);
@@ -266,7 +266,7 @@ export const macAddressSchema = z
   });
 
 /**
- * Device self-registration — Features.md "Device Auth".
+ * Device self-registration - Features.md "Device Auth".
  * Identity is the Windows MachineGuid in `deviceId`; the MAC is reported metadata.
  */
 export const deviceRegisterSchema = z.object({

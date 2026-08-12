@@ -31,7 +31,7 @@ import {
 /**
  * Socket.IO server: two authenticated namespaces, one for agents and one for dashboards.
  *
- * Read events.ts first — it documents why this carries signalling only, and why neither side
+ * Read events.ts first - it documents why this carries signalling only, and why neither side
  * treats a live socket as proof that the backend is available.
  *
  * Single-process by design. At 30-100 devices one Node process holds every connection
@@ -159,7 +159,7 @@ function registerAgentNamespace(namespace: Namespace) {
       );
     });
 
-    // Proof of life. This is what makes "active now" trustworthy — see presence.ts for why a
+    // Proof of life. This is what makes "active now" trustworthy - see presence.ts for why a
     // connection alone is not enough. It also writes lastSeen through the same throttled path the
     // HTTP middleware uses, so a workstation that is connected but not currently syncing still
     // reads as recently seen instead of decaying to "offline" between batches.
@@ -212,8 +212,8 @@ async function announcePresence(
 /**
  * How long a device may stay silent before it stops counting as live.
  *
- * The configured heartbeat interval plus a grace multiplier: a single dropped or delayed frame —
- * a garbage-collection pause, a busy uplink — must not flip a healthy workstation to offline and
+ * The configured heartbeat interval plus a grace multiplier: a single dropped or delayed frame -
+ * a garbage-collection pause, a busy uplink - must not flip a healthy workstation to offline and
  * back. Two missed beats is the threshold.
  */
 const HEARTBEAT_GRACE_MULTIPLIER = 2.5;
@@ -240,12 +240,12 @@ function registerDashboardNamespace(namespace: Namespace) {
     try {
       // Two accepted credentials, in order of preference:
       //
-      //   ticket — the normal browser path. The dashboard's session lives in an httpOnly cookie
+      //   ticket - the normal browser path. The dashboard's session lives in an httpOnly cookie
       //            the page cannot read, so its Next.js server exchanges the cookie for a
       //            short-lived, socket-only ticket and the browser holds only that. See ticket.ts
       //            for why handing the session token to JavaScript was not an option.
       //
-      //   token  — a bearer session token, for server-to-server clients and tests that already
+      //   token  - a bearer session token, for server-to-server clients and tests that already
       //            hold one legitimately. Never used by the browser.
       const claims = verifyRealtimeTicket(socket.handshake.auth?.[DASHBOARD_TICKET_FIELD]);
 
@@ -346,7 +346,7 @@ function registerDashboardNamespace(namespace: Namespace) {
 }
 
 // ---------------------------------------------------------------------------
-// Emit helpers — the only supported way for the rest of the server to publish.
+// Emit helpers - the only supported way for the rest of the server to publish.
 //
 // All of them are no-ops before init and are wrapped so a realtime failure can never fail the
 // HTTP request that triggered it. Signalling is best-effort by design; the data is already

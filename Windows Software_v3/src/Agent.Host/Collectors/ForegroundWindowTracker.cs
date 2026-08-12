@@ -100,7 +100,7 @@ public sealed class ForegroundWindowTracker(ILogger<ForegroundWindowTracker> log
         {
             using var process = Process.GetProcessById((int)pid);
 
-            // MainModule throws for protected and cross-bitness processes — a standard-user
+            // MainModule throws for protected and cross-bitness processes - a standard-user
             // agent cannot read an elevated process's modules. That is expected, not an error:
             // we fall back to the process name and keep going.
             var path = process.MainModule?.FileName;

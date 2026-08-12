@@ -503,7 +503,7 @@ public sealed class TelemetryQueue(LocalStore store, ILogger<TelemetryQueue> log
     ///
     /// Only *rejections* count here, never transient network or 5xx failures. A row's
     /// <c>attempts</c> is what eventually causes <see cref="DropExhausted"/> to discard it, so
-    /// counting an unreachable server would age out perfectly good data during an outage — the
+    /// counting an unreachable server would age out perfectly good data during an outage - the
     /// precise opposite of what the offline queue exists for.
     ///
     /// Scoped to the ids actually in the failed request rather than every pending row, so one
@@ -533,8 +533,8 @@ public sealed class TelemetryQueue(LocalStore store, ILogger<TelemetryQueue> log
     /// <summary>
     /// Discards pending rows the server has refused <paramref name="maxAttempts"/> times.
     ///
-    /// Without this, an event the server will never accept — a schema mismatch, a value outside
-    /// its enums — is resent on every sync cycle until the retention window expires weeks later.
+    /// Without this, an event the server will never accept - a schema mismatch, a value outside
+    /// its enums - is resent on every sync cycle until the retention window expires weeks later.
     /// At a two-minute batch interval that is thousands of pointless requests per poisoned row,
     /// and it delays every healthy event queued behind it.
     ///
@@ -622,7 +622,7 @@ public sealed class TelemetryQueue(LocalStore store, ILogger<TelemetryQueue> log
     }
 
     /// <summary>
-    /// Closes attendance sessions the agent never got to finish — an unexpected power loss
+    /// Closes attendance sessions the agent never got to finish - an unexpected power loss
     /// leaves a row with no logout time. Called at startup so the day's attendance is not
     /// left open forever (Features.md "Attendace report" edge cases).
     /// </summary>

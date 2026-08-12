@@ -12,7 +12,7 @@ const NON_WORKING: ActivityType[] = ['Idle', 'Locked', 'Sleeping', 'Disconnected
 /**
  * The activity timeline as a fixed-height scroll window.
  *
- * Newest first, one page at a time. The previous version rendered up to 2,000 rows in one go —
+ * Newest first, one page at a time. The previous version rendered up to 2,000 rows in one go -
  * an unbounded query on the server and thousands of DOM nodes for entries nobody scrolled to.
  */
 export function TimelineTable({
@@ -62,7 +62,7 @@ export function TimelineTable({
                     </Td>
                     <Td>{isIdle ? row.type : (row.appName ?? row.processName ?? 'Unknown')}</Td>
                     <Td muted>
-                      <span className="block max-w-[26rem] truncate">{row.windowTitle ?? '—'}</span>
+                      <span className="block max-w-[26rem] truncate">{row.windowTitle ?? '-'}</span>
                     </Td>
                     <Td align="right" numeric>
                       {formatDuration(row.durationSeconds)}
@@ -71,12 +71,12 @@ export function TimelineTable({
                   </tr>,
 
                   // Browser visits nest under the app session that contained them, so a
-                  // "Chrome — 2h" row can be read as the sites that made it up.
+                  // "Chrome - 2h" row can be read as the sites that made it up.
                   ...row.visits.map((visit) => (
                     <tr key={visit.id} className="text-xs">
                       <Td />
                       <Td muted>
-                        <span className="pl-4 text-text-secondary">↳ {visit.domain}</span>
+                        <span className="pl-4 text-text-secondary">{'->'} {visit.domain}</span>
                       </Td>
                       <Td muted>
                         <span className="block max-w-[26rem] truncate">

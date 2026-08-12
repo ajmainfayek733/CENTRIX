@@ -2,11 +2,11 @@
 
 # Employee Monitor backend.
 #
-# Multi-stage so the runtime image carries no TypeScript, no dev dependencies and no source —
+# Multi-stage so the runtime image carries no TypeScript, no dev dependencies and no source -
 # only compiled JS, production node_modules, and the generated Prisma client.
 
 # ---------------------------------------------------------------------------
-# Stage 1 — build
+# Stage 1 - build
 # ---------------------------------------------------------------------------
 FROM node:22-bookworm-slim AS build
 
@@ -27,12 +27,12 @@ COPY src ./src
 COPY scripts ./scripts
 RUN npm run build
 
-# Re-resolve dependencies without dev packages, then regenerate the client into that tree —
+# Re-resolve dependencies without dev packages, then regenerate the client into that tree -
 # the runtime stage copies this directory verbatim.
 RUN npm prune --omit=dev && npx prisma generate
 
 # ---------------------------------------------------------------------------
-# Stage 2 — runtime
+# Stage 2 - runtime
 # ---------------------------------------------------------------------------
 FROM node:22-bookworm-slim AS runtime
 

@@ -6,7 +6,7 @@ import { prisma } from '../../config/db';
  * that row to the wire shape the Agent consumes and back again.
  *
  * Contract note: `version` MUST increment on every write. The Agent compares the version it
- * holds against the one it fetches to decide whether to re-prompt for consent (spec §3), so a
+ * holds against the one it fetches to decide whether to re-prompt for consent (spec section 3), so a
  * silent update that leaves the version alone would skip that prompt.
  */
 
@@ -38,7 +38,7 @@ export interface AgentPolicyDto {
     maxRetryBackoffSeconds: number;
   };
   /// Whether the agent should hold a Socket.IO signalling connection. It syncs on its own
-  /// interval regardless — this only decides whether it also listens for a nudge.
+  /// interval regardless - this only decides whether it also listens for a nudge.
   /// `heartbeatSeconds` is how often it emits proof of life while connected, which is what the
   /// dashboard's "active now" is derived from.
   realtime: { enabled: boolean; heartbeatSeconds: number };
@@ -46,7 +46,7 @@ export interface AgentPolicyDto {
   /// so the settings screen has one place to read and write policy; agents simply ignore it.
   logPageSize: number;
   /// Captures the screenshot gallery loads per page. Separate from logPageSize because a page of
-  /// screenshots costs image bytes rather than rows — also dashboard-only, also ignored by agents.
+  /// screenshots costs image bytes rather than rows - also dashboard-only, also ignored by agents.
   screenshotPageSize: number;
   retention: { retentionDays: number; undeliveredRetentionDays: number };
   workingHours: { startLocal: string; endLocal: string; workingDays: string[] };

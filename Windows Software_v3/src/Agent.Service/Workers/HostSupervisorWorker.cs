@@ -28,8 +28,8 @@ public sealed class HostSupervisorWorker(
     private static readonly TimeSpan CheckInterval = TimeSpan.FromSeconds(15);
 
     /// <summary>
-    /// Guards against a crash loop. If the host dies immediately on every launch — a missing
-    /// dependency, a corrupt install — relaunching every 15 seconds forever would spam the
+    /// Guards against a crash loop. If the host dies immediately on every launch - a missing
+    /// dependency, a corrupt install - relaunching every 15 seconds forever would spam the
     /// event log and burn CPU, so repeated fast failures widen the interval.
     /// </summary>
     private static readonly TimeSpan CrashLoopBackoff = TimeSpan.FromMinutes(5);
@@ -82,7 +82,7 @@ public sealed class HostSupervisorWorker(
         _logger.LogInformation("Session switch: {Reason}", e.Reason);
 
         // A fresh logon is a fresh chance for the host to start cleanly, so clear the
-        // crash-loop counter — the previous failures may have been specific to the old session.
+        // crash-loop counter - the previous failures may have been specific to the old session.
         if (e.Reason is SessionSwitchReason.SessionLogon or SessionSwitchReason.ConsoleConnect)
         {
             _consecutiveFastExits = 0;

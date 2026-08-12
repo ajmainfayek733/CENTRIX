@@ -7,7 +7,7 @@ import { RetryButton } from '@/components/RetryButton';
 /**
  * Error boundary for every dashboard screen.
  *
- * Without one, a single failing API call blanks the page and shows Next's generic error screen —
+ * Without one, a single failing API call blanks the page and shows Next's generic error screen -
  * no navigation, no theme, no indication of whether the problem is this screen or the whole
  * system. This keeps the shell (the layout above it still renders) and answers the two questions
  * an operator actually has: is it broken for everyone, and is data being lost?
@@ -16,7 +16,7 @@ import { RetryButton } from '@/components/RetryButton';
  * type: React strips server-side errors before they reach the client, replacing them with a
  * generic Error and a digest, so `instanceof ApiUnavailableError` cannot survive the boundary.
  * The message is matched for the shape our own client produces and anything unrecognized is
- * treated as a bug — the safer way round, since calling a genuine bug an outage would have people
+ * treated as a bug - the safer way round, since calling a genuine bug an outage would have people
  * waiting for a service to come back that was never down.
  */
 export default function DashboardError({
@@ -65,7 +65,7 @@ export default function DashboardError({
 
         {/*
           The digest is Next's server-side correlation id. It is the one thing that makes a user's
-          report traceable to a specific server log line, so it is shown rather than hidden —
+          report traceable to a specific server log line, so it is shown rather than hidden -
           unlike the message, which for a server error is deliberately redacted anyway.
         */}
         {error.digest && (

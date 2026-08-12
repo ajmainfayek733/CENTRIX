@@ -8,7 +8,7 @@ import { apiSend } from '@/lib/api-client';
  *
  * Server actions rather than client fetches to the API: the session token lives in an httpOnly
  * cookie that only server code can read, and this keeps the rule from Docs/Frontend/NextJS.md
- * section 6 — no component ever calls the monitoring API directly with its own credentials.
+ * section 6 - no component ever calls the monitoring API directly with its own credentials.
  *
  * The backend re-checks super_admin on both of these routes, so this is not the security
  * boundary; it is the mechanism.

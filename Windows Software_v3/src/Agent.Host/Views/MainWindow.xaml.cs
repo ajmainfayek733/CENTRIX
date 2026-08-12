@@ -22,7 +22,7 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// Closing the window hides it to the tray instead of exiting. The agent must keep running
-    /// — but it must also stay visible and killable, so the tray icon is never hidden.
+    /// - but it must also stay visible and killable, so the tray icon is never hidden.
     /// </summary>
     private bool _reallyClosing;
 
@@ -35,7 +35,7 @@ public partial class MainWindow : Window
         var identity = WindowsIdentity.GetCurrent();
         _userSid = identity.User?.Value ?? "S-1-0-0";
 
-        VersionText.Text = $"Agent {DeviceIdentity.GetAgentVersion()} · this workstation is monitored under company policy";
+        VersionText.Text = $"Agent {DeviceIdentity.GetAgentVersion()} - this workstation is monitored under company policy";
         UserText.Text = identity.Name;
         ThemeButton.Content = $"Theme: {ThemeManager.Current}";
 
@@ -88,7 +88,7 @@ public partial class MainWindow : Window
         collected.Add("Counts of key presses and mouse clicks, as an activity level only.");
 
         if (policy.Usb.Enabled)
-            collected.Add("When a USB storage device or phone is connected or removed — never its contents.");
+            collected.Add("When a USB storage device or phone is connected or removed - never its contents.");
 
         if (policy.Screenshot.Enabled)
             collected.Add($"A screenshot of your desktop every {policy.Screenshot.IntervalSeconds / 60} minutes.");
@@ -99,10 +99,10 @@ public partial class MainWindow : Window
         // read the same regardless of how the policy is configured.
         NotCollectedList.ItemsSource = new List<string>
         {
-            "The actual keys you type. Only the number of key presses is counted, never the characters — so passwords and message content are never captured.",
+            "The actual keys you type. Only the number of key presses is counted, never the characters - so passwords and message content are never captured.",
             "The contents of any USB device, file or document.",
             "Personal email, chat message content, or account credentials.",
-            "Anything at all when this agent is not running — it is visible in Task Manager and listed in Installed Programs."
+            "Anything at all when this agent is not running - it is visible in Task Manager and listed in Installed Programs."
         };
 
         ConsentCard.Visibility = consentRequired ? Visibility.Visible : Visibility.Collapsed;
@@ -128,7 +128,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Deliberately only hides the prompt for this session. Monitoring continues either way —
+    /// Deliberately only hides the prompt for this session. Monitoring continues either way -
     /// this button is not a consent opt-out, and the prompt returns on the next sign-in until
     /// it is acknowledged.
     /// </summary>

@@ -15,11 +15,11 @@ using Microsoft.Extensions.Logging;
 namespace Agent.Host;
 
 /// <summary>
-/// Employee Monitor Agent — interactive half.
+/// Employee Monitor Agent - interactive half.
 ///
 /// Runs in the logged-on user's session because everything it does is session-bound: the
 /// foreground window, idle time, input counts and the screen itself are all invisible from
-/// session 0, where the service lives. It holds no credentials and writes nothing durable —
+/// session 0, where the service lives. It holds no credentials and writes nothing durable -
 /// observations go to the service over the named pipe, and the service owns storage and upload.
 /// </summary>
 public partial class App : System.Windows.Application
@@ -127,7 +127,7 @@ public partial class App : System.Windows.Application
     }
 
     /// <summary>
-    /// A crash in the UI thread must not take monitoring down with it — the window is a
+    /// A crash in the UI thread must not take monitoring down with it - the window is a
     /// disclosure surface, and collection runs on background workers that are unaffected.
     /// </summary>
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)

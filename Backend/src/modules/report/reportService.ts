@@ -11,11 +11,11 @@ import {
 } from './pagination';
 
 /**
- * Dashboard read path (spec §5).
+ * Dashboard read path (spec section 5).
  *
  * TWO KINDS OF QUERY, AND THEY MUST NOT BE CONFUSED:
  *
- *   Aggregates (overview, roster, employee totals) read daily_activity_rollups — one row per
+ *   Aggregates (overview, roster, employee totals) read daily_activity_rollups - one row per
  *   employee per day, maintained at ingest time. They never touch the log tables. This is the
  *   change that lets the system go from 30 devices to 100+: summing a month of ten-second app
  *   switches on every dashboard load is millions of rows re-scanned per viewer, and it degrades
@@ -28,13 +28,13 @@ import {
 /**
  * A device seen within this window counts as "online now" on the overview screen.
  *
- * Derived from `devices.lastSeen`, which only an authenticated HTTP request updates — never from
+ * Derived from `devices.lastSeen`, which only an authenticated HTTP request updates - never from
  * Socket.IO presence. A socket can stay open through a total backend failure and can be closed
  * while an agent syncs happily over HTTP, so it answers a different question entirely.
  */
 const ONLINE_WINDOW_MS = 5 * 60 * 1000;
 
-/** How many apps/domains the "top" lists show. Not a page — a fixed leaderboard. */
+/** How many apps/domains the "top" lists show. Not a page - a fixed leaderboard. */
 const TOP_LIST_SIZE = 15;
 
 function startOfUtcDay(date: Date): Date {
@@ -87,7 +87,7 @@ export class ReportService {
   /**
    * Per-employee totals for a date range, read from the pre-aggregated daily rollup.
    *
-   * One indexed GROUP BY over at most (employees × days) rows — 100 employees over a month is
+   * One indexed GROUP BY over at most (employees x days) rows - 100 employees over a month is
    * ~3,000 rows, and that ceiling does not move as telemetry accumulates. The old version of
    * this method grouped activity_sessions instead, which is the same answer computed from
    * millions of rows on every page load.
@@ -125,7 +125,7 @@ export class ReportService {
     return totals;
   }
 
-  /** Overview screen (spec §5): team-wide active time, productivity, who's online, attendance. */
+  /** Overview screen (spec section 5): team-wide active time, productivity, who's online, attendance. */
   async getOverview(startDate?: string, endDate?: string) {
     const { start, end } = resolveRange(startDate, endDate);
     const onlineSince = new Date(Date.now() - ONLINE_WINDOW_MS);
@@ -169,7 +169,7 @@ export class ReportService {
     };
   }
 
-  /** Employee list (spec §5): all staff with active/idle/productivity at a glance. */
+  /** Employee list (spec section 5): all staff with active/idle/productivity at a glance. */
   async getEmployeeRoster(startDate?: string, endDate?: string) {
     const { start, end } = resolveRange(startDate, endDate);
     const onlineSince = new Date(Date.now() - ONLINE_WINDOW_MS);
@@ -216,13 +216,13 @@ export class ReportService {
   }
 
   /**
-   * Employee detail (spec §5): first page of the timeline, active-vs-idle split, top apps and
+   * Employee detail (spec section 5): first page of the timeline, active-vs-idle split, top apps and
    * domains for the range. Defaults to today when no range is given.
    *
    * The timeline is one page, not the whole range. It used to `take: 2000` and hand the lot to
    * the browser, which is both an unbounded read as history grows and 2,000 rows rendered into a
    * page nobody scrolls to the end of. The UI now shows a fixed-height window and asks for the
-   * next page when the operator reaches the bottom — see getActivityLog.
+   * next page when the operator reaches the bottom - see getActivityLog.
    */
   async getEmployeeDetail(employeeId: string, startDate?: string, endDate?: string) {
     const employee = await prisma.employee.findUnique({
@@ -310,7 +310,7 @@ export class ReportService {
   //
   // All three follow the same shape: newest first, one page, keyset cursor. The page size comes
   // from policy rather than a constant here, so an admin changes it from the settings screen.
-  // A caller may ask for fewer rows than policy allows but never more — otherwise the bound is
+  // A caller may ask for fewer rows than policy allows but never more - otherwise the bound is
   // decorative.
   // -------------------------------------------------------------------------
 
@@ -318,8 +318,8 @@ export class ReportService {
    * Activity timeline for one employee, newest first.
    *
    * Browser visits are attached to the app session that contained them, so the UI can expand a
-   * "Chrome — 2h" row into the sites that made it up. They are fetched for the rows on *this
-   * page* only — the whole point of paging is not to load the range.
+   * "Chrome - 2h" row into the sites that made it up. They are fetched for the rows on *this
+   * page* only - the whole point of paging is not to load the range.
    */
   async getActivityLog(
     employeeId: string,
@@ -344,7 +344,7 @@ export class ReportService {
       },
       orderBy: newestFirst('startTime'),
       // One extra row, purely to answer "is there more?" without a second COUNT over the same
-      // predicate — which on a log table costs as much as the page itself.
+      // predicate - which on a log table costs as much as the page itself.
       take: pageSize + 1,
       select: {
         id: true,
@@ -449,11 +449,11 @@ export class ReportService {
   }
 
   /**
-   * Screenshot index for the employee detail screen (spec §5), newest first, one page at a time.
+   * Screenshot index for the employee detail screen (spec section 5), newest first, one page at a time.
    *
    * Paged like the other log feeds rather than returning the range. Screenshots accumulate faster
-   * than any other record here — one every few minutes per device, for every device the employee
-   * has — so a fixed `take: 500` was both an arbitrary ceiling that silently hid older captures
+   * than any other record here - one every few minutes per device, for every device the employee
+   * has - so a fixed `take: 500` was both an arbitrary ceiling that silently hid older captures
    * and, at the same time, far more than the gallery shows before the operator scrolls. The grid
    * asks for the next page when it reaches the end, exactly as the timeline does.
    *
@@ -461,7 +461,7 @@ export class ReportService {
    * each image is fetched (and audit-logged) individually when it is actually displayed.
    *
    * Page size comes from Policy.screenshotPageSize, NOT logPageSize. A page here is that many
-   * JPEGs the browser downloads and decodes, not that many rows of JSON — see pagination.ts.
+   * JPEGs the browser downloads and decodes, not that many rows of JSON - see pagination.ts.
    */
   async getScreenshots(
     employeeId: string,

@@ -4,14 +4,14 @@ import { env } from '../../config/env';
 /**
  * The one place `devices.lastSeen` is written.
  *
- * Two callers keep a device's liveness current — the HTTP middleware on every authenticated
+ * Two callers keep a device's liveness current - the HTTP middleware on every authenticated
  * request, and the realtime heartbeat while an agent holds a socket. They must not each invent
  * their own staleness rule, or "online" would mean two different things depending on which path a
  * device happened to use.
  *
  * WHY IT IS THROTTLED: a fleet of 100 agents pushing six channels plus a heartbeat every couple
  * of minutes, now joined by a socket heartbeat every 30 seconds, would otherwise mean a row
- * UPDATE per signal — write amplification on the hottest table in the schema, repeatedly dirtying
+ * UPDATE per signal - write amplification on the hottest table in the schema, repeatedly dirtying
  * the same row for information nobody can act on at that resolution.
  *
  * The in-memory guard is per process, which is exactly the right scope: it exists to collapse

@@ -1,6 +1,6 @@
 # Backend deployment & fleet onboarding
 
-How to stand this backend up, and how to get 30–100+ workstations enrolled and attributed to
+How to stand this backend up, and how to get 30-100+ workstations enrolled and attributed to
 people once it is running.
 
 ---
@@ -13,8 +13,8 @@ no per-machine provisioning step.
 ### Order of operations
 
 1. **Create the organization.** `POST /v1/dashboard/organizations` returns the enrollment token
-   **once**. Store it — only its HMAC is persisted.
-2. **Import the roster.** Employees screen → *Import roster* → paste
+   **once**. Store it - only its HMAC is persisted.
+2. **Import the roster.** Employees screen -> *Import roster* -> paste
    `name, email, department` (one per line). Tab-separated text pasted straight from a
    spreadsheet works, a header row is ignored, and re-importing a file that already contains
    existing people skips them rather than failing. Do this before the rollout so devices have
@@ -26,7 +26,7 @@ no per-machine provisioning step.
        -EnrollmentToken $env:ENROLL_TOKEN
    ```
    Push via GPO startup script, Intune, or PDQ. The script is unattended-safe and idempotent.
-4. **Assign each device.** Devices screen → the *Assigned to* column is a dropdown. Until a
+4. **Assign each device.** Devices screen -> the *Assigned to* column is a dropdown. Until a
    device is assigned it sits on the hidden "Unassigned Devices" placeholder: its telemetry is
    stored but never reaches per-employee reports, so this step is not cosmetic.
 
@@ -39,7 +39,7 @@ that machine.
 Two properties worth knowing:
 
 - **Re-enrollment is idempotent on MachineGuid and preserves the employee assignment.** A
-  re-imaged or reinstalled workstation gets a fresh key and keeps its person — no admin action.
+  re-imaged or reinstalled workstation gets a fresh key and keeps its person - no admin action.
 - **The kill switch survives reinstall.** A deactivated device gets 403 at enrollment, so
   reinstalling is not a way around deactivation.
 
@@ -54,7 +54,7 @@ after rollout if you want to limit the shared secret's exposure, but plan to red
 
 ## 2. Running it
 
-### Docker (recommended — deployment target stays portable)
+### Docker (recommended - deployment target stays portable)
 
 ```bash
 cp .env.example .env      # repo root; fill in POSTGRES_PASSWORD, BETTER_AUTH_SECRET, DEVICE_TOKEN_PEPPER
@@ -73,7 +73,7 @@ npm run build
 npm start
 ```
 
-`npm run build` compiles to `dist/` and writes `dist/package.json` marking it CommonJS — the root
+`npm run build` compiles to `dist/` and writes `dist/package.json` marking it CommonJS - the root
 package is `"type": "module"` while tsconfig emits CommonJS, so without that marker Node refuses
 to load the output.
 
@@ -108,7 +108,7 @@ several `api` replicas, divide your database's own connection ceiling between th
 Local filesystem, on a named volume under compose. **This is what blocks horizontal scaling:**
 with more than one replica each holds a different subset of images, so the dashboard 404s
 whichever replica it asks. Before scaling out, either point this at shared storage (NFS/EFS) or
-replace `screenshotStorage.ts` with an S3/Azure Blob backend — the module is deliberately a
+replace `screenshotStorage.ts` with an S3/Azure Blob backend - the module is deliberately a
 two-function surface so the swap is contained.
 
 ---
@@ -127,7 +127,7 @@ public IP.
 | dashboard login/register | 10 | IP |
 
 Enrollment is keyed on the MachineGuid in the request body, not the source address. The point of
-limiting enrollment is to stop one machine hammering the credential-minting endpoint — not to cap
+limiting enrollment is to stop one machine hammering the credential-minting endpoint - not to cap
 how many *distinct* machines may join per minute. Keyed by IP, a simultaneous rollout behind one
 NAT would have allowed 10 enrollments per minute for the entire company.
 
@@ -136,7 +136,7 @@ throttle its ninety-nine neighbours.
 
 **Scope:** counters are per-process, in memory. That is correct for a single instance. Run
 multiple replicas and each enforces its own budget, so the effective limit multiplies by the
-replica count — an accepted trade for not requiring Redis, since these limits exist to contain a
+replica count - an accepted trade for not requiring Redis, since these limits exist to contain a
 stuck agent rather than to meter anything.
 
 ---
@@ -145,10 +145,10 @@ stuck agent rather than to meter anything.
 
 One agent, at defaults: a heartbeat every ~5 min, an events push every ~2 min across six channels,
 and an optional screenshot every 10 min. A hundred agents is on the order of a few requests per
-second — the pool and the ingest write path are the things to watch, not request throughput.
+second - the pool and the ingest write path are the things to watch, not request throughput.
 
 Two behaviours already protect the server under a recovering fleet:
 
 - Agents upload **sequentially**, never in parallel, and screenshots one at a time.
-- On failure they back off **exponentially** (5s → capped), which prevents a hundred workstations
+- On failure they back off **exponentially** (5s -> capped), which prevents a hundred workstations
   from retrying in lockstep through an outage and then reconnecting simultaneously.

@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from 'next/server';
  * Route gate.
  *
  * This is UX, not the security boundary. The Express API re-checks authentication and RBAC on
- * every request regardless — this only spares a manager the round trip to a settings page that
+ * every request regardless - this only spares a manager the round trip to a settings page that
  * would 403 anyway, and sends a signed-out user to /login instead of an empty dashboard.
  *
  * It deliberately only checks for the *presence* of the session cookie, not its validity:

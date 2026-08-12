@@ -6,7 +6,7 @@ import type { CategoryRow, Organization, Policy } from '@/types/api';
 import { PolicyForm } from './PolicyForm';
 import { CategoryEditor } from './CategoryEditor';
 
-export const metadata = { title: 'Settings · Employee Monitor' };
+export const metadata = { title: 'Settings - Employee Monitor' };
 export const dynamic = 'force-dynamic';
 
 export default async function SettingsPage() {
@@ -43,7 +43,7 @@ export default async function SettingsPage() {
       <div>
         <h1 className="text-lg font-semibold">Settings</h1>
         <p className="mt-0.5 text-sm text-text-secondary">
-          {organization.name} · policy version {policy.version}
+          {organization.name} - policy version {policy.version}
         </p>
       </div>
 

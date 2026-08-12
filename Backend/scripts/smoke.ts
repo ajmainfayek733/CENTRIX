@@ -32,7 +32,7 @@ let failed = 0;
  * Awaits an event, or gives up.
  *
  * Every realtime assertion needs this shape, and a bare promise would hang the whole suite when
- * the thing under test is broken — which is precisely when the suite has to report rather than
+ * the thing under test is broken - which is precisely when the suite has to report rather than
  * stall. Resolves to null on timeout so the assertion fails with a readable value.
  */
 function waitFor<T>(subscribe: (resolve: (value: T | null) => void) => void, timeoutMs = 5_000): Promise<T | null> {
@@ -48,10 +48,10 @@ function waitFor<T>(subscribe: (resolve: (value: T | null) => void) => void, tim
 function check(name: string, condition: boolean, detail?: unknown) {
   if (condition) {
     passed++;
-    console.log(`  \x1b[32m✓\x1b[0m ${name}`);
+    console.log(`  \x1b[32mPASS\x1b[0m ${name}`);
   } else {
     failed++;
-    console.log(`  \x1b[31m✗\x1b[0m ${name}`);
+    console.log(`  \x1b[31mFAIL\x1b[0m ${name}`);
     if (detail !== undefined) console.log(`      ${JSON.stringify(detail)}`);
   }
 }
@@ -69,7 +69,7 @@ async function main() {
   let deviceRowId = '';
 
   // Lives in the *resolved* organization rather than this test's own, because that is the one a
-  // dashboard socket joins. Torn down separately for the same reason — it is outside the org
+  // dashboard socket joins. Torn down separately for the same reason - it is outside the org
   // whose cascade delete cleans up everything else.
   let presenceDeviceRowId = '';
   let presenceEmployeeId = '';
@@ -281,7 +281,7 @@ async function main() {
       processName: 'Code',
       executablePath: 'C:\\Program Files\\Microsoft VS Code\\Code.exe',
       type: 'Application',
-      windowTitle: `schema.prisma — ${'employee-tracker/'.repeat(14)}`,
+      windowTitle: `schema.prisma - ${'employee-tracker/'.repeat(14)}`,
       startTime: earlier.toISOString(),
       endTime: now.toISOString(),
       durationSeconds: 60,
@@ -419,7 +419,7 @@ async function main() {
     const dashedMacDevice = await prisma.device.findUnique({ where: { deviceId: `${machineGuid}-dashed-mac` } });
     check('normalizes a MAC to canonical colon form', dashedMacDevice?.macAddress === 'A0:B1:C2:D3:E4:F5', dashedMacDevice?.macAddress);
 
-    // Past the ceiling the server still refuses — but with an actionable body, not a stack trace.
+    // Past the ceiling the server still refuses - but with an actionable body, not a stack trace.
     const oversized = await fetch(`${BASE}/api/v1/events/activity-session`, {
       method: 'POST',
       headers: auth,
@@ -638,7 +638,7 @@ async function main() {
     const roster = [
       { name: 'Ada Lovelace', email: `ada-${runId}@example.com`, department: 'Engineering' },
       { name: 'Grace Hopper', email: `grace-${runId}@example.com`, department: 'Engineering' },
-      // Same address as the first row, differently cased — must be caught before the insert,
+      // Same address as the first row, differently cased - must be caught before the insert,
       // because the database's unique constraint cannot see an in-payload duplicate.
       { name: 'Ada L', email: `ADA-${runId}@example.com` },
     ];
@@ -656,7 +656,7 @@ async function main() {
       bulkImport.results
     );
 
-    // Re-running an import is the normal case — an HR export with ten new hires appended to
+    // Re-running an import is the normal case - an HR export with ten new hires appended to
     // ninety existing people must not fail or duplicate.
     const replayImport = await employeeService.bulkCreateEmployees({ organizationId: org.id, employees: roster });
     check('re-importing the same roster creates nothing',
@@ -720,7 +720,7 @@ async function main() {
 
     // x-forwarded-for is only believed when TRUST_PROXY declares a proxy in front. Login is
     // IP-keyed at 10/min, so with the default (false) rotating the header must not create a
-    // fresh bucket per request — the previous implementation read the header unconditionally
+    // fresh bucket per request - the previous implementation read the header unconditionally
     // and could be bypassed exactly this way.
     const spoofed: number[] = [];
     for (let i = 0; i < 14; i++) {
@@ -742,8 +742,8 @@ async function main() {
     // registry directly, because the handshake and the fan-out are most of what can break.
     console.log('\nRealtime presence');
 
-    // The dashboard namespace resolves its organization with currentOrganizationId() — the
-    // deployment is single-tenant, so there is no user→organization link to read. This test
+    // The dashboard namespace resolves its organization with currentOrganizationId() - the
+    // deployment is single-tenant, so there is no user->organization link to read. This test
     // creates its own throwaway organization, which is therefore NOT the one a dashboard joins,
     // so the presence assertions need an agent inside the resolved organization instead.
     //
@@ -964,7 +964,7 @@ async function main() {
     if (deviceRowId) {
       await fs.rm(path.join(env.SCREENSHOT_STORAGE_DIR, deviceRowId), { recursive: true, force: true }).catch(() => undefined);
     }
-    // The presence fixtures live in the resolved organization, which this test must not delete —
+    // The presence fixtures live in the resolved organization, which this test must not delete -
     // it is the developer's real one. Removed individually instead.
     if (presenceDeviceRowId) {
       await prisma.device.delete({ where: { id: presenceDeviceRowId } }).catch(() => undefined);

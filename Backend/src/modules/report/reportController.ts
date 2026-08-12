@@ -53,7 +53,7 @@ export class ReportController {
   /**
    * GET /v1/dashboard/reports/employees/:employeeId/activity
    *
-   * The paging endpoint behind the timeline's scroll window. `cursor` is opaque to the client —
+   * The paging endpoint behind the timeline's scroll window. `cursor` is opaque to the client -
    * it hands back whatever `nextCursor` the previous page returned.
    */
   async getActivityLog(req: Request, res: Response, next: NextFunction) {
@@ -100,7 +100,7 @@ export class ReportController {
   /**
    * GET /v1/dashboard/reports/employees/:employeeId/screenshots
    *
-   * Index only — the images themselves come from getScreenshotFile, one audited request each.
+   * Index only - the images themselves come from getScreenshotFile, one audited request each.
    */
   async getScreenshots(req: Request, res: Response, next: NextFunction) {
     try {

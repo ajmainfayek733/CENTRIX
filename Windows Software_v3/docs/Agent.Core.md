@@ -5,7 +5,7 @@ on both sides of the process boundary: wire contracts, the policy model, the loc
 framing, well-known paths, device identity, and the file logging sink.
 
 **Output:** `Agent.Core.dll` (library)
-**Dependencies:** `Microsoft.Data.Sqlite`, `SQLitePCLRaw.bundle_e_sqlite3` (pinned to 3.0.5 —
+**Dependencies:** `Microsoft.Data.Sqlite`, `SQLitePCLRaw.bundle_e_sqlite3` (pinned to 3.0.5 -
 the version Microsoft.Data.Sqlite resolves by default carries GHSA-2m69-gcr7-jv3q),
 `Microsoft.Extensions.Logging(.Abstractions)`, `Microsoft.Extensions.Options`
 
@@ -15,7 +15,7 @@ tracker nor a migrations engine.
 
 ---
 
-## `AgentPaths` — `AgentPaths.cs`
+## `AgentPaths` - `AgentPaths.cs`
 
 Static class. Well-known on-disk locations, all rooted at
 `%ProgramData%\EmployeeMonitor`. Only the service touches the database and credential files; the
@@ -25,11 +25,11 @@ ordinary users write access to collected data without breaking the host.
 | Member | Type | Description |
 |---|---|---|
 | `RootDirectory` | `string` | `%ProgramData%\EmployeeMonitor`. Computed once at type initialization. |
-| `DatabasePath` | `string` | `agent.db` — typed local store and offline queue. |
-| `ConfigPath` | `string` | `agent.config.json` — server URL and enrollment token, written by the installer. |
-| `CredentialPath` | `string` | `device.key` — DPAPI-protected device API key, written by the service after enrollment. |
-| `ScreenshotSpoolDirectory` | `string` | `screenshots\` — captures staged here until uploaded, then deleted. |
-| `LogDirectory` | `string` | `logs\` — rolling log files from both processes. |
+| `DatabasePath` | `string` | `agent.db` - typed local store and offline queue. |
+| `ConfigPath` | `string` | `agent.config.json` - server URL and enrollment token, written by the installer. |
+| `CredentialPath` | `string` | `device.key` - DPAPI-protected device API key, written by the service after enrollment. |
+| `ScreenshotSpoolDirectory` | `string` | `screenshots\` - captures staged here until uploaded, then deleted. |
+| `LogDirectory` | `string` | `logs\` - rolling log files from both processes. |
 | `IpcPipeName` | `const string` | `Global\EmployeeMonitor.Agent`. The `Global\` prefix scopes the pipe across terminal-services sessions, which is **required** because the service (session 0) and host (user session) live in different sessions. |
 | `EnsureCreated()` | `void` | Creates the root, screenshot spool and log directories. Idempotent. Called at service startup, by `LocalStore`'s constructor, by `DeviceCredentialStore.Save`, and before each screenshot write. |
 
@@ -37,28 +37,28 @@ ordinary users write access to collected data without breaking the host.
 
 ## Configuration
 
-### `AgentConfiguration` — `Configuration/AgentConfiguration.cs`
+### `AgentConfiguration` - `Configuration/AgentConfiguration.cs`
 
 Sealed record. Install-time configuration read from `AgentPaths.ConfigPath`. It carries the
 org-wide enrollment token, which is not itself a telemetry credential (the backend refuses it on
-every route except enrollment) but does let a machine join the fleet — hence the ACL requirement.
+every route except enrollment) but does let a machine join the fleet - hence the ACL requirement.
 
 | Member | Type | Description |
 |---|---|---|
 | `ServerUrl` | `required string` | Base URL of the monitoring server. |
 | `EnrollmentToken` | `required string` | Org enrollment token from the dashboard. Traded once for a per-device API key. |
 | `AllowInsecureHttp` | `bool` | Permits a plain-HTTP `ServerUrl`. Lab and smoke-test only; the service logs a warning on every start when set. |
-| `static Load()` | `AgentConfiguration` | Reads and validates the file. **Throws** `FileNotFoundException` if absent, `InvalidDataException` if unparseable or if either required field is blank. This is a hard dependency — the service fails loudly at startup rather than running blind. |
+| `static Load()` | `AgentConfiguration` | Reads and validates the file. **Throws** `FileNotFoundException` if absent, `InvalidDataException` if unparseable or if either required field is blank. This is a hard dependency - the service fails loudly at startup rather than running blind. |
 | `Save()` | `void` | Writes the file (after `EnsureCreated`). Used by the installer and developer setup. |
 
 ---
 
-## Contracts — `Contracts/`
+## Contracts - `Contracts/`
 
 The client half of the backend's ingest API. Property names serialize to camelCase and mirror the
 backend's Zod schemas field for field.
 
-### `AgentJson` — `Contracts/AgentJson.cs`
+### `AgentJson` - `Contracts/AgentJson.cs`
 
 Static class holding the single `JsonSerializerOptions` used for **both** backend HTTP calls and
 named-pipe IPC.
@@ -75,7 +75,7 @@ named-pipe IPC.
 ### `Enums.cs`
 
 Twelve string-serialized enums (each with an explicit `JsonStringEnumConverter<T>`), forming the
-client half of the backend's Postgres enums. **Names must match `ingest.dto.ts` exactly** — they
+client half of the backend's Postgres enums. **Names must match `ingest.dto.ts` exactly** - they
 travel as strings and the server rejects anything outside its own enum.
 
 | Enum | Members |
@@ -106,19 +106,19 @@ throws `ArgumentOutOfRangeException` on an unknown value.
 #### `ITelemetryEvent`
 
 Interface with a single member, `Guid ClientEventId`. Every event carries a client-generated id
-because sync is at-least-once — a batch whose HTTP response was lost is resent verbatim and the
+because sync is at-least-once - a batch whose HTTP response was lost is resent verbatim and the
 server deduplicates on this id. `BackendClient.PushEventsAsync` is generically constrained to it.
 
 #### `AttendanceEvent`
 
 One per Windows logon session. Upserted server-side on `SessionId`: the agent re-sends the row as
-`LogoutTime` firms up across lock → sleep → shutdown, and last write wins.
+`LogoutTime` firms up across lock -> sleep -> shutdown, and last write wins.
 
 `ClientEventId`, `SessionId`, `UserSid`, `LoginTime`, `LogoutTime?`, `EndReason?`, `WorkDate`,
 `TotalActiveSeconds`, `TotalIdleSeconds`.
 
 `WorkDate` is a local calendar date (`yyyy-MM-dd`) sent by the agent because only the workstation
-knows its own timezone — a late shift would otherwise land on the wrong date.
+knows its own timezone - a late shift would otherwise land on the wrong date.
 
 #### `ActivityMetricEvent`
 
@@ -174,11 +174,11 @@ that grew rather than three unrelated alerts.
 | `DeviceRegistration` | Device profile sent at enrollment: `DeviceId`, `DeviceName`, `SystemType?`, `Edition?`, `Version?`, `MacAddress`, `AgentVersion?`. |
 | `EnrollmentResponse` | `Authenticated`, `ApiKey?`, `DeviceId?`, `EmployeeId?`, `Error?`. The API key is returned exactly once. |
 | `HeartbeatResponse` | `Authenticated`, `DeviceId?`, `PolicyVersion`, `ServerTimeUtc`. `PolicyVersion` is what lets the agent skip a full policy fetch. |
-| `PushEventsResponse` | `AcknowledgedEventIds` — only these are marked sent locally. |
+| `PushEventsResponse` | `AcknowledgedEventIds` - only these are marked sent locally. |
 
 ---
 
-## `DeviceIdentity` — `DeviceIdentity.cs`
+## `DeviceIdentity` - `DeviceIdentity.cs`
 
 Static class building the device profile.
 
@@ -189,30 +189,30 @@ Static class building the device profile.
 
 > **Why the tiers.** The earlier version required an adapter that was `Up` *and* physical *and*
 > not virtual-sounding, and returned `00:00:00:00:00:00` when nothing matched. All three
-> conditions fail routinely — the service starts at boot and enrolls before any adapter reaches
+> conditions fail routinely - the service starts at boot and enrolls before any adapter reaches
 > `Up`; a laptop on Wi-Fi with the dock unplugged has no Ethernet; on a host running Hyper-V or
 > WSL2 the adapter carrying traffic is described as virtual. The zero address was not an edge
 > case, it was the common result, and because it is a well-formed string nothing downstream could
 > tell it apart from a real one: every affected device showed the same MAC in the dashboard.
 >
 > `DeviceRegistration.MacAddress` is nullable for the same reason, and the backend normalizes what
-> it receives — canonical uppercase colon form, with the all-zero address stored as `NULL`. "We do
+> it receives - canonical uppercase colon form, with the all-zero address stored as `NULL`. "We do
 > not know" is a fact worth recording accurately.
 | `GetEdition()` | `ProductName` from `CurrentVersion` (e.g. `Windows 11 Pro`), falling back to `RuntimeInformation.OSDescription`. Read from the registry rather than inferred from the build number. |
-| `GetOsVersion()` | `Environment.OSVersion.Version` (e.g. `10.0.26200`). Accurate only because `app.manifest` declares Windows 10/11 support — without it Windows reports 6.2. |
+| `GetOsVersion()` | `Environment.OSVersion.Version` (e.g. `10.0.26200`). Accurate only because `app.manifest` declares Windows 10/11 support - without it Windows reports 6.2. |
 | `GetSystemType()` | System Information wording, e.g. `64-bit operating system, x64-based processor`. |
 | `GetAgentVersion()` | Reads the `AgentVersion` assembly metadata written by `Directory.Build.props`, falling back to the assembly version, then `0.0.0`. |
 | `BuildRegistration()` | Assembles a `DeviceRegistration` from all of the above. |
 
 > Identity is `MachineGuid`, not MAC. Features.md notes MAC is burned into hardware while IPs
-> change — true, but MAC is also trivially spoofable and a docked laptop reports three of them. It
+> change - true, but MAC is also trivially spoofable and a docked laptop reports three of them. It
 > is reported as an attribute; `MachineGuid` is the key the backend uniques on.
 
 ---
 
-## IPC — `Ipc/`
+## IPC - `Ipc/`
 
-### `IpcChannel` — `Ipc/IpcChannel.cs`
+### `IpcChannel` - `Ipc/IpcChannel.cs`
 
 Static class. Length-prefixed framing over a pipe stream.
 
@@ -223,7 +223,7 @@ length turns an oversized frame into a hard error instead of a corrupted one.
 
 | Member | Description |
 |---|---|
-| `MaxFrameBytes` (private const) | 4 MB. Nothing legitimate approaches it — screenshots travel as paths, not bytes — so it exists purely to bound a malformed or hostile length prefix. |
+| `MaxFrameBytes` (private const) | 4 MB. Nothing legitimate approaches it - screenshots travel as paths, not bytes - so it exists purely to bound a malformed or hostile length prefix. |
 | `WriteMessageAsync(Stream, IpcMessage, CancellationToken)` | Serializes polymorphically as `IpcMessage`, writes header + payload, flushes. Throws `InvalidOperationException` if the payload exceeds the cap. |
 | `ReadMessageAsync(Stream, CancellationToken)` | Reads one frame. Returns `null` when the peer closed the pipe cleanly. Throws `InvalidDataException` for an out-of-range length and `EndOfStreamException` on a mid-frame disconnect. |
 | `ReadExactlyAsync` (private) | Loops until the buffer is full; returns `false` on a clean zero-byte read. |
@@ -234,7 +234,7 @@ length turns an oversized frame into a hard error instead of a corrupted one.
 version mismatch between the two executables surfaces as an unknown-type failure rather than a
 silently misparsed payload.
 
-**Host → Service**
+**Host -> Service**
 
 | Message | Payload |
 |---|---|
@@ -244,35 +244,35 @@ silently misparsed payload.
 | `SubmitActivitySessionMessage` | `ActivitySessionEvent` |
 | `SubmitBrowserActivityMessage` | `BrowserActivityEvent` |
 | `SubmitAlertMessage` | `AlertEvent` |
-| `SubmitScreenshotMessage` | `ClientEventId`, `UserSid`, `CapturedAt`, `FilePath`, `SizeBytes`, `Width?`, `Height?` — **path only**, never bytes |
+| `SubmitScreenshotMessage` | `ClientEventId`, `UserSid`, `CapturedAt`, `FilePath`, `SizeBytes`, `Width?`, `Height?` - **path only**, never bytes |
 | `ConsentAcknowledgedMessage` | `UserSid`, `PolicyVersion`, `AcknowledgedAt` |
 
-**Service → Host**
+**Service -> Host**
 
 | Message | Payload |
 |---|---|
 | `HelloAckMessage` | `Policy`, `ConsentRequired`, `BackendReachable` |
 | `PolicyUpdatedMessage` | `Policy`, `ConsentRequired` |
 | `ShowNotificationMessage` | `Title`, `Message`, `Severity` |
-| `RequestScreenshotMessage` | (no payload) — on-demand capture |
+| `RequestScreenshotMessage` | (no payload) - on-demand capture |
 | `ShutdownMessage` | `Reason?` |
 
 **Either direction:** `PingMessage` (`SentAt`, defaults to now). The service echoes a fresh one.
 
 ---
 
-## Policy — `Policy/`
+## Policy - `Policy/`
 
-### `AgentPolicy` — `Policy/AgentPolicy.cs`
+### `AgentPolicy` - `Policy/AgentPolicy.cs`
 
 Sealed record mirroring the backend's `AgentPolicyDto`. Always the full document, never a diff.
 Every property has a default matching Features.md, because those defaults are what the agent runs
-on before its first successful fetch — collection must start immediately rather than block on the
+on before its first successful fetch - collection must start immediately rather than block on the
 network.
 
 | Property | Type | Default |
 |---|---|---|
-| `Version` | `int` | `1` — incremented by the backend on every write; a change re-prompts for consent |
+| `Version` | `int` | `1` - incremented by the backend on every write; a change re-prompts for consent |
 | `Attendance` | `AttendancePolicy` | `Enabled = true` |
 | `Activity` | `ActivityPolicy` | `Enabled = true`, `IdleThresholdSeconds = 300` |
 | `AppSession` | `AppSessionPolicy` | `Enabled = true`, `PollSeconds = 1` |
@@ -281,32 +281,32 @@ network.
 | `Usb` | `UsbPolicy` | `Enabled = true`, `ReconciliationIntervalSeconds = 5`, `AlertOnInsertion = false` |
 | `Alert` | `AlertPolicy` | `Enabled = true`, `BlacklistEnabled = true`, `NotifyOutsideWorkingHours = false` |
 | `Alert.Idle` | `IdleAlertPolicy` | `Enabled = true`, `Normal = 1800s`, `Moderate = 2700s`, `Severe = 3600s`, `Renotify = 900s` |
-| `Sync` | `SyncPolicy` | `BatchIntervalSeconds = 120`, `MaxBatchSize = 500`, backoff `5`–`120s` |
+| `Sync` | `SyncPolicy` | `BatchIntervalSeconds = 120`, `MaxBatchSize = 500`, backoff `5`-`120s` |
 | `Retention` | `RetentionPolicy` | `RetentionDays = 90`, `UndeliveredRetentionDays = 30` |
-| `WorkingHours` | `WorkingHoursPolicy` | `08:00`–`17:00`, Monday–Friday |
+| `WorkingHours` | `WorkingHoursPolicy` | `08:00`-`17:00`, Monday-Friday |
 | `Categories` | `List<CategoryRule>` | empty |
 
 **`CategoryRule`**: `Pattern` (required), `Target` (required), `Tag` (default `Neutral`),
 `IsBlacklisted`. Flattened from the backend's categories table so the agent can warn locally
 without a round trip.
 
-### `PolicyEvaluator` — `Policy/PolicyEvaluator.cs`
+### `PolicyEvaluator` - `Policy/PolicyEvaluator.cs`
 
 Static class applying category rules locally. The backend re-derives the same tags at ingest and
 its answer wins for reporting; this exists so the desktop notification is immediate.
 
 | Method | Behaviour |
 |---|---|
-| `MatchApplication(rules, appName, processName, executablePath)` | Case-insensitive **contains** match against all three candidates, so one rule of `"chrome"` catches every spelling. A blacklist match returns immediately and wins outright — it cannot be overridden by a later `Productive` rule for the same app. Otherwise returns the first match. |
+| `MatchApplication(rules, appName, processName, executablePath)` | Case-insensitive **contains** match against all three candidates, so one rule of `"chrome"` catches every spelling. A blacklist match returns immediately and wins outright - it cannot be overridden by a later `Productive` rule for the same app. Otherwise returns the first match. |
 | `MatchDomain(rules, domain)` | **Suffix** match: `facebook.com` covers `m.facebook.com` but not `notfacebook.com` (the check is exact equality or `EndsWith("." + pattern)`). Same blacklist-wins rule. Returns `null` for a blank domain. |
-| `TagFor(rule)` | `null` → `Neutral`; blacklisted → `Blacklisted`; otherwise the rule's own tag. |
-| `IsWithinWorkingHours(policy, localTime)` | Checks the day name against `WorkingDays`, then the time against `StartLocal`/`EndLocal` (falling back to 08:00/17:00 if unparseable). **An end earlier than the start is treated as a shift crossing midnight** (e.g. 22:00–06:00). Used to suppress out-of-hours desktop alerts. |
+| `TagFor(rule)` | `null` -> `Neutral`; blacklisted -> `Blacklisted`; otherwise the rule's own tag. |
+| `IsWithinWorkingHours(policy, localTime)` | Checks the day name against `WorkingDays`, then the time against `StartLocal`/`EndLocal` (falling back to 08:00/17:00 if unparseable). **An end earlier than the start is treated as a shift crossing midnight** (e.g. 22:00-06:00). Used to suppress out-of-hours desktop alerts. |
 
 ---
 
-## Storage — `Storage/`
+## Storage - `Storage/`
 
-### `LocalStoreSchema` — `Storage/LocalStoreSchema.cs`
+### `LocalStoreSchema` - `Storage/LocalStoreSchema.cs`
 
 Internal static class holding `Version` (currently `1`) and the entire schema as one `Sql` string,
 executed as a batch.
@@ -314,7 +314,7 @@ executed as a batch.
 Pragmas: `journal_mode = WAL` (so the sync worker reads pending rows while collectors write new
 ones without either blocking), `synchronous = NORMAL`, `foreign_keys = ON`.
 
-**Telemetry tables** — `attendance_sessions`, `activity_metrics`, `activity_sessions`,
+**Telemetry tables** - `attendance_sessions`, `activity_metrics`, `activity_sessions`,
 `browser_activity`, `usb_events`, `alerts`, `screenshots`. Each carries its **own**
 `created_utc` / `sent_utc` / `attempts` columns rather than sharing a sync-state side table, so
 sync is a partial-indexed scan per table with no join, and "delete only after successful
@@ -322,19 +322,19 @@ synchronization" is a plain `DELETE` on acknowledged ids. Each has a partial ind
 `WHERE sent_utc IS NULL`; `alerts` additionally indexes `(user_sid, type, resolved_at)` for open
 incidents.
 
-The `screenshots` table stores **metadata plus a `file_path`** — the image is a file on disk, so
+The `screenshots` table stores **metadata plus a `file_path`** - the image is a file on disk, so
 the database stays small and a failed upload retries from the original bytes.
 
-**Policy tables** — `policy_cache` (single row, `CHECK (id = 1)`, ~32 typed columns),
+**Policy tables** - `policy_cache` (single row, `CHECK (id = 1)`, ~32 typed columns),
 `policy_working_days` and `policy_categories` (scalar list members as rows, not delimited
 strings).
 
-**`consent_records`** — `(user_sid, policy_version)` primary key, with `sent_utc`/`attempts` so
+**`consent_records`** - `(user_sid, policy_version)` primary key, with `sent_utc`/`attempts` so
 acknowledgements queue for upload like any other event.
 
 `schema_info` records applied versions.
 
-### `LocalStore` — `Storage/LocalStore.cs`
+### `LocalStore` - `Storage/LocalStore.cs`
 
 Sealed class. The database itself: connection management, schema initialization, the policy cache
 and consent records.
@@ -347,23 +347,23 @@ Combined with WAL, readers and writers do not block each other.
 | `LocalStore(ILogger<LocalStore>, string? databasePath = null)` | Calls `AgentPaths.EnsureCreated()` and builds the connection string (`ReadWriteCreate`, shared cache, pooling). The optional path override exists for tests. |
 | `Open()` (internal) | Opens and returns a new pooled connection. |
 | `Initialize()` | Executes `LocalStoreSchema.Sql`, then inserts the schema version if absent. Called eagerly at service startup so a schema failure surfaces there rather than on the first collector message. |
-| `SavePolicy(AgentPolicy)` | Upserts the single `policy_cache` row and replaces the working-day and category rows — **all in one transaction**, so a crash mid-write can never leave the agent running half of one policy version and half of another. |
+| `SavePolicy(AgentPolicy)` | Upserts the single `policy_cache` row and replaces the working-day and category rows - **all in one transaction**, so a crash mid-write can never leave the agent running half of one policy version and half of another. |
 | `ReplaceWorkingDays` / `ReplaceCategories` (private static) | Delete-then-insert helpers, executed inside the caller's transaction. |
-| `LoadPolicy()` | Rehydrates the full `AgentPolicy`, including working days and categories. Returns `null` if the agent has never fetched one — callers then fall back to `new AgentPolicy()`. |
-| `RecordConsent(userSid, policyVersion, acknowledgedAt)` | `INSERT OR IGNORE` — re-acknowledging the same version is a no-op. |
+| `LoadPolicy()` | Rehydrates the full `AgentPolicy`, including working days and categories. Returns `null` if the agent has never fetched one - callers then fall back to `new AgentPolicy()`. |
+| `RecordConsent(userSid, policyVersion, acknowledgedAt)` | `INSERT OR IGNORE` - re-acknowledging the same version is a no-op. |
 | `HasConsented(userSid, policyVersion)` | Used by `IpcServer` to decide whether the host must prompt. |
 
 **`SqlTime`** (internal static): timestamp conversion for the store. `Now()`, `From()`,
-`FromNullable()`, `Parse()`, `ParseNullable()` — everything is ISO-8601 UTC round-trip text
+`FromNullable()`, `Parse()`, `ParseNullable()` - everything is ISO-8601 UTC round-trip text
 (`"o"`), which sorts lexicographically in chronological order and is immune to the workstation's
 timezone changing between write and read.
 
-### `TelemetryQueue` — `Storage/TelemetryQueue.cs`
+### `TelemetryQueue` - `Storage/TelemetryQueue.cs`
 
 Sealed class over `LocalStore`. The offline queue: collectors enqueue, the sync worker drains.
 
 A row's `sent_utc` is `NULL` while pending. Acknowledged rows are **marked**, not deleted inline,
-and swept later — so an acknowledgement that races a crash cannot lose an event that was never
+and swept later - so an acknowledgement that races a crash cannot lose an event that was never
 actually stored server-side.
 
 **Enqueue.** Six `Enqueue(...)` overloads plus `EnqueueScreenshot`. Two use upsert-and-requeue
@@ -371,7 +371,7 @@ semantics; the rest are insert-once:
 
 | Method | Semantics |
 |---|---|
-| `Enqueue(AttendanceEvent)` | Upsert on `session_id`, **resetting `sent_utc` to NULL and `attempts` to 0**. The logout time firms up as the agent observes lock → sleep → shutdown, and the server needs each revision. |
+| `Enqueue(AttendanceEvent)` | Upsert on `session_id`, **resetting `sent_utc` to NULL and `attempts` to 0**. The logout time firms up as the agent observes lock -> sleep -> shutdown, and the server needs each revision. |
 | `Enqueue(AlertEvent)` | Upsert on `client_event_id`, also requeuing. An escalating incident reuses one id and each escalation must reach the server. |
 | `Enqueue(ActivityMetricEvent)` | `INSERT OR IGNORE` on `client_event_id` |
 | `Enqueue(ActivitySessionEvent)` | `INSERT OR IGNORE` on `activity_session_id` |
@@ -381,7 +381,7 @@ semantics; the rest are insert-once:
 
 **Dequeue.** `DequeueAttendance`, `DequeueActivityMetrics`, `DequeueActivitySessions`,
 `DequeueBrowserActivity`, `DequeueUsbEvents`, `DequeueAlerts`, `DequeueScreenshots`,
-`DequeueConsents` — each takes a `max` and returns pending rows ordered by `created_utc`
+`DequeueConsents` - each takes a `max` and returns pending rows ordered by `created_utc`
 (consents by `acknowledged_at`). Two projection records support the non-event queues:
 
 - `PendingScreenshot(ClientEventId, UserSid, CapturedAt, FilePath, Width, Height)`
@@ -394,15 +394,15 @@ semantics; the rest are insert-once:
 | `MarkSent(channel, clientEventIds)` | Stamps `sent_utc` for each acknowledged id, in one transaction. |
 | `MarkScreenshotSent(clientEventId)` | Same, for the screenshot spool. |
 | `MarkConsentSent(userSid, policyVersion)` | Same, for consent records. |
-| `RecordRejection(channel, clientEventIds)` | Increments `attempts` on **exactly the ids the server refused**. Only rejections count — never a transient network or 5xx failure — because `attempts` is what eventually causes `DropExhausted` to discard a row, and counting an unreachable server would age out perfectly good data during an outage, the precise opposite of what the offline queue exists for. Scoped to the failed ids rather than every pending row, so one malformed event cannot push a whole channel toward being dropped. |
-| `DropExhausted(maxAttempts)` | Deletes pending rows whose `attempts` has reached the limit, across every channel, in one transaction. Returns the count per channel so the caller can log what was lost — **losing data is the point here, so it must never happen quietly.** Without this, an event the server will never accept is resent every sync cycle until the retention window expires weeks later. |
+| `RecordRejection(channel, clientEventIds)` | Increments `attempts` on **exactly the ids the server refused**. Only rejections count - never a transient network or 5xx failure - because `attempts` is what eventually causes `DropExhausted` to discard a row, and counting an unreachable server would age out perfectly good data during an outage, the precise opposite of what the offline queue exists for. Scoped to the failed ids rather than every pending row, so one malformed event cannot push a whole channel toward being dropped. |
+| `DropExhausted(maxAttempts)` | Deletes pending rows whose `attempts` has reached the limit, across every channel, in one transaction. Returns the count per channel so the caller can log what was lost - **losing data is the point here, so it must never happen quietly.** Without this, an event the server will never accept is resent every sync cycle until the retention window expires weeks later. |
 | `PendingCount(channel)` | Count of unsent rows. |
 | `Purge(undeliveredRetentionDays)` | Deletes rows that are either already sent **or** older than the cutoff, across all seven telemetry tables plus sent consent records, in one transaction. **Returns the screenshot file paths that were dropped** so the caller can delete them from disk. |
 | `RecoverOpenAttendanceSessions()` | At startup, closes rows with a `NULL` logout time by setting it to `COALESCE(logout_time, login_time)`, stamping `end_reason = 'Recovered'` and requeuing them. Without it, a power loss would leave the day's attendance open forever. Returns the row count and logs a warning when non-zero. |
 
 `TableName(channel)` and `KeyColumn(channel)` are private closed switches. They are the only
 source of the interpolated identifiers in `MarkSent`, `RecordFailure`, `PendingCount` and
-`Purge` — never caller input — so the interpolation cannot carry injected SQL. Every value is a
+`Purge` - never caller input - so the interpolation cannot carry injected SQL. Every value is a
 bound parameter.
 
 `Query<T>(sql, max, map)` is the shared read helper. `ParseNullableEnum<TEnum>` and
@@ -411,7 +411,7 @@ bound parameter.
 
 ---
 
-## Logging — `Logging/FileLoggerProvider.cs`
+## Logging - `Logging/FileLoggerProvider.cs`
 
 Rolling-file `ILoggerProvider` used by both executables. Hand-rolled rather than pulling in a
 logging framework: the agent publishes self-contained to 30 workstations and this is the only sink
@@ -434,15 +434,15 @@ or a file deleted underneath the writer all end in a dropped line and a retry on
 
 Owns the single file handle behind a lock.
 
-- **Daily roll** by comparing `DateOnly.FromDateTime(DateTime.Now)` — local date, not UTC, so an
+- **Daily roll** by comparing `DateOnly.FromDateTime(DateTime.Now)` - local date, not UTC, so an
   administrator can correlate lines with the workstation clock and the Event Log.
-- **Size roll** to `{prefix}-{date}.1.log`, `.2.log`, … On open it skips forward past any segment
+- **Size roll** to `{prefix}-{date}.1.log`, `.2.log`, ... On open it skips forward past any segment
   already at the cap, so a mid-day restart does not append past the limit.
 - Opens with `FileMode.Append` / `FileShare.ReadWrite`, so an administrator can tail the file
   while the agent holds it.
 - `AutoFlush = true`: the interesting lines are the ones written just before a crash, and agent log
   volume makes the syscall cost irrelevant.
-- `Prune()` deletes matching files older than the cutoff, swallowing failures — the host may lack
+- `Prune()` deletes matching files older than the cutoff, swallowing failures - the host may lack
   delete rights, and `RetentionWorker` is the SYSTEM-side backstop.
 
 ### `FileLogger` (internal)
@@ -467,4 +467,4 @@ per category in a `ConcurrentDictionary`. `Dispose()` clears the cache and dispo
 | Method | Description |
 |---|---|
 | `AddAgentFileLog(this ILoggingBuilder, FileLogOptions)` | Registers the provider. Both executables call this. |
-| `CreateStandalone(FileLogOptions)` | Builds a provider directly, for code running before (or instead of) a host — specifically the service's configuration-load failure path, where the log file is the only evidence of why the service refused to start. |
+| `CreateStandalone(FileLogOptions)` | Builds a provider directly, for code running before (or instead of) a host - specifically the service's configuration-load failure path, where the log file is the only evidence of why the service refused to start. |

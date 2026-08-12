@@ -12,7 +12,7 @@ export async function POST() {
   try {
     await serverFetch('/api/auth/sign-out', { method: 'POST' });
   } catch {
-    // Ignored on purpose — see above.
+    // Ignored on purpose - see above.
   }
 
   const response = NextResponse.json({ ok: true });

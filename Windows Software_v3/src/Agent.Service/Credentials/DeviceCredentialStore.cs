@@ -11,7 +11,7 @@ namespace Agent.Service.Credentials;
 /// Protected with DPAPI at <see cref="DataProtectionScope.LocalMachine"/> scope: the service
 /// runs as SYSTEM and must be able to read the key at boot, before any user has logged on, so
 /// CurrentUser scope would not work. LocalMachine scope means the ciphertext is bound to this
-/// machine — copying the file to another workstation yields nothing — but any process that can
+/// machine - copying the file to another workstation yields nothing - but any process that can
 /// already run as Administrator on this box could unprotect it, which is why the containing
 /// directory is ACL'd to SYSTEM and Administrators.
 /// </summary>

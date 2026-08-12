@@ -70,7 +70,7 @@ public sealed record SubmitAlertMessage : IpcMessage
 
 /// <summary>
 /// The host captures the screen and writes the JPEG to the shared spool directory, then sends
-/// only the path. Image bytes never travel through the pipe — a 1–3 MB frame every ten minutes
+/// only the path. Image bytes never travel through the pipe - a 1-3 MB frame every ten minutes
 /// would dominate the channel that also carries time-sensitive activity events.
 /// </summary>
 public sealed record SubmitScreenshotMessage : IpcMessage

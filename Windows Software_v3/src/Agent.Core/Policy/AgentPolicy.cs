@@ -108,7 +108,7 @@ public sealed record SyncPolicy
     /// <summary>
     /// Events per push. Matches the backend's policy default: batch size is the main lever on
     /// peak server cost, and a fleet draining a backlog together multiplies whatever this is.
-    /// Admins change it from the settings screen — the agent never hardcodes a size.
+    /// Admins change it from the settings screen - the agent never hardcodes a size.
     /// </summary>
     public int MaxBatchSize { get; init; } = 100;
 
@@ -120,7 +120,7 @@ public sealed record SyncPolicy
 /// Whether the agent holds a Socket.IO signalling connection.
 ///
 /// Signalling only. The agent syncs on its own interval and gates that on the HTTP heartbeat
-/// whether or not this is on — turning it off costs promptness, never data.
+/// whether or not this is on - turning it off costs promptness, never data.
 /// </summary>
 public sealed record RealtimePolicy
 {
@@ -130,7 +130,7 @@ public sealed record RealtimePolicy
     /// How often to emit proof of life while connected.
     ///
     /// This is what the dashboard's "active now" is derived from. A socket staying open proves
-    /// very little — a half-open connection survives an unplugged cable or a suspended laptop for
+    /// very little - a half-open connection survives an unplugged cable or a suspended laptop for
     /// minutes, because nothing needs to be sent for the OS to keep believing in it. A heartbeat
     /// that arrives is positive evidence at a known instant.
     /// </summary>

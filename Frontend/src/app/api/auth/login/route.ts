@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     // what an unguarded fetch produced: a 500 the form rendered as a failed sign-in.
     console.error('login: monitoring service unreachable:', error);
     return NextResponse.json(
-      { error: 'The monitoring service is unavailable. Your credentials have not been checked — try again shortly.' },
+      { error: 'The monitoring service is unavailable. Your credentials have not been checked - try again shortly.' },
       { status: 503 }
     );
   }
@@ -46,7 +46,7 @@ export async function POST(request: Request) {
   if (upstream.status >= 500) {
     console.error(`login: monitoring service returned ${upstream.status}`);
     return NextResponse.json(
-      { error: 'The monitoring service is unavailable. Your credentials have not been checked — try again shortly.' },
+      { error: 'The monitoring service is unavailable. Your credentials have not been checked - try again shortly.' },
       { status: 503 }
     );
   }

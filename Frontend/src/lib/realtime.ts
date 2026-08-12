@@ -2,14 +2,14 @@
  * Realtime wire contract, mirroring Backend/src/realtime/events.ts.
  *
  * A change on either side is a two-repo commit. These are duplicated rather than shared because
- * the two tiers have no build-time link — but they are constants in both, so a rename is
+ * the two tiers have no build-time link - but they are constants in both, so a rename is
  * greppable rather than hidden in string literals scattered through components.
  */
 
 export const DASHBOARD_NAMESPACE = '/dashboard';
 
 export const DashboardEvent = {
-  /** A telemetry batch landed. A hint to refetch — never the data itself. */
+  /** A telemetry batch landed. A hint to refetch - never the data itself. */
   TelemetryIngested: 'telemetry:ingested',
   /** An agent connected, heartbeated, or dropped. Carries the device's current liveness. */
   DevicePresence: 'device:presence',
@@ -52,7 +52,7 @@ export interface TelemetryIngestedPayload {
   channel: string;
   /** Days the batch touched, so a screen showing one date can ignore a backfill for another. */
   workDates: string[];
-  /** Events genuinely stored — zero for a replay, which must not move anyone's numbers. */
+  /** Events genuinely stored - zero for a replay, which must not move anyone's numbers. */
   eventCount: number;
   delta: RollupDeltaPayload;
 }
@@ -95,7 +95,7 @@ export function addRollupDelta(
 }
 
 export interface DevicePresencePayload {
-  /** Device row id, matching `devices.id` — not the MachineGuid. */
+  /** Device row id, matching `devices.id` - not the MachineGuid. */
   deviceId: string;
   /** Whether a command sent right now would reach the agent's socket. */
   connected: boolean;

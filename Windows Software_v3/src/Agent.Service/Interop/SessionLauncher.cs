@@ -30,7 +30,7 @@ public sealed partial class SessionLauncher(ILogger<SessionLauncher> logger)
     {
         var sessionId = WTSGetActiveConsoleSessionId();
 
-        // 0xFFFFFFFF means there is no console session attached — the machine is at the
+        // 0xFFFFFFFF means there is no console session attached - the machine is at the
         // logon screen or between sessions. Not an error; the supervisor retries.
         if (sessionId == 0xFFFFFFFF)
         {

@@ -166,10 +166,10 @@ Recommended status: `202 Accepted`
 
 ### Error responses
 
-- `400 Bad Request` — malformed payload or invalid fields
-- `401 Unauthorized` — invalid or missing device token
-- `403 Forbidden` — device not authorized
-- `500 Internal Server Error` — server-side ingestion failure
+- `400 Bad Request` - malformed payload or invalid fields
+- `401 Unauthorized` - invalid or missing device token
+- `403 Forbidden` - device not authorized
+- `500 Internal Server Error` - server-side ingestion failure
 
 ### Expected behavior
 

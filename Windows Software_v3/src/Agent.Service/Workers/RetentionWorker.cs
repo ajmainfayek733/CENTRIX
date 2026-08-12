@@ -59,7 +59,7 @@ public sealed class RetentionWorker(
     /// <summary>
     /// How many outright server rejections an event survives before it is discarded.
     ///
-    /// Only rejections count — a transient failure never advances the counter — so this is not a
+    /// Only rejections count - a transient failure never advances the counter - so this is not a
     /// timeout, it is "the server has told us this specific event is unacceptable this many
     /// times". Five is generous enough to ride out a bad deploy that is rolled back, and small
     /// enough that a genuinely poisoned row stops consuming a sync slot within minutes rather
@@ -111,7 +111,7 @@ public sealed class RetentionWorker(
     /// <summary>
     /// Ages out the rolling log files. The file sink prunes its own history too, but the host
     /// writes as a standard user and is intentionally denied delete rights on the log directory,
-    /// so its files can only be removed from here — this service runs as SYSTEM.
+    /// so its files can only be removed from here - this service runs as SYSTEM.
     /// </summary>
     private void SweepLogs()
     {
@@ -148,7 +148,7 @@ public sealed class RetentionWorker(
 
     /// <summary>
     /// Independent of the telemetry cutoff. Logs are diagnostics, not collected data, so they
-    /// are not subject to the policy's privacy-driven retention window — but they still must not
+    /// are not subject to the policy's privacy-driven retention window - but they still must not
     /// grow without bound.
     /// </summary>
     private const int LogRetentionDays = 14;

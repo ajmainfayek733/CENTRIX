@@ -89,7 +89,7 @@ public sealed class SessionEventMonitor(ILogger<SessionEventMonitor> logger) : I
 
     /// <summary>
     /// Fires on logoff and shutdown. Windows gives a process only a few seconds here before
-    /// killing it, so handlers must persist the final attendance state and return — anything
+    /// killing it, so handlers must persist the final attendance state and return - anything
     /// slower will not complete.
     /// </summary>
     private void OnSessionEnding(object sender, SessionEndingEventArgs e)

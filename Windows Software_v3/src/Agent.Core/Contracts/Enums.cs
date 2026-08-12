@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 namespace Agent.Core.Contracts;
 
 // These enums are the client half of the backend's Postgres enums. The names must match the
-// backend's `ingest.dto.ts` exactly — they are serialized as strings and the server rejects
+// backend's `ingest.dto.ts` exactly - they are serialized as strings and the server rejects
 // anything outside its own enum. A rename here is a two-repo commit.
 
 /// <summary>Features.md "Activity Logs" -> Type.</summary>

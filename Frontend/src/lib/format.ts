@@ -2,7 +2,7 @@
 
 /** Seconds as "6h 12m", "12m", or "45s". Zero renders as an em dash, not "0s". */
 export function formatDuration(seconds: number): string {
-  if (!seconds || seconds <= 0) return '—';
+  if (!seconds || seconds <= 0) return '-';
 
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
@@ -17,16 +17,16 @@ export function formatPercent(value: number): string {
 }
 
 export function formatTime(value: string | Date | null | undefined): string {
-  if (!value) return '—';
+  if (!value) return '-';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
+  if (Number.isNaN(date.getTime())) return '-';
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 export function formatDateTime(value: string | Date | null | undefined): string {
-  if (!value) return '—';
+  if (!value) return '-';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
+  if (Number.isNaN(date.getTime())) return '-';
   return date.toLocaleString([], {
     month: 'short',
     day: 'numeric',
@@ -50,11 +50,11 @@ export function formatRelative(value: string | Date | null | undefined): string 
 }
 
 export function formatBytes(value: string | number | null | undefined): string {
-  if (value === null || value === undefined) return '—';
+  if (value === null || value === undefined) return '-';
 
   // Capacities arrive as decimal strings because they exceed JSON's safe integer range.
   const bytes = typeof value === 'string' ? Number(value) : value;
-  if (!Number.isFinite(bytes) || bytes <= 0) return '—';
+  if (!Number.isFinite(bytes) || bytes <= 0) return '-';
 
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);

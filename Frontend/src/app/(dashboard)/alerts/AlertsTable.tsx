@@ -13,13 +13,13 @@ function describeContext(alert: AlertRow): string {
   if (alert.contextAppName) return alert.contextAppName;
   if (alert.contextUsbFriendlyName) return alert.contextUsbFriendlyName;
   if (alert.idleSeconds !== null) return `Idle ${formatDuration(alert.idleSeconds)}`;
-  return '—';
+  return '-';
 }
 
 /**
  * The alert feed as a bounded scroll window.
  *
- * The header is rendered outside the scrolling area so it stays visible while the body scrolls —
+ * The header is rendered outside the scrolling area so it stays visible while the body scrolls -
  * a log window whose column headings scroll away is unreadable the moment it is used.
  */
 export function AlertsTable({ initial }: { initial: LogPage<AlertRow> }) {
@@ -66,7 +66,7 @@ export function AlertsTable({ initial }: { initial: LogPage<AlertRow> }) {
                     {alert.title}
                     {alert.escalationLevel > 1 && (
                       <span className="ml-1.5">
-                        <Badge tone="warning">escalated ×{alert.escalationLevel}</Badge>
+                        <Badge tone="warning">escalated x{alert.escalationLevel}</Badge>
                       </span>
                     )}
                   </Td>

@@ -12,7 +12,7 @@ const MAX_ROWS = 1000;
  *
  * Paste-a-CSV rather than a file picker: the source is almost always a column selection from a
  * spreadsheet or an AD export, and pasting skips the save-as-CSV step entirely. The parser is
- * intentionally forgiving â€” a header row, tabs from Excel, and quoted fields all work â€” because
+ * intentionally forgiving - a header row, tabs from Excel, and quoted fields all work - because
  * the failure mode of a strict parser here is an admin editing a hundred-line file by hand.
  */
 export function EmployeeImport({ organizationId }: { organizationId: string }) {
@@ -59,7 +59,7 @@ export function EmployeeImport({ organizationId }: { organizationId: string }) {
         Paste one employee per line as <span className="font-mono text-xs">name, email, department</span>.
         Department is optional, a header row is ignored, and tab-separated text pasted straight
         from a spreadsheet works. Re-importing a file that already contains existing people is
-        safe â€” those rows are skipped, not duplicated.
+        safe - those rows are skipped, not duplicated.
       </p>
 
       <textarea
@@ -78,7 +78,7 @@ export function EmployeeImport({ organizationId }: { organizationId: string }) {
           disabled={pending || parsed.rows.length === 0 || parsed.rows.length > MAX_ROWS}
           className="rounded-md bg-brand px-3 py-1.5 text-sm font-semibold text-brand-contrast transition-opacity hover:opacity-90 disabled:opacity-50"
         >
-          {pending ? 'Importingâ€¦' : `Import ${parsed.rows.length || ''} employee${parsed.rows.length === 1 ? '' : 's'}`}
+          {pending ? 'Importing...' : `Import ${parsed.rows.length || ''} employee${parsed.rows.length === 1 ? '' : 's'}`}
         </button>
 
         <button
@@ -95,7 +95,7 @@ export function EmployeeImport({ organizationId }: { organizationId: string }) {
 
         {parsed.rows.length > MAX_ROWS && (
           <span className="text-xs text-danger">
-            {parsed.rows.length} rows â€” split the file, {MAX_ROWS} is the per-request maximum.
+            {parsed.rows.length} rows - split the file, {MAX_ROWS} is the per-request maximum.
           </span>
         )}
 
@@ -113,7 +113,7 @@ export function EmployeeImport({ organizationId }: { organizationId: string }) {
               {line}
             </li>
           ))}
-          {parsed.invalid.length > 5 && <li>â€¦and {parsed.invalid.length - 5} more</li>}
+          {parsed.invalid.length > 5 && <li>...and {parsed.invalid.length - 5} more</li>}
         </ul>
       )}
 
@@ -133,10 +133,10 @@ export function EmployeeImport({ organizationId }: { organizationId: string }) {
                 .slice(0, 10)
                 .map((r) => (
                   <li key={r.email}>
-                    <span className="font-mono">{r.email}</span> â€” {r.reason}
+                    <span className="font-mono">{r.email}</span> - {r.reason}
                   </li>
                 ))}
-              {result.skipped > 10 && <li>â€¦and {result.skipped - 10} more</li>}
+              {result.skipped > 10 && <li>...and {result.skipped - 10} more</li>}
             </ul>
           )}
         </div>
@@ -150,7 +150,7 @@ export function EmployeeImport({ organizationId }: { organizationId: string }) {
  *
  * Accepts comma or tab separators, tolerates quoted fields containing commas, and drops a
  * header line. Anything without a plausible email is reported back rather than silently
- * dropped â€” a mistyped address should be visible, not vanish.
+ * dropped - a mistyped address should be visible, not vanish.
  */
 function parseRoster(text: string): { rows: ImportRow[]; invalid: string[] } {
   const rows: ImportRow[] = [];

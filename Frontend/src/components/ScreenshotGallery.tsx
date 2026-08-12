@@ -11,11 +11,11 @@ import type { ScreenshotRow } from '@/types/api';
  * Per-employee screenshot gallery: a 3-across grid, two rows deep, that pages in more captures as
  * the operator scrolls, and opens any tile in a zoomable viewer.
  *
- * WHY A BOUNDED WINDOW: screenshots are the fastest-growing record in the system — one every few
+ * WHY A BOUNDED WINDOW: screenshots are the fastest-growing record in the system - one every few
  * minutes per device, per employee. Rendering a range would mean an unbounded query, an unbounded
  * payload, and a browser holding hundreds of full JPEGs. Only what is on screen (plus the next
  * page) is ever fetched, and each image is requested individually so the backend can audit-log who
- * looked at what (spec §3).
+ * looked at what (spec section 3).
  */
 
 /** The grid the brief asks for: three across, two rows visible before scrolling. */
@@ -24,7 +24,7 @@ const VISIBLE_ROWS = 2;
 
 /**
  * Tiles are a fixed height rather than an aspect ratio, so the scroll window can be exactly two
- * rows tall — an aspect-ratio grid's row height depends on the card's width, which is not known
+ * rows tall - an aspect-ratio grid's row height depends on the card's width, which is not known
  * here, and the window would show two-and-a-bit rows at some widths and one at others.
  */
 const TILE_HEIGHT_REM = 9;
@@ -63,7 +63,7 @@ export function ScreenshotGallery({ initial, employeeId, startDate, endDate }: S
 
   const loadNextPage = useCallback(() => void loadMore(), [loadMore]);
 
-  // The capture's id, not its position. This feed is live — a capture taken while the viewer is
+  // The capture's id, not its position. This feed is live - a capture taken while the viewer is
   // open is prepended to the list and shifts every index below it by one. Holding an index meant
   // the viewer silently swapped to the neighbouring image (and reset its zoom) as that happened.
   // An id pins it to the picture the operator actually opened; the position is derived.
@@ -84,7 +84,7 @@ export function ScreenshotGallery({ initial, employeeId, startDate, endDate }: S
       >
         {rows.length === 0 ? (
           <p className="py-8 text-center text-sm text-text-secondary">
-            No screenshots for this period. Captures are optional and off by default — check the
+            No screenshots for this period. Captures are optional and off by default - check the
             screenshot setting on the Settings screen if you expected some.
           </p>
         ) : (
@@ -137,7 +137,7 @@ export function ScreenshotGallery({ initial, employeeId, startDate, endDate }: S
 
         <div ref={sentinelRef} aria-hidden />
 
-        {loading && <p className="py-3 text-center text-xs text-text-secondary">Loading more…</p>}
+        {loading && <p className="py-3 text-center text-xs text-text-secondary">Loading more...</p>}
 
         {error && (
           <p className="py-3 text-center text-xs text-danger">
@@ -153,7 +153,7 @@ export function ScreenshotGallery({ initial, employeeId, startDate, endDate }: S
         )}
       </div>
 
-      {/* A negative index means the open capture is no longer in the list — it fell out of a
+      {/* A negative index means the open capture is no longer in the list - it fell out of a
           reset page, or retention removed it. Closing is the honest response; there is nothing
           left to show. */}
       {openIndex >= 0 && (

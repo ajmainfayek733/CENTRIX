@@ -8,10 +8,10 @@ export const createEmployeeSchema = z.object({
 });
 
 /**
- * Bulk roster import. Onboarding 30–100+ people one POST at a time is the difference between a
+ * Bulk roster import. Onboarding 30-100+ people one POST at a time is the difference between a
  * ten-minute rollout and an afternoon, so this takes the whole roster in one request.
  *
- * Capped well below the JSON body limit — a thousand rows is already far past any single-site
+ * Capped well below the JSON body limit - a thousand rows is already far past any single-site
  * deployment this backend targets, and an unbounded array would let one request hold a database
  * transaction open indefinitely.
  */
@@ -37,7 +37,7 @@ export const updateEmployeeSchema = z.object({
 
 /**
  * Devices enroll themselves (Features.md "Device Auth") and land on the org's "Unassigned
- * Devices" placeholder. This is how an admin then attaches one to a real person — there is no
+ * Devices" placeholder. This is how an admin then attaches one to a real person - there is no
  * manual device-registration endpoint any more, because the agent mints its own credential.
  */
 export const assignDeviceSchema = z.object({

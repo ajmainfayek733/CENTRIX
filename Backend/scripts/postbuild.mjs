@@ -5,7 +5,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
  *
  * `package.json` declares `"type": "module"` (tsx and prisma.config.ts want ESM), but tsconfig
  * emits `"module": "commonjs"`. Without this file Node reads the root type declaration, treats
- * every `dist/*.js` as ESM, and dies on the first `exports` reference — so `npm start` and any
+ * every `dist/*.js` as ESM, and dies on the first `exports` reference - so `npm start` and any
  * container built from it fail immediately while `npm run dev` works fine.
  *
  * Writing a nested package.json scopes the CommonJS declaration to dist/ only, which is the

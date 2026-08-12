@@ -10,7 +10,7 @@ import { StatusDot, Badge } from '@/components/ui';
  * TWO SOURCES, AND THE ORDER MATTERS:
  *
  *   1. Live presence from the socket. Present only while an agent is connected and heartbeating,
- *      and it is the better answer whenever it exists — it is seconds old by construction.
+ *      and it is the better answer whenever it exists - it is seconds old by construction.
  *   2. The server-rendered `lastSeen` this page was built with. The fallback for a device with no
  *      live channel: switched off, out of the office, or an agent that cannot reach the socket
  *      endpoint through a proxy.
@@ -24,7 +24,7 @@ export function LiveDeviceStatus({
   lastSeen,
   isActive,
 }: {
-  /** Device row id — the same id the presence events carry. */
+  /** Device row id - the same id the presence events carry. */
   deviceId: string;
   /** Server-rendered fallback, from `devices.lastSeen`. */
   lastSeen: string | null;
@@ -40,7 +40,7 @@ export function LiveDeviceStatus({
       <span className="flex items-center justify-end gap-2">
         <StatusDot online />
         <span className="text-sm font-medium text-brand">
-          {liveness.userPresent ? 'Active now' : 'Online · no user'}
+          {liveness.userPresent ? 'Active now' : 'Online - no user'}
         </span>
       </span>
     );

@@ -16,7 +16,7 @@ namespace Agent.Host.Services;
 ///
 /// One loop rather than a timer per collector: attendance, activity sessions, browser visits
 /// and the idle state all depend on the same "what is happening right now" reading, and
-/// sampling them independently would let them disagree — an activity session recorded as
+/// sampling them independently would let them disagree - an activity session recorded as
 /// Application while the idle monitor already considers the user away.
 /// </summary>
 public sealed class MonitoringOrchestrator(
@@ -59,7 +59,7 @@ public sealed class MonitoringOrchestrator(
 
     /// <summary>
     /// How often the open attendance row is refreshed. Frequent enough that an unexpected
-    /// power loss loses at most this much of the day, cheap enough not to matter — it is an
+    /// power loss loses at most this much of the day, cheap enough not to matter - it is an
     /// upsert on one row.
     /// </summary>
     private static readonly TimeSpan AttendanceFlushInterval = TimeSpan.FromMinutes(2);
@@ -393,7 +393,7 @@ public sealed class MonitoringOrchestrator(
     private void OnSessionSuspended(SessionEndReason reason)
     {
         // Fire-and-forget because this runs on a SystemEvents callback that Windows expects to
-        // return promptly — on shutdown it has only seconds before the process is killed.
+        // return promptly - on shutdown it has only seconds before the process is killed.
         _ = Task.Run(async () =>
         {
             var endReason = reason switch

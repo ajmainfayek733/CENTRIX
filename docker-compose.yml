@@ -1,4 +1,4 @@
-# Employee Monitor — backend + database.
+# Employee Monitor - backend + database.
 #
 # Deployment target is intentionally open: this composes the two pieces the agent fleet needs
 # (an HTTP API and Postgres) with everything else driven by environment variables, so the same
@@ -36,7 +36,7 @@ services:
     #   - '127.0.0.1:5432:5432'
 
   # One-shot migration runner. Separate from the API so migrations do not race when the api
-  # service is scaled to more than one replica — N containers each running `migrate deploy` at
+  # service is scaled to more than one replica - N containers each running `migrate deploy` at
   # startup is a lock fight at best.
   migrate:
     build:
@@ -63,7 +63,7 @@ services:
       PORT: 5000
       DATABASE_URL: ${DATABASE_URL:-postgresql://monitoring:${POSTGRES_PASSWORD}@postgres:5432/employee_monitor}
 
-      # Secrets — no defaults on purpose. Compose fails fast rather than starting with a
+      # Secrets - no defaults on purpose. Compose fails fast rather than starting with a
       # placeholder that would let anyone forge a device credential offline.
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
       DEVICE_TOKEN_PEPPER: ${DEVICE_TOKEN_PEPPER:?set DEVICE_TOKEN_PEPPER in .env}

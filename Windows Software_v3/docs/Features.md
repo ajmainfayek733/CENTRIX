@@ -171,7 +171,7 @@ EventTime
 
 ## Alert Notification
 
-The Alert Notification Service delivers real-time desktop notifications based on configurable severity levels to promote productivity and enforce organizational policies. Alerts are triggered for prolonged idle time (30 min – Normal, 45 min – Moderate, 60 min – Severe) and immediately display High severity warnings when a user accesses a blacklisted application or website, with all events recorded for administrative review.
+The Alert Notification Service delivers real-time desktop notifications based on configurable severity levels to promote productivity and enforce organizational policies. Alerts are triggered for prolonged idle time (30 min - Normal, 45 min - Moderate, 60 min - Severe) and immediately display High severity warnings when a user accesses a blacklisted application or website, with all events recorded for administrative review.
 
 ---
 

@@ -15,7 +15,7 @@ places, and only the write path ships working.
 
 ### Why the read half is ours
 
-MemPalace ships a `session-start` hook, but it is a no-op —
+MemPalace ships a `session-start` hook, but it is a no-op -
 `mempalace.hooks_cli.hook_session_start` creates a state directory and returns `{}`. It
 never injects anything. Until 2026-08-12 nothing read the palace back at session start,
 so an agent starting fresh had no memory of prior work and would fall back to
@@ -30,7 +30,7 @@ reconstructing history from `git log`.
 3. Returns the survivors as `hookSpecificOutput.additionalContext`.
 
 It is registered on `startup|resume|clear` with a 25 s timeout. **Every failure path
-returns `{}`** — a broken palace, a missing CLI, or a hung query can never block a
+returns `{}`** - a broken palace, a missing CLI, or a hung query can never block a
 session from starting.
 
 ### Noise filtering
@@ -42,10 +42,10 @@ roughly 90% noise. The hook strips:
 
 - `<local-command-caveat>`, `<local-command-stdout>`, `<command-message>`,
   `<system-reminder>`, `<task-notification>`
-- MCP chatter: `Reconnected to …`, `Failed to reconnect …`
+- MCP chatter: `Reconnected to ...`, `Failed to reconnect ...`
 - Build artifacts: `/obj/`, `/bin/Debug/`, `*.AssemblyInfo.cs`, `*.GlobalUsings.g.cs`,
   `node_modules/`
-- Directory-listing spam — any line with 3 or more `→` separators
+- Directory-listing spam - any line with 3 or more `->` separators
 - Section headers left empty after their body was filtered
 
 Output is capped at `MAX_BODY_LINES` (40) and `MAX_CONTEXT_CHARS` (6000).
@@ -61,7 +61,7 @@ Two real bugs were hit building this, both worth remembering:
   readers use `surrogateescape`. Those cannot be encoded as UTF-8 and abort the hook, so
   `_sanitize()` scrubs them before emit.
 
-`~/.mempalace/identity.txt` supplies the L0 identity block and **must stay ASCII-only** —
+`~/.mempalace/identity.txt` supplies the L0 identity block and **must stay ASCII-only** -
 `wake-up` reads it with the system ANSI codepage and mojibakes anything else.
 
 ## Operating it
@@ -81,13 +81,13 @@ mempalace repair-status
 
 Disable recall for one session with `MEMPALACE_RECALL_DISABLED=1`.
 
-If a session starts with no "MemPalace recall" block, the hook failed — investigate
+If a session starts with no "MemPalace recall" block, the hook failed - investigate
 rather than assuming the palace is empty.
 
 ## Filing knowledge
 
 The automatic hooks only capture raw transcript text. Anything that should survive as
-knowledge must be written deliberately with `mempalace_checkpoint` — verbatim items plus
+knowledge must be written deliberately with `mempalace_checkpoint` - verbatim items plus
 one AAAK diary entry, wing `wing_employee_tracker`. The recall header reminds the agent
 to do this at session end.
 

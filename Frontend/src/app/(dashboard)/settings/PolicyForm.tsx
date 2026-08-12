@@ -13,9 +13,9 @@ import { updatePolicy, type PolicyFormValues } from './actions';
  * browser downloads at once and nothing else. They used to sit in one undifferentiated list where
  * the only way to tell them apart was to already know. The three groups are:
  *
- *   1. Agent policy — runs on employee machines, changes what is collected.
- *   2. Dashboard    — read path only, invisible to agents and to employees.
- *   3. Advanced     — fleet-wide scale and data lifetime; collapsed, because a wrong value here
+ *   1. Agent policy - runs on employee machines, changes what is collected.
+ *   2. Dashboard    - read path only, invisible to agents and to employees.
+ *   3. Advanced     - fleet-wide scale and data lifetime; collapsed, because a wrong value here
  *                     is felt on every device at once or deletes history permanently.
  */
 
@@ -55,7 +55,7 @@ function toFormValues(policy: Policy): PolicyFormValues {
  *
  * Duplicated deliberately: the server is the enforcement point, and these exist only so a bad
  * value is caught at the input rather than as a 400 after a round trip. A change there must be
- * made here too — a stricter server bound would otherwise appear as an unexplained save failure.
+ * made here too - a stricter server bound would otherwise appear as an unexplained save failure.
  */
 const LIMITS = {
   idleThresholdMinutes: { min: 1, max: 60 },
@@ -148,7 +148,7 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
             />
             <Toggle
               label="USB devices"
-              hint="Connection and removal only — never contents"
+              hint="Connection and removal only - never contents"
               checked={values.usbEnabled}
               onChange={(v) => set('usbEnabled', v)}
             />
@@ -161,7 +161,7 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
           </Section>
 
           {/*
-            Interval and quality are what decide the cost of screenshots — in storage, in bandwidth,
+            Interval and quality are what decide the cost of screenshots - in storage, in bandwidth,
             and in how much of someone's day is photographed. Grouped with the toggle that governs
             them and disabled alongside it, so they cannot be tuned under the impression they are
             doing something while captures are off.
@@ -276,7 +276,7 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
 
       <Card title="Dashboard">
         <GroupNote>
-          How much this browser loads at a time. Read path only — nothing here changes what is
+          How much this browser loads at a time. Read path only - nothing here changes what is
           collected, and no agent ever sees it.
         </GroupNote>
 
@@ -303,7 +303,7 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
       </Card>
 
       {/*
-        Collapsed by default, and not because these settings are obscure — because each is felt
+        Collapsed by default, and not because these settings are obscure - because each is felt
         across the whole fleet at once, or deletes history that cannot be recovered. They belong on
         this screen (the right value depends on fleet size and on the retention the business
         committed to, neither of which waits for a deploy) but not in the path of someone who came
@@ -346,7 +346,7 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
         <Section title="Realtime">
           <Toggle
             label="Realtime updates"
-            hint="Off falls back to polling — data still arrives, just not instantly"
+            hint="Off falls back to polling - data still arrives, just not instantly"
             checked={values.realtimeEnabled}
             onChange={(v) => set('realtimeEnabled', v)}
           />
@@ -377,7 +377,7 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
           disabled={pending || !dirty}
           className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-brand-contrast transition-opacity hover:opacity-90 disabled:opacity-50"
         >
-          {pending ? 'Saving…' : 'Save changes'}
+          {pending ? 'Saving...' : 'Save changes'}
         </button>
       </div>
     </div>

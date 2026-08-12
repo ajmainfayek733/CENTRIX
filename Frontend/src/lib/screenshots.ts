@@ -5,7 +5,7 @@
  * two cannot drift into disagreeing about the URL shape.
  */
 
-/** Only JPEG is stored — see the agent's capture pipeline and the backend's screenshotStorage. */
+/** Only JPEG is stored - see the agent's capture pipeline and the backend's screenshotStorage. */
 export const SCREENSHOT_IMAGE_EXTENSION = '.jpg';
 
 /**

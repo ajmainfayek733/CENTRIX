@@ -24,7 +24,7 @@ export class CategoryService {
   /**
    * Bumped on every invalidation, per organization.
    *
-   * `rulesFor` reads the cache, awaits a query, then writes the cache — and an invalidation can
+   * `rulesFor` reads the cache, awaits a query, then writes the cache - and an invalidation can
    * land in that gap. Without this counter the in-flight query's result (fetched *before* the
    * admin's write committed) is stored after the delete, and the stale rules then serve for the
    * full 30s TTL. The invalidation is silently undone.
@@ -48,7 +48,7 @@ export class CategoryService {
     const rules = rows.map((r) => ({ ...r, pattern: r.pattern.toLowerCase() }));
 
     // Only publish if nothing invalidated while the query was in flight. If something did, this
-    // result may predate the write, so it is returned to the caller but not cached — the next
+    // result may predate the write, so it is returned to the caller but not cached - the next
     // request re-reads and sees the new rules.
     if ((this.generation.get(organizationId) ?? 0) === startedAt) {
       this.cache.set(organizationId, { rules, expiresAt: Date.now() + CACHE_TTL_MS });
@@ -57,7 +57,7 @@ export class CategoryService {
     return rules;
   }
 
-  /** Drop the cached rules for an org — call after any write from the settings screen. */
+  /** Drop the cached rules for an org - call after any write from the settings screen. */
   invalidate(organizationId: string) {
     this.generation.set(organizationId, (this.generation.get(organizationId) ?? 0) + 1);
     this.cache.delete(organizationId);

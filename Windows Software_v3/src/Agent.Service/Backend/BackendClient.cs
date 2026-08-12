@@ -15,7 +15,7 @@ namespace Agent.Service.Backend;
 /// <summary>Raised when the server rejected the device credential outright.</summary>
 public sealed class DeviceUnauthorizedException(string message) : Exception(message);
 
-/// <summary>Raised when an admin has deactivated this device — a stop condition, not a retry condition.</summary>
+/// <summary>Raised when an admin has deactivated this device - a stop condition, not a retry condition.</summary>
 public sealed class DeviceDeactivatedException(string message) : Exception(message);
 
 /// <summary>
@@ -24,7 +24,7 @@ public sealed class DeviceDeactivatedException(string message) : Exception(messa
 /// The three-way split exists because the queue must treat the cases differently. Acknowledged
 /// events are marked sent. Rejected events are ones the server will refuse identically on every
 /// retry, so their attempt counter advances toward being dropped. A transient failure must
-/// advance nothing — otherwise a week-long network outage would age out perfectly good data.
+/// advance nothing - otherwise a week-long network outage would age out perfectly good data.
 /// </summary>
 /// <param name="Acknowledged">Ids the server explicitly confirmed it stored.</param>
 /// <param name="Rejected">Ids the server refused for a reason retrying cannot fix.</param>
@@ -206,8 +206,8 @@ public sealed class BackendClient(
     /// <summary>
     /// Greedily packs events into requests that fit the byte budget.
     ///
-    /// An event so large it cannot fit on its own is hopeless — no amount of splitting makes it
-    /// sendable — so it is reported as rejected here rather than wasting a round trip to be told
+    /// An event so large it cannot fit on its own is hopeless - no amount of splitting makes it
+    /// sendable - so it is reported as rejected here rather than wasting a round trip to be told
     /// the same thing.
     /// </summary>
     private List<List<T>> PackIntoRequests<T>(
@@ -254,7 +254,7 @@ public sealed class BackendClient(
     /// <summary>
     /// Sends one request's worth of events.
     ///
-    /// A 413 here means the packing estimate and the server's limit disagree — the server may
+    /// A 413 here means the packing estimate and the server's limit disagree - the server may
     /// have been reconfigured downward. Rather than failing, the chunk is halved and retried,
     /// which converges on something that fits. Only a single event that still will not fit is
     /// treated as unsendable.
@@ -299,7 +299,7 @@ public sealed class BackendClient(
             return await PushHalvesAsync(channel, events, ct).ConfigureAwait(false);
         }
 
-        // A 4xx means the server will refuse this data identically every time it is resent —
+        // A 4xx means the server will refuse this data identically every time it is resent -
         // contract drift between the agent's DTOs and the server's Zod schemas, not a blip. Log
         // it loudly and let the attempt counter carry these rows toward being dropped, rather
         // than resending them every cycle until the retention window expires.
@@ -324,7 +324,7 @@ public sealed class BackendClient(
     /// server committed the batch and the response was lost on the way back: the queue still
     /// holds those events as unacknowledged and sends them again. A random id would look like a
     /// brand new batch and the server would redo the whole validate-categorize-aggregate pass to
-    /// reach the same conclusion — at exactly the moment a fleet is replaying a backlog and can
+    /// reach the same conclusion - at exactly the moment a fleet is replaying a backlog and can
     /// least afford it.
     ///
     /// Hashing the sorted event ids means the same set of events always produces the same batch
@@ -443,7 +443,7 @@ public sealed class BackendClient(
 
     /// <summary>
     /// Multipart field carrying the JPEG bytes. Must match <c>upload.single(...)</c> in
-    /// Backend/src/modules/ingest/upload.ts — changing either side alone breaks every upload.
+    /// Backend/src/modules/ingest/upload.ts - changing either side alone breaks every upload.
     /// </summary>
     private const string ScreenshotFileFieldName = "file";
 
@@ -500,7 +500,7 @@ public sealed class BackendClient(
         }
 
         logger.LogWarning(
-            "Agent is configured to talk to {Url} over plain HTTP. Telemetry is unencrypted in transit — " +
+            "Agent is configured to talk to {Url} over plain HTTP. Telemetry is unencrypted in transit - " +
             "this must not be used outside a test environment.", uri);
         return uri;
     }

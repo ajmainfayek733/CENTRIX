@@ -12,7 +12,7 @@ namespace Agent.Service.Workers;
 ///
 /// Features.md: "If backend synchronization is unavailable, the agent securely stores data
 /// locally and automatically uploads pending records when connectivity is restored, deleting
-/// local copies only after successful synchronization." That is the whole contract here — rows
+/// local copies only after successful synchronization." That is the whole contract here - rows
 /// are marked sent only against ids the server explicitly acknowledged, and the retention sweep
 /// is what finally removes them from disk.
 /// </summary>
@@ -154,7 +154,7 @@ public sealed class SyncWorker(
 
         if (result.TransientFailure)
         {
-            // Do not touch attempt counters — the data is fine, the server is not.
+            // Do not touch attempt counters - the data is fine, the server is not.
             _lastCycleFailed = true;
             _state.BackendReachable = false;
         }
@@ -173,7 +173,7 @@ public sealed class SyncWorker(
     }
 
     /// <summary>
-    /// Screenshots upload one at a time rather than as a batch — each is a multipart request
+    /// Screenshots upload one at a time rather than as a batch - each is a multipart request
     /// of a megabyte or more, and uploading them serially keeps the agent from saturating an
     /// office uplink after a long offline stretch.
     /// </summary>
@@ -203,7 +203,7 @@ public sealed class SyncWorker(
                     break;
 
                 case UploadOutcome.Transient:
-                    // Server or network is unhappy. Stop the whole set and retry later — pushing
+                    // Server or network is unhappy. Stop the whole set and retry later - pushing
                     // the remaining megabyte-scale uploads at a struggling server helps nobody.
                     _lastCycleFailed = true;
                     _state.BackendReachable = false;

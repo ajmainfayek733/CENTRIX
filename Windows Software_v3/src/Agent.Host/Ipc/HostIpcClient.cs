@@ -59,7 +59,7 @@ public sealed class HostIpcClient(ILogger<HostIpcClient> logger) : IAsyncDisposa
                 UserName = identity.Name,
                 // The terminal-services session, not the pid. The service logs this to tell
                 // concurrent hosts apart during fast user switching, which a process id cannot
-                // do — and it is the same id the host's log file is named after.
+                // do - and it is the same id the host's log file is named after.
                 WindowsSessionId = Process.GetCurrentProcess().SessionId,
                 HostVersion = DeviceIdentity.GetAgentVersion()
             }, ct).ConfigureAwait(false);
