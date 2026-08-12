@@ -19,10 +19,10 @@
 ### Error Response
 
 - **Codes:**
-  - 400 → Bad Request
-  - 401 → Unauthorized
-  - 404 → Not Found
-  - 500 → Internal Server Error
+  - 400 -> Bad Request
+  - 401 -> Unauthorized
+  - 404 -> Not Found
+  - 500 -> Internal Server Error
 
 - **Structure:**
 
@@ -58,34 +58,34 @@ We follow a structured commit message format:
 
 **Types:**
 
-- feat     → New feature  
-- fix      → Bug fix  
-- docs     → Documentation changes  
-- style    → Code style changes (formatting, missing semi colons, etc)  
-- refactor → Code changes that neither fix a bug nor add a feature  
-- perf     → Performance improvements  
-- test     → Adding or modifying tests  
-- revert   → Reverting a previous commit  
-- build    → Changes to build system or dependencies  
-- ci       → Changes to CI configuration files and scripts  
-- chore    → Miscellaneous tasks (maintenance, tooling, etc)  
+- feat     -> New feature  
+- fix      -> Bug fix  
+- docs     -> Documentation changes  
+- style    -> Code style changes (formatting, missing semi colons, etc)  
+- refactor -> Code changes that neither fix a bug nor add a feature  
+- perf     -> Performance improvements  
+- test     -> Adding or modifying tests  
+- revert   -> Reverting a previous commit  
+- build    -> Changes to build system or dependencies  
+- ci       -> Changes to CI configuration files and scripts  
+- chore    -> Miscellaneous tasks (maintenance, tooling, etc)  
 
 **Scops:**
 
-- auth     → Authentication, login, logout, JWT, etc  
-- user     → User model, User profile, user management  
-- docs     → Documentation update
-- chart    → Charts related  
-- org      → Organization related logic  
-- db       → Database schema, migration, queries  
-- api      → API endpoints, route handlers  
-- ui       → Frontend UI Components  
-- form     → Form validation, input handling  
-- config   → Project setup, environment, buld config  
-- deps     → Dependency update
-- email    → Email service, Notification
-- payment  → Payment integration, billing
-- etl      → Data extraction-transformation-load
+- auth     -> Authentication, login, logout, JWT, etc  
+- user     -> User model, User profile, user management  
+- docs     -> Documentation update
+- chart    -> Charts related  
+- org      -> Organization related logic  
+- db       -> Database schema, migration, queries  
+- api      -> API endpoints, route handlers  
+- ui       -> Frontend UI Components  
+- form     -> Form validation, input handling  
+- config   -> Project setup, environment, buld config  
+- deps     -> Dependency update
+- email    -> Email service, Notification
+- payment  -> Payment integration, billing
+- etl      -> Data extraction-transformation-load
 
 **Example:**
 

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <assemblyIdentity version="3.0.0.0" name="EmployeeMonitor.Host" />
+
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
+    <security>
+      <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
+        <!-- asInvoker, deliberately. The service launches this process with the logged-on
+             user's own token, and on a managed workstation that user is a standard user.
+             requireAdministrator would make the launch fail for exactly the people being
+             monitored. Everything needing elevation lives in the service. -->
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 10 and 11. Without this, Environment.OSVersion reports 6.2 and the version
+           we send to the dashboard would be wrong for every device. -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+      <supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}" />
+    </application>
+  </compatibility>
+
+  <!-- DPI awareness is set via the ApplicationHighDpiMode project property rather than here.
+       Windows Forms rejects manifest DPI settings (WFO0003) because it configures DPI mode
+       itself at startup, and the two would conflict. -->
+</assembly>

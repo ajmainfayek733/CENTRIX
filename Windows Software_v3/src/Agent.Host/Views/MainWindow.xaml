@@ -1,0 +1,129 @@
+<Window x:Class="Agent.Host.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Employee Monitor"
+        Height="620" Width="520"
+        MinHeight="520" MinWidth="460"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResize"
+        Background="{DynamicResource BackgroundBrush}"
+        TextOptions.TextFormattingMode="Ideal"
+        UseLayoutRounding="True">
+
+    <!-- Transparency window (spec section 3). This exists so the employee can see, at any
+         time, that monitoring is running and exactly what it does and does not collect.
+         It is deliberately plain: this is a disclosure surface, not a dashboard. -->
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Grid.Row="0" Margin="0,0,0,20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0">
+                <TextBlock Text="Employee Monitor" Style="{StaticResource HeadingText}" />
+                <TextBlock x:Name="VersionText" Style="{StaticResource MutedText}" Margin="0,2,0,0" />
+            </StackPanel>
+
+            <Button Grid.Column="1"
+                    x:Name="ThemeButton"
+                    Style="{StaticResource SecondaryButton}"
+                    Padding="12,7"
+                    VerticalAlignment="Top"
+                    Click="OnToggleTheme"
+                    Content="Theme: System" />
+        </Grid>
+
+        <!-- Status card -->
+        <Border Grid.Row="1" Style="{StaticResource CardBorder}" Margin="0,0,0,16">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                    <Ellipse x:Name="StatusDot" Style="{StaticResource StatusDot}"
+                             Fill="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock x:Name="StatusText"
+                               Style="{StaticResource BodyText}"
+                               FontWeight="SemiBold"
+                               Margin="8,0,0,0"
+                               Text="Connecting to the monitoring service..." />
+                </StackPanel>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="POLICY VERSION" Style="{StaticResource LabelText}" />
+                        <TextBlock x:Name="PolicyVersionText" Style="{StaticResource BodyText}" Text="-" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="SIGNED IN AS" Style="{StaticResource LabelText}" />
+                        <TextBlock x:Name="UserText" Style="{StaticResource BodyText}" Text="-" />
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- What is and is not collected -->
+        <Border Grid.Row="2" Style="{StaticResource CardBorder}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel>
+                    <TextBlock Text="WHAT THIS RECORDS" Style="{StaticResource LabelText}" Margin="0,0,0,10" />
+                    <ItemsControl x:Name="CollectedList" Margin="0,0,0,20">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Style="{StaticResource BodyText}" Margin="0,0,0,6">
+                                    <Run Text="-" Foreground="{DynamicResource AccentBrush}" />
+                                    <Run Text="{Binding Mode=OneWay}" />
+                                </TextBlock>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBlock Text="WHAT THIS NEVER RECORDS" Style="{StaticResource LabelText}" Margin="0,0,0,10" />
+                    <ItemsControl x:Name="NotCollectedList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Style="{StaticResource BodyText}" Margin="0,0,0,6">
+                                    <Run Text="-" Foreground="{DynamicResource DangerBrush}" />
+                                    <Run Text="{Binding Mode=OneWay}" />
+                                </TextBlock>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Consent -->
+        <Border Grid.Row="3" Style="{StaticResource CardBorder}" Margin="0,16,0,0"
+                x:Name="ConsentCard" Visibility="Collapsed">
+            <StackPanel>
+                <TextBlock Style="{StaticResource BodyText}" Margin="0,0,0,14"
+                           Text="Please confirm that you have read and understood the monitoring notice above. Your acknowledgement is recorded with the current policy version." />
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="LaterButton"
+                            Style="{StaticResource SecondaryButton}"
+                            Content="Remind me later"
+                            Margin="0,0,8,0"
+                            Click="OnRemindLater" />
+                    <Button x:Name="AcknowledgeButton"
+                            Style="{StaticResource PrimaryButton}"
+                            Content="I acknowledge"
+                            Click="OnAcknowledge" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

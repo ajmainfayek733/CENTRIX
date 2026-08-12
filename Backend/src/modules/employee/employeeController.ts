@@ -14,6 +14,24 @@ export class EmployeeController {
     }
   }
 
+  /**
+   * POST /v1/dashboard/employees/bulk - roster import.
+   *
+   * Always 200, never 207 or 400: partial success is the expected outcome, not an error, and
+   * the per-row breakdown in the body is what the caller renders.
+   */
+  async bulkCreateEmployees(req: Request, res: Response, next: NextFunction) {
+    try {
+      const summary = await employeeService.bulkCreateEmployees(req.body);
+      return res.status(200).json({
+        message: `${summary.created} created, ${summary.skipped} skipped`,
+        data: summary,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async getAllEmployees(req: Request, res: Response, next: NextFunction) {
     try {
       const employees = await employeeService.getAllEmployees();
@@ -33,12 +51,38 @@ export class EmployeeController {
     }
   }
 
-  async registerDevice(req: Request, res: Response, next: NextFunction) {
+  async updateEmployee(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await employeeService.registerDevice(req.body);
-      return res.status(201).json({
-        message: 'Device registered successfully',
-        data: result,
+      const employee = await employeeService.updateEmployee(req.params.id as string, req.body);
+      return res.status(200).json({ message: 'Employee updated successfully', data: employee });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async listDevices(req: Request, res: Response, next: NextFunction) {
+    try {
+      return res.status(200).json({ data: await employeeService.listDevices() });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async assignDevice(req: Request, res: Response, next: NextFunction) {
+    try {
+      const device = await employeeService.assignDevice(req.params.deviceId as string, req.body);
+      return res.status(200).json({ message: 'Device assigned successfully', data: device });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async setDeviceActive(req: Request, res: Response, next: NextFunction) {
+    try {
+      const device = await employeeService.setDeviceActive(req.params.deviceId as string, req.body.isActive);
+      return res.status(200).json({
+        message: `Device ${device.isActive ? 'reactivated' : 'deactivated'} successfully`,
+        data: device,
       });
     } catch (error) {
       next(error);
