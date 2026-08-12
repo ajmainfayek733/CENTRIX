@@ -23,12 +23,75 @@ export const DashboardClientEvent = {
   ForceSync: 'device:force-sync',
 } as const;
 
+/**
+ * What one ingested batch added. Every field is a delta, never an absolute.
+ *
+ * Deltas are what makes this safe to apply blind: a screen showing any date range, filter or
+ * employee subset can add what just arrived and still be correct. An absolute value for one
+ * (day, device, employee) could not be folded into a range total without knowing what that key
+ * already contributed.
+ */
+export interface RollupDeltaPayload {
+  activeSeconds: number;
+  idleSeconds: number;
+  productiveSeconds: number;
+  unproductiveSeconds: number;
+  neutralSeconds: number;
+  blacklistedSeconds: number;
+  keyCount: number;
+  mouseCount: number;
+  activitySessionCount: number;
+  browserVisitCount: number;
+  usbEventCount: number;
+  alertCount: number;
+}
+
 export interface TelemetryIngestedPayload {
   deviceId: string;
   employeeId: string;
   channel: string;
-  workDate: string | null;
+  /** Days the batch touched, so a screen showing one date can ignore a backfill for another. */
+  workDates: string[];
+  /** Events genuinely stored — zero for a replay, which must not move anyone's numbers. */
   eventCount: number;
+  delta: RollupDeltaPayload;
+}
+
+export function emptyRollupDelta(): RollupDeltaPayload {
+  return {
+    activeSeconds: 0,
+    idleSeconds: 0,
+    productiveSeconds: 0,
+    unproductiveSeconds: 0,
+    neutralSeconds: 0,
+    blacklistedSeconds: 0,
+    keyCount: 0,
+    mouseCount: 0,
+    activitySessionCount: 0,
+    browserVisitCount: 0,
+    usbEventCount: 0,
+    alertCount: 0,
+  };
+}
+
+export function addRollupDelta(
+  base: RollupDeltaPayload,
+  addend: RollupDeltaPayload
+): RollupDeltaPayload {
+  return {
+    activeSeconds: base.activeSeconds + addend.activeSeconds,
+    idleSeconds: base.idleSeconds + addend.idleSeconds,
+    productiveSeconds: base.productiveSeconds + addend.productiveSeconds,
+    unproductiveSeconds: base.unproductiveSeconds + addend.unproductiveSeconds,
+    neutralSeconds: base.neutralSeconds + addend.neutralSeconds,
+    blacklistedSeconds: base.blacklistedSeconds + addend.blacklistedSeconds,
+    keyCount: base.keyCount + addend.keyCount,
+    mouseCount: base.mouseCount + addend.mouseCount,
+    activitySessionCount: base.activitySessionCount + addend.activitySessionCount,
+    browserVisitCount: base.browserVisitCount + addend.browserVisitCount,
+    usbEventCount: base.usbEventCount + addend.usbEventCount,
+    alertCount: base.alertCount + addend.alertCount,
+  };
 }
 
 export interface DevicePresencePayload {

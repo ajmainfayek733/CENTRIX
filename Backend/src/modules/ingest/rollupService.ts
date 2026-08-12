@@ -162,6 +162,35 @@ export class RollupAccumulator {
   dates(): string[] {
     return [...this.byDate.keys()];
   }
+
+  /**
+   * Everything this batch added, flattened across days.
+   *
+   * Pushed to dashboards so they can move their totals without re-querying. Deliberately a
+   * DELTA rather than the new absolute value: a dashboard is showing a range that may span many
+   * days and devices, and it has no way to fold one row's absolute total into that. Adding what
+   * just arrived is something it can always do correctly, whatever range it is displaying.
+   */
+  total(): RollupDelta {
+    const combined = emptyDelta();
+
+    for (const delta of this.byDate.values()) {
+      combined.activeSeconds += delta.activeSeconds;
+      combined.idleSeconds += delta.idleSeconds;
+      combined.productiveSeconds += delta.productiveSeconds;
+      combined.unproductiveSeconds += delta.unproductiveSeconds;
+      combined.neutralSeconds += delta.neutralSeconds;
+      combined.blacklistedSeconds += delta.blacklistedSeconds;
+      combined.keyCount += delta.keyCount;
+      combined.mouseCount += delta.mouseCount;
+      combined.activitySessionCount += delta.activitySessionCount;
+      combined.browserVisitCount += delta.browserVisitCount;
+      combined.usbEventCount += delta.usbEventCount;
+      combined.alertCount += delta.alertCount;
+    }
+
+    return combined;
+  }
 }
 
 /**

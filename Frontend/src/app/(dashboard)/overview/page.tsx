@@ -3,6 +3,7 @@ import { apiGet } from '@/lib/api-client';
 import { formatDuration, formatPercent, formatRelative } from '@/lib/format';
 import { Card, StatTile, ProductivityBar, TableWrap, Th, Td, StatusDot, EmptyState } from '@/components/ui';
 import { LiveOnlineTile } from '@/components/LiveOnlineTile';
+import { LiveActiveTimeTile } from '@/components/LiveTotals';
 import type { Overview, Roster } from '@/types/api';
 
 export const metadata = { title: 'Overview Â· Employee Monitor' };
@@ -39,7 +40,7 @@ export default async function OverviewPage() {
           value={overview.attendanceToday.checkedIn}
           hint={`${overview.attendanceToday.stillActive} still signed in`}
         />
-        <StatTile label="Team active time" value={formatDuration(totals.activeSeconds)} hint="Across the period" />
+        <LiveActiveTimeTile baseline={totals.activeSeconds} />
         <StatTile
           label="Open alerts"
           value={overview.openHighSeverityAlerts}

@@ -863,6 +863,80 @@ async function main() {
     });
     check('a socket heartbeat updates devices.lastSeen', afterHeartbeat?.lastSeen !== null, afterHeartbeat);
 
+    // The point of aggregating at ingest: the dashboard is handed the result, so its totals move
+    // without asking the server anything.
+    // activity_sessions.sessionId is a required FK onto attendance_sessions, so the parent has to
+    // exist first. The agent guarantees this by pushing attendance ahead of activity in every
+    // sync cycle (SyncWorker.SyncOnceAsync orders the channels for exactly this reason).
+    const presenceHeaders = {
+      authorization: `Bearer ${presenceApiKey}`,
+      'content-type': 'application/json',
+    };
+    const presenceSessionId = randomUUID();
+
+    await fetch(`${BASE}/api/v1/events/attendance`, {
+      method: 'POST',
+      headers: presenceHeaders,
+      body: JSON.stringify({
+        batchId: randomUUID(),
+        events: [
+          {
+            clientEventId: randomUUID(),
+            sessionId: presenceSessionId,
+            userSid: 'S-1-5-21-presence',
+            loginTime: earlier.toISOString(),
+            logoutTime: null,
+            workDate: now.toISOString().slice(0, 10),
+            totalActiveSeconds: 0,
+            totalIdleSeconds: 0,
+          },
+        ],
+      }),
+    });
+
+    const ingestEvent = await waitFor<any>((resolve) => {
+      dashboardSocket.on('telemetry:ingested', (payload: any) => {
+        // Ignore the attendance batch above, which may still be in flight.
+        if (payload?.channel === 'activity-session') resolve(payload);
+      });
+
+      void fetch(`${BASE}/api/v1/events/activity-session`, {
+        method: 'POST',
+        headers: presenceHeaders,
+        body: JSON.stringify({
+          batchId: randomUUID(),
+          events: [
+            {
+              clientEventId: randomUUID(),
+              activitySessionId: randomUUID(),
+              sessionId: presenceSessionId,
+              appName: 'Live Totals Test',
+              processName: 'live',
+              type: 'Application',
+              startTime: earlier.toISOString(),
+              endTime: now.toISOString(),
+              durationSeconds: 120,
+              productivityTag: 'Productive',
+            },
+          ],
+        }),
+      });
+    });
+
+    check('an ingested batch reaches the dashboard', ingestEvent?.deviceId === presenceDeviceRowId, ingestEvent);
+    check('the event carries the aggregate the batch produced, not just a hint',
+      ingestEvent?.delta?.activeSeconds === 120 && ingestEvent?.delta?.activitySessionCount === 1,
+      ingestEvent?.delta
+    );
+    check('the event names the employee so a per-row total can be moved',
+      typeof ingestEvent?.employeeId === 'string' && ingestEvent.employeeId.length > 0,
+      ingestEvent?.employeeId
+    );
+    check('the event reports how many events were genuinely stored',
+      ingestEvent?.eventCount === 1,
+      ingestEvent?.eventCount
+    );
+
     // Disconnecting must announce the departure, so a dashboard does not hold a green dot for a
     // machine that has gone.
     const departure = await waitFor<any>((resolve) => {

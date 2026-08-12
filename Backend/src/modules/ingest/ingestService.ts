@@ -146,14 +146,19 @@ class IngestService {
       { timeout: env.INGEST_TRANSACTION_TIMEOUT_MS }
     );
 
-    // Signalling only, and only after the commit: dashboards are told to refetch, never handed
-    // rows. A failure here cannot fail the ingest — the data is already durable.
+    // Sent only after the commit, and carrying the aggregate this batch just produced so
+    // dashboards can move their totals without querying anything. The work was done once here;
+    // making every viewer recompute it was the cost this replaces.
+    //
+    // A failure here cannot fail the ingest — the data is already durable, and the worst case is
+    // a dashboard whose numbers wait for its next refresh.
     broadcastTelemetryIngested(device.organizationId, {
       deviceId: device.id,
       employeeId: device.employeeId,
       channel,
-      workDate: prepared.accumulator.dates()[0] ?? null,
+      workDates: prepared.accumulator.dates(),
       eventCount: prepared.newEventIds.length,
+      delta: prepared.accumulator.total(),
     });
 
     // Atomic-batch contract: once the write above resolves, every row in this push is durably

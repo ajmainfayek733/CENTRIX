@@ -568,3 +568,36 @@ changing the interval in admin config does not need a frontend release.
 `currentOrganizationId()`, which returns the oldest organization row, because dashboard users have
 no organization column. Correct for this single-tenant deployment; it is the first thing that must
 change if a second organization is ever provisioned. The smoke test works around it explicitly.
+
+### 12.7 The ingest event carries the aggregate, not a hint
+
+`telemetry:ingested` ships the totals the batch contributed, taken straight from the accumulator
+that just wrote the rollup. The dashboard adds them to what it is showing and its figures move —
+no request, no refetch, no recomputation per viewer. The aggregation happened once, at ingest;
+this reuses it.
+
+**Deltas, never absolutes.** A dashboard is showing some range across some set of employees, and
+it has no way to fold one `(day, device, employee)` row's absolute total into that without knowing
+what that key already contributed. Adding what just arrived is something it can always do
+correctly, whatever it happens to be displaying.
+
+**Aggregates, never rows.** This is the line that has not moved. A delta is safe to push because
+applying it is unconditional arithmetic. Rows are not: a client would have to decide whether each
+belongs in its current view, deduplicate it against what it holds, and reconcile after every
+missed event — which is how a socket-fed cache drifts from the database with nothing to detect it.
+Log tables therefore still page from the API (§12.4).
+
+**Replays contribute nothing.** A batch recognized by the ledger returns before the broadcast, and
+`eventCount` is the number genuinely stored, so a resend cannot move anyone's numbers.
+
+The client clears its accumulated deltas whenever it refetches, because at that moment the
+server-rendered baseline already includes them. That reset is what keeps the two from
+double-counting, and it is also the correction path for a client that missed events while
+disconnected.
+
+> **Fragility noticed while testing this, not fixed here.** `activity_sessions.sessionId` is a
+> *required* FK onto `attendance_sessions`. An activity batch arriving before its attendance row
+> fails the whole request with a 500, which the agent treats as transient and retries forever.
+> In practice `SyncWorker.SyncOnceAsync` always pushes attendance first, which is why this has
+> never been hit — but unlike the browser and USB channels, which null unknown parents rather than
+> reject, this one has no tolerance for arriving out of order.

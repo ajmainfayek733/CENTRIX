@@ -7,26 +7,54 @@ import {
   DASHBOARD_NAMESPACE,
   DashboardEvent,
   REALTIME_URL,
+  addRollupDelta,
+  emptyRollupDelta,
   type DevicePresencePayload,
   type PresenceSnapshotPayload,
+  type RollupDeltaPayload,
+  type TelemetryIngestedPayload,
 } from '@/lib/realtime';
 
 /**
  * Holds the dashboard's realtime connection and refreshes server components when data changes.
  *
- * HOW THE SCREEN UPDATES: the socket never carries rows. It carries "something landed", and this
- * calls router.refresh(), which re-runs the server components for the current route and streams
- * the new HTML in without a navigation or a full reload. That keeps exactly one source of truth —
- * the database, read through the API — instead of a socket-fed client cache that drifts from it
- * and has to be reconciled.
+ * TWO KINDS OF UPDATE, AND ONLY ONE OF THEM IS RATE-LIMITED:
  *
- * REFRESHES ARE COALESCED. A hundred agents on a two-minute cycle produce a steady trickle of
- * events, and refreshing per event would put the dashboard into a permanent refetch loop that
- * costs more than the polling it replaced. One refresh per window, however many events arrive.
+ *   Presence (device liveness, "Active now", the online count) is applied to React state the
+ *   instant an event arrives. Nothing is deferred, nothing is polled. This is the part that has
+ *   to feel live, and it does.
+ *
+ *   Server-rendered report data (overview totals, rosters, log tables) is refreshed by calling
+ *   router.refresh(), which re-runs the server components for the current route and streams new
+ *   HTML in without a navigation or a reload. The socket deliberately does not carry these rows:
+ *   a socket-fed client cache drifts from the database and has to be reconciled after every
+ *   missed event, reconnect and permission change. Re-reading from the API keeps one source of
+ *   truth.
+ *
+ * THE RATE LIMIT IS A DEBOUNCE, NOT A SCHEDULE. Nothing here runs on a timer when nothing is
+ * happening — a refresh is only ever triggered by an event. What the limit does is cap how often
+ * events may cause a refetch: a hundred agents on a two-minute cycle produce clustered bursts of
+ * `telemetry:ingested`, and refreshing per event would mean several full server-component renders
+ * per second, which costs more than the polling this replaced.
+ *
+ * It fires on the LEADING edge. The first event refreshes immediately and only a burst behind it
+ * is collapsed into one trailing refresh. A trailing-only debounce would have delayed every update
+ * by the full window — including a lone event on a quiet system, which is the case where the
+ * dashboard most obviously ought to feel instant.
  */
 
-/** Longest a viewer waits to see new data, and the shortest gap between two refetches. */
-const REFRESH_COALESCE_MS = 3_000;
+/**
+ * Minimum gap between two refetches.
+ *
+ * Not a delay: the first event after a quiet period refreshes with no wait at all. This only
+ * bounds how closely two refreshes may follow each other.
+ *
+ * Comfortably longer than it would need to be if refetching were how the numbers updated. It is
+ * not — totals move from the aggregate pushed with each event. This exists for what a delta
+ * cannot express: a new row appearing in a log table, a device changing hands, an employee being
+ * added. Those tolerate a few seconds; the figures do not, and no longer wait.
+ */
+const REFRESH_MIN_INTERVAL_MS = 15_000;
 
 /** How long to wait before rebuilding a dropped connection, and the ceiling on that backoff. */
 const RECONNECT_MIN_MS = 1_000;
@@ -53,6 +81,16 @@ interface RealtimeContextValue {
   devices: ReadonlyMap<string, DeviceLiveness>;
   /** How long a device may stay silent before this client stops calling it live. */
   maxSilenceMs: number;
+  /**
+   * Everything ingested since this page was server-rendered, summed across the whole fleet.
+   *
+   * Added to a server-rendered figure to get the current one. Reset on every refetch, because at
+   * that moment the server-rendered baseline already includes it — not resetting is how the same
+   * telemetry would end up counted twice.
+   */
+  liveDelta: RollupDeltaPayload;
+  /** The same, per employee, for tables with a row each. */
+  liveDeltaByEmployee: ReadonlyMap<string, RollupDeltaPayload>;
 }
 
 /**
@@ -65,6 +103,8 @@ const RealtimeContext = createContext<RealtimeContextValue>({
   connected: false,
   devices: new Map(),
   maxSilenceMs: DEFAULT_MAX_SILENCE_MS,
+  liveDelta: emptyRollupDelta(),
+  liveDeltaByEmployee: new Map(),
 });
 
 export function useRealtime(): RealtimeContextValue {
@@ -114,10 +154,15 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   const [connected, setConnected] = useState(false);
   const [devices, setDevices] = useState<ReadonlyMap<string, DeviceLiveness>>(new Map());
   const [maxSilenceMs, setMaxSilenceMs] = useState(DEFAULT_MAX_SILENCE_MS);
+  const [liveDelta, setLiveDelta] = useState<RollupDeltaPayload>(emptyRollupDelta);
+  const [liveDeltaByEmployee, setLiveDeltaByEmployee] = useState<ReadonlyMap<string, RollupDeltaPayload>>(
+    new Map()
+  );
 
-  // Held in a ref, not state: changing it must not re-render, and the cleanup below has to be
-  // able to clear a timer scheduled by an event that has already been handled.
+  // Held in refs, not state: changing them must not re-render, and the cleanup below has to be
+  // able to clear a timer armed by an event that has already been handled.
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastRefreshAt = useRef(0);
 
   useEffect(() => {
     // `cancelled` guards every async continuation. Without it, a provider unmounted during the
@@ -128,12 +173,42 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let reconnectDelay = RECONNECT_MIN_MS;
 
-    const scheduleRefresh = () => {
+    const refreshNow = () => {
+      lastRefreshAt.current = Date.now();
+      // Cleared in the same breath as the refetch is requested. Once the server re-renders, its
+      // figures already include everything these deltas represent, so keeping them would count
+      // the same telemetry twice. Anything arriving between here and the new HTML lands in a
+      // fresh delta and is applied on top, which is correct.
+      setLiveDelta(emptyRollupDelta());
+      setLiveDeltaByEmployee(new Map());
+      router.refresh();
+    };
+
+    /**
+     * Refetches server-rendered data, at most once per REFRESH_MIN_INTERVAL_MS.
+     *
+     * Leading edge: an event arriving after a quiet period refreshes immediately. Only events
+     * that land inside the cooldown are collapsed, and they produce exactly one refresh when it
+     * expires — so a burst costs one refetch rather than one per event, and an isolated event
+     * costs no delay at all.
+     */
+    const requestRefresh = () => {
+      if (cancelled) return;
+
+      const sinceLast = Date.now() - lastRefreshAt.current;
+
+      if (sinceLast >= REFRESH_MIN_INTERVAL_MS) {
+        refreshNow();
+        return;
+      }
+
+      // A refresh is already queued for the end of this cooldown; this event joins it.
       if (refreshTimer.current) return;
+
       refreshTimer.current = setTimeout(() => {
         refreshTimer.current = null;
-        router.refresh();
-      }, REFRESH_COALESCE_MS);
+        if (!cancelled) refreshNow();
+      }, REFRESH_MIN_INTERVAL_MS - sinceLast);
     };
 
     const connect = async () => {
@@ -168,7 +243,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         reconnectDelay = RECONNECT_MIN_MS;
         // Data may have changed while the socket was down, and nothing will announce what was
         // missed — so treat every (re)connection as a reason to refetch once.
-        scheduleRefresh();
+        requestRefresh();
       });
 
       socket.on('disconnect', () => {
@@ -187,8 +262,31 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         retry();
       });
 
-      socket.on(DashboardEvent.TelemetryIngested, scheduleRefresh);
-      socket.on(DashboardEvent.PolicyUpdated, scheduleRefresh);
+      // The aggregate arrives with the event, so the totals on screen move immediately — no
+      // request, no waiting for a refetch. The refresh below is a correctness backstop for the
+      // things a delta cannot express (new rows in a log table, a device changing hands), not
+      // the path that updates the numbers.
+      socket.on(DashboardEvent.TelemetryIngested, (payload: TelemetryIngestedPayload) => {
+        if (cancelled) return;
+
+        // A replay stored nothing, and its delta is zero. Guarded explicitly anyway: this is the
+        // one place a double-count would be invisible, and the cost of the check is nothing.
+        if (payload.eventCount > 0 && payload.delta) {
+          setLiveDelta((current) => addRollupDelta(current, payload.delta));
+          setLiveDeltaByEmployee((current) => {
+            const next = new Map(current);
+            next.set(
+              payload.employeeId,
+              addRollupDelta(next.get(payload.employeeId) ?? emptyRollupDelta(), payload.delta)
+            );
+            return next;
+          });
+        }
+
+        requestRefresh();
+      });
+
+      socket.on(DashboardEvent.PolicyUpdated, requestRefresh);
 
       socket.on(DashboardEvent.PresenceSnapshot, (payload: PresenceSnapshotPayload) => {
         if (cancelled) return;
@@ -244,8 +342,8 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   }, [router]);
 
   const value = useMemo(
-    () => ({ connected, devices, maxSilenceMs }),
-    [connected, devices, maxSilenceMs]
+    () => ({ connected, devices, maxSilenceMs, liveDelta, liveDeltaByEmployee }),
+    [connected, devices, maxSilenceMs, liveDelta, liveDeltaByEmployee]
   );
 
   return <RealtimeContext.Provider value={value}>{children}</RealtimeContext.Provider>;

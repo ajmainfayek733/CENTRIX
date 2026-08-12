@@ -108,8 +108,19 @@ export interface AgentHeartbeatPayload {
 
 export const DashboardEvent = {
   /**
-   * A batch landed. This is a hint to refetch, not the data itself — sending rows here would
-   * mean two sources of truth for the same table and a UI that drifts from the database.
+   * A batch landed and has been fully aggregated.
+   *
+   * Carries the totals it contributed, so a dashboard can move its numbers without asking the
+   * server anything. This is the aggregate the rollup table just committed — computed once, at
+   * ingest, and reused rather than recomputed per viewer.
+   *
+   * It carries aggregates and NOT rows, and the distinction is load-bearing. A delta is safe to
+   * push because applying it is unconditional arithmetic: a dashboard showing any range, any
+   * filter, any employee subset can add what just arrived and be right. Rows are not, because a
+   * client would have to decide whether each one belongs in its current view, deduplicate it
+   * against what it already has, and reconcile after every missed event — which is how a
+   * socket-fed cache drifts from the database with nothing to detect it. Log tables therefore
+   * still page from the API.
    */
   TelemetryIngested: 'telemetry:ingested',
 
@@ -129,13 +140,37 @@ export const DashboardEvent = {
   PolicyUpdated: 'policy:updated',
 } as const;
 
+/**
+ * What one batch added. Every field is a delta, never an absolute — see TelemetryIngested.
+ *
+ * Mirrors RollupDelta in modules/ingest/rollupService.ts minus its timestamps, which describe a
+ * single day's span and cannot be summed into a range the way counters can.
+ */
+export interface RollupDeltaPayload {
+  activeSeconds: number;
+  idleSeconds: number;
+  productiveSeconds: number;
+  unproductiveSeconds: number;
+  neutralSeconds: number;
+  blacklistedSeconds: number;
+  keyCount: number;
+  mouseCount: number;
+  activitySessionCount: number;
+  browserVisitCount: number;
+  usbEventCount: number;
+  alertCount: number;
+}
+
 export interface TelemetryIngestedPayload {
   deviceId: string;
   employeeId: string;
   channel: string;
-  /** YYYY-MM-DD the batch was attributed to, so a UI showing one day can ignore other days. */
-  workDate: string | null;
+  /** Days the batch touched, so a UI showing one date can ignore a backfill for another. */
+  workDates: string[];
+  /** Events genuinely stored — zero for a replay, which must not move anyone's numbers. */
   eventCount: number;
+  /** The aggregate this batch contributed. Add it; do not replace with it. */
+  delta: RollupDeltaPayload;
 }
 
 export interface DevicePresencePayload {
