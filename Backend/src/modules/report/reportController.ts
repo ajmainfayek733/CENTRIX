@@ -97,14 +97,19 @@ export class ReportController {
     }
   }
 
+  /**
+   * GET /v1/dashboard/reports/employees/:employeeId/screenshots
+   *
+   * Index only — the images themselves come from getScreenshotFile, one audited request each.
+   */
   async getScreenshots(req: Request, res: Response, next: NextFunction) {
     try {
-      const { startDate, endDate } = req.query;
-      const data = await reportService.getScreenshots(
-        req.params.employeeId as string,
-        startDate as string,
-        endDate as string
-      );
+      const data = await reportService.getScreenshots(req.params.employeeId as string, {
+        startDate: req.query.startDate as string | undefined,
+        endDate: req.query.endDate as string | undefined,
+        cursor: req.query.cursor as string | undefined,
+        limit: parseLimit(req.query.limit),
+      });
       return res.status(200).json({ data });
     } catch (error) {
       next(error);

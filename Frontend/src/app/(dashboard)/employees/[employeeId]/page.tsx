@@ -13,8 +13,11 @@ import {
   EmptyState,
   ProductivityBar,
 } from '@/components/ui';
-import type { EmployeeDetail } from '@/types/api';
+import type { EmployeeDetail, ScreenshotRow } from '@/types/api';
+import type { LogPage } from '@/lib/use-log-feed';
+import { getSessionUser, canViewScreenshots } from '@/lib/session';
 import { DateRangePicker } from '@/components/DateRangePicker';
+import { ScreenshotGallery } from '@/components/ScreenshotGallery';
 import { TimelineTable } from './TimelineTable';
 
 export const dynamic = 'force-dynamic';
@@ -35,8 +38,12 @@ export default async function EmployeeDetailPage({
   const suffix = query.size > 0 ? `?${query}` : '';
 
   let detail: EmployeeDetail;
+  let user: Awaited<ReturnType<typeof getSessionUser>>;
   try {
-    detail = await apiGet<EmployeeDetail>(`/v1/dashboard/reports/employees/${employeeId}${suffix}`);
+    [detail, user] = await Promise.all([
+      apiGet<EmployeeDetail>(`/v1/dashboard/reports/employees/${employeeId}${suffix}`),
+      getSessionUser(),
+    ]);
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) notFound();
     throw error;
@@ -44,6 +51,20 @@ export default async function EmployeeDetailPage({
 
   const { employee, totals, timeline, topApps, topDomains, attendance } = detail;
   const { startDate, endDate } = range;
+
+  /*
+    Screenshots are the most invasive surface in the product and the Auditor role is excluded from
+    them by spec §6. The gate is here as well as on the API because a section that renders and then
+    fails to load its images is worse than one that was never offered — and asking for the first
+    page at all would just earn a 403. The API remains the enforcement point; this is the UI
+    agreeing with it.
+  */
+  const screenshots =
+    user && canViewScreenshots(user.role)
+      ? await apiGet<LogPage<ScreenshotRow>>(
+          `/v1/dashboard/reports/employees/${employeeId}/screenshots${suffix}`
+        )
+      : null;
 
   return (
     <div className="space-y-6">
@@ -162,6 +183,19 @@ export default async function EmployeeDetailPage({
           endDate={endDate}
         />
       </Card>
+
+      {screenshots && (
+        <Card
+          title={`Screenshots · showing ${screenshots.rows.length}${screenshots.hasMore ? '+' : ''}`}
+        >
+          <ScreenshotGallery
+            initial={screenshots}
+            employeeId={employee.id}
+            startDate={startDate}
+            endDate={endDate}
+          />
+        </Card>
+      )}
     </div>
   );
 }

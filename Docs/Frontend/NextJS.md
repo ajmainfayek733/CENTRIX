@@ -330,6 +330,10 @@ as online from `lastSeen`. It answers only whether a force-sync would be deliver
 `LogScroller` renders a bounded window: the first page arrives with the server-rendered page, and
 an `IntersectionObserver` on a sentinel fetches the next page when the operator scrolls to the end.
 
+The paging itself lives in `lib/use-log-feed.ts` (`useLogFeed`), which `LogScroller` and the
+screenshot gallery share. Cursor handling, the in-flight guard, duplicate rejection and the
+sentinel observer are identical for a table and a grid; only the markup differs.
+
 The employee timeline previously did `take: 2000` and handed the lot to the browser — an unbounded
 query as history grows, and thousands of DOM nodes for rows nobody scrolls to.
 
@@ -346,6 +350,15 @@ query as history grows, and thousands of DOM nodes for rows nobody scrolls to.
 - Totals are never derived from loaded rows. They come from the daily rollup, so a "productivity %"
   describes the period rather than the first fifty rows. Counts in card titles say
   "showing N", not "N entries", because only one page is loaded.
+- A new first page resets the window — but the incoming page is compared **by content**, not by
+  object identity. `RealtimeProvider` calls `router.refresh()` on every ingest event and each
+  refresh hands down a fresh object even when the first page is unchanged, so an identity check
+  threw away every page the operator had scrolled in, roughly once a minute. The comparison covers
+  `rows`/`nextCursor`/`hasMore` only: some endpoints wrap the page in metadata whose `period.end`
+  is "now", which would otherwise report a change on every refresh.
+- The reset is applied **during render**, not in an effect. React restarts the render with the new
+  state, so the stale page is never painted; the same reset in an effect flashes the old range
+  first.
 
 ### 12.3 Live activeness in the admin dashboard
 
@@ -430,3 +443,63 @@ $env:MONITORING_API_URL='http://127.0.0.1:5999'; npx next start -p 3099
 
 Signing in reports the service as unavailable rather than rejecting the credentials, and a
 dashboard route renders the degraded shell instead of bouncing to `/login`.
+
+## 14. Screenshots
+
+A per-employee gallery on the employee detail screen: `ScreenshotGallery` renders a 3-across grid,
+two rows deep, that pages in more captures as the operator scrolls, and `ScreenshotViewer` opens
+any tile full-screen with zoom, pan and left/right navigation.
+
+### 14.1 The image proxy — why `<img>` cannot point at the API
+
+The session token is in an httpOnly cookie (§3) and an `<img src>` cannot carry an `Authorization`
+header. The two obvious ways out are both worse: putting the token where JavaScript can read it
+reopens the XSS exposure the cookie exists to close, and making the image endpoint public and
+protecting it with an unguessable path is not protection at all for the most invasive data in the
+product.
+
+So tags point at `/api/screenshots/[deviceId]/[file]`, which attaches the credential server-side
+and streams the response back. `lib/screenshots.ts` builds that URL, and the route imports the
+extension from the same module so the two cannot drift.
+
+- Both path segments are validated against a strict charset before use. They are opaque backend
+  identifiers, so this costs nothing and stops the route becoming a way to address arbitrary
+  upstream paths.
+- The upstream request is what the backend audit-logs, so viewing an image still records who
+  looked at what.
+- Responses are `Cache-Control: private, max-age=300`. `private` because these are pictures of an
+  employee's desktop and must never enter a shared cache. The short lifetime keeps zooming,
+  panning and stepping back and forth from re-downloading a full-size capture the operator is
+  already looking at — the audit entry for opening it has already been written.
+- 401/403/404 are passed through unchanged rather than dressed up as failures, and a 5xx becomes a
+  503, consistent with §13. A tile whose image 403s shows as broken rather than loading forever.
+
+### 14.2 Role gate
+
+Screenshots are excluded from the Auditor role by spec §6. `canViewScreenshots(role)` gates the
+section, so the page never renders a gallery whose first page would 403 on arrival. The API remains
+the enforcement point — the UI is agreeing with it, not implementing it. Verified by demoting a
+session to `auditor`: the section disappears and a hand-made request to the proxy returns 403.
+
+### 14.3 The viewer
+
+- **Zoom** is a multiplier of the fitted size, 1×–8×, geometric per step. Buttons and the keyboard
+  zoom about the centre; the wheel and double-click zoom about the pointer, because zooming about
+  the centre while someone points at a corner walks what they were inspecting off the screen.
+- Wheel zoom uses the **sign** of `deltaY`, never the magnitude — a mouse reports ~100 per notch
+  and a trackpad single digits, so scaling by the value makes one gesture behave like two devices.
+- **Pan** is clamped to the image's own overflow, so it cannot be dragged out of its frame. At 1×
+  the bound collapses to zero and the image re-centres, which is why "reset" needs no special case.
+- Every zoom goes through the state updater, never through `view` in a closure: a trackpad delivers
+  a burst of wheel events between two renders, and each computing its target from the same stale
+  scale would throw away all but the last.
+- The open capture is tracked **by id, not by index**. The feed is live — a capture taken while the
+  viewer is open is prepended and shifts every index below it, which silently swapped the viewer to
+  the neighbouring image and reset its zoom. The position is derived from the id.
+- Stepping right within three captures of the end asks for the next page, so infinite scroll
+  applies to keyboard navigation and not only to the grid.
+- Keyboard: `←`/`→` move, `+`/`-` zoom, `0` resets, `Esc` closes. Tab is trapped inside the dialog,
+  focus moves in on open and returns to the tile that opened it, and body scroll is locked while it
+  is up.
+- Rendered through a portal onto `<body>`: the gallery is an internally-scrolling region inside a
+  card, so a viewer rendered in place would be clipped by it.

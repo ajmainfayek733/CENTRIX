@@ -441,19 +441,67 @@ export class ReportService {
     };
   }
 
-  /** Screenshot index for the employee detail screen (spec §5). */
-  async getScreenshots(employeeId: string, startDate?: string, endDate?: string) {
-    const { start, end } = resolveRange(startDate, endDate);
-    const devices = await prisma.device.findMany({ where: { employeeId }, select: { id: true } });
+  /**
+   * Screenshot index for the employee detail screen (spec §5), newest first, one page at a time.
+   *
+   * Paged like the other log feeds rather than returning the range. Screenshots accumulate faster
+   * than any other record here — one every few minutes per device, for every device the employee
+   * has — so a fixed `take: 500` was both an arbitrary ceiling that silently hid older captures
+   * and, at the same time, far more than the gallery shows before the operator scrolls. The grid
+   * asks for the next page when it reaches the end, exactly as the timeline does.
+   *
+   * The bytes are not served from here: rows carry the identifiers the viewer route needs, and
+   * each image is fetched (and audit-logged) individually when it is actually displayed.
+   */
+  async getScreenshots(
+    employeeId: string,
+    options: { startDate?: string; endDate?: string; cursor?: string; limit?: number } = {}
+  ) {
+    const { start, end } = resolveRange(options.startDate, options.endDate);
 
-    const screenshots = await prisma.screenshot.findMany({
-      where: { deviceId: { in: devices.map((d) => d.id) }, capturedAt: { gte: start, lte: end } },
-      orderBy: { capturedAt: 'desc' },
-      take: 500,
-      select: { id: true, deviceId: true, clientEventId: true, capturedAt: true, width: true, height: true },
+    const organizationId = await currentOrganizationId();
+    const pageSize = await resolvePageSize(organizationId, options.limit);
+    const cursor = decodeCursor(options.cursor);
+
+    const devices = await prisma.device.findMany({
+      where: { employeeId },
+      select: { id: true, deviceName: true },
+    });
+    if (devices.length === 0) {
+      return { period: { start, end }, rows: [], nextCursor: null, hasMore: false };
+    }
+
+    const rows = await prisma.screenshot.findMany({
+      where: {
+        deviceId: { in: devices.map((d) => d.id) },
+        capturedAt: { gte: start, lte: end },
+        ...olderThan('capturedAt', cursor),
+      },
+      orderBy: newestFirst('capturedAt'),
+      take: pageSize + 1,
+      select: {
+        id: true,
+        deviceId: true,
+        clientEventId: true,
+        capturedAt: true,
+        width: true,
+        height: true,
+        sizeBytes: true,
+      },
     });
 
-    return { period: { start, end }, screenshots };
+    const page = toPage(rows, pageSize, (r) => r.capturedAt);
+
+    // An employee with two machines gets two interleaved streams of captures, and "which screen
+    // is this?" is unanswerable from a thumbnail. The name is joined from the devices already
+    // fetched above rather than an include on every row, which would repeat it per screenshot.
+    const deviceNames = new Map(devices.map((d) => [d.id, d.deviceName]));
+
+    return {
+      ...page,
+      period: { start, end },
+      rows: page.rows.map((r) => ({ ...r, deviceName: deviceNames.get(r.deviceId) ?? null })),
+    };
   }
 }
 

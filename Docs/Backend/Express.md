@@ -513,6 +513,20 @@ predicate.
 Page size comes from `Policy.logPageSize` (default 50), so an admin changes it from the settings
 screen. A caller may request fewer, never more.
 
+The screenshot index (`GET /v1/dashboard/reports/employees/:employeeId/screenshots`) is one of
+these feeds and returns `{ rows, nextCursor, hasMore, period }`. It previously returned a flat
+`{ screenshots }` array capped at `take: 500` — an arbitrary ceiling that silently hid older
+captures while still being far more than the gallery shows before the operator scrolls. Screenshots
+accumulate faster than any other record here (one every few minutes, per device, per employee), so
+the same cursor discipline applies. Rows carry `deviceName` joined from the employee's devices, not
+per row, so a two-machine employee's interleaved captures can be told apart.
+
+The image bytes are **not** in the index. `GET /v1/dashboard/reports/screenshots/:deviceId/:file`
+serves one capture per request, which is what makes every view a separate `VIEW_SCREENSHOT` audit
+entry (spec §3). Both routes exclude the Auditor role (spec §6); the service also verifies the
+capture belongs to the device in the path, so guessing a `clientEventId` against another device's
+id returns 404.
+
 ### 12.5 Admin-configurable limits
 
 | Setting | Default | What it controls |

@@ -21,6 +21,14 @@ const FEEDS = {
   },
   alerts: () => '/v1/dashboard/reports/alerts',
   usb: () => '/v1/dashboard/reports/usb-events',
+  // Index only — never the image bytes, which have their own route so each view is audited
+  // individually. The API restricts this to super_admin/manager; an Auditor gets a 403 here,
+  // which is the same answer they get for the first page rendered on the server.
+  screenshots: (params: URLSearchParams) => {
+    const employeeId = params.get('employeeId');
+    if (!employeeId) return null;
+    return `/v1/dashboard/reports/employees/${encodeURIComponent(employeeId)}/screenshots`;
+  },
 } as const;
 
 type Feed = keyof typeof FEEDS;

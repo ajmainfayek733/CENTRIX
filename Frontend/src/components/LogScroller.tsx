@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
+import { useLogFeed, type LogFeedName, type LogPage } from '@/lib/use-log-feed';
 
 /**
  * A fixed-height, scrolling log window that loads the next page when the reader reaches the end.
@@ -11,22 +12,17 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
  * the first page arrives with the server-rendered page, and each subsequent page is fetched only
  * when the operator actually scrolls to the bottom.
  *
- * The page size is not decided here. The server reads it from policy, so an admin changes it on
- * the settings screen — this component just asks for "the next page".
+ * The paging itself lives in useLogFeed, which the screenshot gallery shares — this component is
+ * the table-shaped presentation of it.
  */
 
-/** One page of a keyset-paginated feed, matching the backend's `Page<T>`. */
-export interface LogPage<T> {
-  rows: T[];
-  nextCursor: string | null;
-  hasMore: boolean;
-}
+export type { LogPage };
 
 interface LogScrollerProps<T> {
   /** First page, rendered on the server so the table is populated before any JavaScript runs. */
   initial: LogPage<T>;
   /** Feed name, resolved by /api/logs/[feed]. */
-  feed: 'activity' | 'alerts' | 'usb';
+  feed: Extract<LogFeedName, 'activity' | 'alerts' | 'usb'>;
   /** Extra query parameters (employeeId, date range, …). */
   params?: Record<string, string | undefined>;
   /** Stable identity for a row, used as the React key and to drop duplicates. */
@@ -37,19 +33,6 @@ interface LogScrollerProps<T> {
   emptyMessage?: string;
 }
 
-/**
- * How far before the end to start loading, so the next page is usually there by the time the
- * reader arrives. Expressed as a root margin on the sentinel rather than a scroll-offset
- * calculation, which would have to run on every scroll event.
- */
-const PREFETCH_MARGIN = '200px';
-
-/** The proxy answers with this when the monitoring service itself is unreachable. */
-const SERVICE_UNAVAILABLE = 503;
-
-/** A failure with a message fit to show the operator, as opposed to an unexpected throw. */
-class LoadError extends Error {}
-
 export function LogScroller<T>({
   initial,
   feed,
@@ -59,89 +42,12 @@ export function LogScroller<T>({
   height = '28rem',
   emptyMessage = 'Nothing recorded for this period.',
 }: LogScrollerProps<T>) {
-  const [rows, setRows] = useState<T[]>(initial.rows);
-  const [cursor, setCursor] = useState<string | null>(initial.nextCursor);
-  const [hasMore, setHasMore] = useState(initial.hasMore);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const sentinel = useRef<HTMLDivElement | null>(null);
-
-  // Guards against two loads racing: the observer can fire again while a fetch is in flight, and
-  // both would append the same page. A ref rather than the `loading` state because the observer
-  // callback closes over the value at registration time.
-  const inFlight = useRef(false);
-
-  // A new first page (date range changed, or the realtime refresh re-ran the server component)
-  // replaces everything. Without this the window would keep showing rows from the old query and
-  // append the new range underneath them.
-  useEffect(() => {
-    setRows(initial.rows);
-    setCursor(initial.nextCursor);
-    setHasMore(initial.hasMore);
-    setError(null);
-  }, [initial]);
-
-  const loadMore = useCallback(async () => {
-    if (inFlight.current || !hasMore || !cursor) return;
-
-    inFlight.current = true;
-    setLoading(true);
-    setError(null);
-
-    try {
-      const query = new URLSearchParams({ cursor });
-      for (const [name, value] of Object.entries(params ?? {})) {
-        if (value) query.set(name, value);
-      }
-
-      const response = await fetch(`/api/logs/${feed}?${query}`);
-
-      // 503 is the monitoring service being unreachable, which is worth saying plainly — the
-      // page itself is fine and retrying shortly will work. Anything else is reported generically.
-      if (response.status === SERVICE_UNAVAILABLE) {
-        throw new LoadError('The monitoring service is unavailable. Entries already loaded are still accurate.');
-      }
-      if (!response.ok) throw new LoadError('Could not load more entries.');
-
-      const page = (await response.json()) as LogPage<T>;
-
-      setRows((current) => {
-        // The cursor makes duplicates impossible in a static feed, but this one is live: a row
-        // inserted above the cursor between two requests can appear on both pages. Dropping keys
-        // already held is cheaper than reasoning about it, and keeps React keys unique.
-        const seen = new Set(current.map(rowKey));
-        return [...current, ...page.rows.filter((row) => !seen.has(rowKey(row)))];
-      });
-
-      setCursor(page.nextCursor);
-      setHasMore(page.hasMore);
-    } catch (failure) {
-      // Left recoverable on purpose: `hasMore` stays true, so scrolling again retries rather
-      // than the window silently deciding the feed ended.
-      setError(failure instanceof LoadError ? failure.message : 'Could not load more entries.');
-    } finally {
-      inFlight.current = false;
-      setLoading(false);
-    }
-  }, [cursor, feed, hasMore, params, rowKey]);
-
-  useEffect(() => {
-    const target = sentinel.current;
-    if (!target || !hasMore) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) void loadMore();
-      },
-      // Scoped to the scroll container, not the viewport: the window scrolls internally, so the
-      // sentinel never enters the viewport and a default-root observer would never fire.
-      { root: target.parentElement, rootMargin: PREFETCH_MARGIN }
-    );
-
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [hasMore, loadMore]);
+  const { rows, hasMore, loading, error, loadMore, sentinelRef } = useLogFeed({
+    initial,
+    feed,
+    params,
+    rowKey,
+  });
 
   return (
     <div
@@ -160,7 +66,7 @@ export function LogScroller<T>({
         children(rows)
       )}
 
-      <div ref={sentinel} aria-hidden />
+      <div ref={sentinelRef} aria-hidden />
 
       {loading && <p className="py-3 text-center text-xs text-text-secondary">Loading more…</p>}
 

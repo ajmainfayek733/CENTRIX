@@ -115,6 +115,24 @@ export interface EmployeeDetail {
   attendance: AttendanceRow[];
 }
 
+/**
+ * One capture in the screenshot index. The bytes are not in here — `deviceId` and `clientEventId`
+ * address the image, which is fetched (and audit-logged) one request at a time when displayed.
+ *
+ * width/height are nullable because an older agent may not have reported them; the gallery must
+ * not assume an aspect ratio from them.
+ */
+export interface ScreenshotRow {
+  id: string;
+  deviceId: string;
+  deviceName: string | null;
+  clientEventId: string;
+  capturedAt: string;
+  width: number | null;
+  height: number | null;
+  sizeBytes: number;
+}
+
 export interface AlertRow {
   id: string;
   clientEventId: string;
