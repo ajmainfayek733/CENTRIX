@@ -34,24 +34,88 @@ public static class DeviceIdentity
     }
 
     /// <summary>
-    /// The MAC of the first operational physical adapter. Loopback and tunnel adapters are
-    /// skipped, as are the virtual adapters Hyper-V, VPN clients and Docker install — those
-    /// change independently of the hardware and would make the value useless as an attribute.
+    /// Caches the first hardware address successfully resolved.
+    ///
+    /// The service starts at boot, and the enrollment that reads this can run before Windows has
+    /// finished bringing the NICs up. Once a real address has been seen it never changes for the
+    /// life of the machine, so holding on to it means a later call cannot regress to "unknown"
+    /// just because an adapter was disabled or a cable was pulled.
     /// </summary>
-    public static string GetPrimaryMacAddress()
+    private static string? _cachedMacAddress;
+
+    /// <summary>
+    /// The MAC of the best available physical adapter, or null when none can be determined.
+    ///
+    /// WHY THIS IS NOT A ONE-LINER: the previous version required an adapter that was
+    /// <see cref="OperationalStatus.Up"/> *and* physical *and* not virtual-sounding, and returned
+    /// 00:00:00:00:00:00 when nothing matched. All three conditions fail routinely —
+    ///
+    ///   • the service starts at boot and enrolls before any adapter reaches Up;
+    ///   • a laptop on Wi-Fi with the dock unplugged has no Ethernet at all;
+    ///   • on a host with Hyper-V or WSL2 the adapter carrying traffic is described as virtual.
+    ///
+    /// so the zero address was not an edge case, it was the common result. And because it is a
+    /// well-formed string, nothing downstream could tell it apart from a real address: every
+    /// affected device showed the same MAC in the dashboard, and the index on that column pointed
+    /// them all at each other.
+    ///
+    /// The fix is to widen the search in tiers rather than fail to a placeholder, and to return
+    /// null — which the whole chain now models — when even the widest tier finds nothing.
+    /// </summary>
+    public static string? GetPrimaryMacAddress()
     {
-        var candidate = NetworkInterface.GetAllNetworkInterfaces()
-            .Where(nic => nic.OperationalStatus == OperationalStatus.Up)
+        if (_cachedMacAddress is not null) return _cachedMacAddress;
+
+        var adapters = NetworkInterface.GetAllNetworkInterfaces()
             .Where(nic => nic.NetworkInterfaceType is not (NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel))
-            .Where(nic => !IsVirtualAdapter(nic.Description))
-            .OrderBy(nic => nic.NetworkInterfaceType == NetworkInterfaceType.Ethernet ? 0 : 1)
+            .Where(nic => HasUsableAddress(nic))
+            .ToList();
+
+        // Tier 1: a real, connected, physical adapter — the answer we want.
+        // Tier 2: a physical adapter that simply is not up yet, or is currently unplugged. Its
+        //         address is burned into the same hardware either way, which is the property
+        //         Features.md actually cares about.
+        // Tier 3: anything left, including virtual adapters. A machine whose only NIC is a
+        //         Hyper-V vSwitch still deserves a stable identifier over none at all.
+        var candidate =
+            Best(adapters.Where(nic => nic.OperationalStatus == OperationalStatus.Up && !IsVirtualAdapter(nic.Description)))
+            ?? Best(adapters.Where(nic => !IsVirtualAdapter(nic.Description)))
+            ?? Best(adapters);
+
+        if (candidate is null) return null;
+
+        _cachedMacAddress = Format(candidate.GetPhysicalAddress());
+        return _cachedMacAddress;
+    }
+
+    /// <summary>Ethernet before Wi-Fi before anything else, then by name so the pick is stable.</summary>
+    private static NetworkInterface? Best(IEnumerable<NetworkInterface> adapters) =>
+        adapters
+            .OrderBy(nic => nic.NetworkInterfaceType switch
+            {
+                NetworkInterfaceType.Ethernet => 0,
+                NetworkInterfaceType.Wireless80211 => 1,
+                _ => 2
+            })
+            .ThenBy(nic => nic.Id, StringComparer.Ordinal)
             .FirstOrDefault();
 
-        var bytes = candidate?.GetPhysicalAddress().GetAddressBytes();
-        return bytes is { Length: > 0 }
-            ? string.Join(":", bytes.Select(b => b.ToString("X2")))
-            : "00:00:00:00:00:00";
+    /// <summary>
+    /// True when the adapter reports an address that identifies something.
+    ///
+    /// The all-zero address is rejected here rather than downstream: it is not an address, it is
+    /// what the API returns for an adapter that has none, and treating it as data is the whole
+    /// bug this method exists to fix.
+    /// </summary>
+    private static bool HasUsableAddress(NetworkInterface nic)
+    {
+        var bytes = nic.GetPhysicalAddress().GetAddressBytes();
+        return bytes.Length > 0 && bytes.Any(b => b != 0);
     }
+
+    /// <summary>Canonical uppercase colon-separated form, matching what the server stores.</summary>
+    private static string Format(PhysicalAddress address) =>
+        string.Join(":", address.GetAddressBytes().Select(b => b.ToString("X2")));
 
     private static bool IsVirtualAdapter(string description) =>
         description.Contains("virtual", StringComparison.OrdinalIgnoreCase) ||

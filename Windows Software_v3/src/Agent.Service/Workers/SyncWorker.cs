@@ -74,7 +74,11 @@ public sealed class SyncWorker(
                 _logger.LogWarning(ex, "Sync cycle failed; queued data is retained for the next attempt");
             }
 
-            await Task.Delay(NextDelay(policy), stoppingToken).ConfigureAwait(false);
+            // Waits out the interval, or returns early when something asks for an immediate sync
+            // (the dashboard's force-sync button, relayed over the realtime channel). Waiting on
+            // the signal *instead of* sleeping means a nudge shortens this cycle rather than
+            // starting a second one alongside it.
+            await _state.WaitForSyncRequestAsync(NextDelay(policy), stoppingToken).ConfigureAwait(false);
         }
     }
 

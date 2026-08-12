@@ -61,6 +61,24 @@ const envSchema = z.object({
   // agents sync simultaneously and you see requests queueing behind the pool.
   DATABASE_POOL_MAX: z.coerce.number().int().positive().default(10),
 
+  // -- Ingest ----------------------------------------------------------------
+  // Server-side sanity ceiling on events per push. The *operational* batch size is
+  // Policy.syncMaxBatchSize (default 100), which admins edit from the settings screen and the
+  // agent reads from policy — this is only an abuse bound.
+  //
+  // Deliberately several times the policy default: an agent that has not yet picked up a
+  // lowered policy must not have its perfectly valid batches rejected, which would strand its
+  // queue until someone noticed.
+  INGEST_MAX_BATCH_EVENTS: z.coerce.number().int().positive().default(500),
+  // Ceiling on the ingest write transaction. Only inserts and one aggregate upsert run inside
+  // it — validation, categorization and lookups happen before it opens — so this is generous
+  // for a batch of INGEST_MAX_BATCH_EVENTS rows and exists to stop a wedged transaction from
+  // holding locks indefinitely.
+  INGEST_TRANSACTION_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
+  // How long the batch-idempotency ledger is kept. It only has to outlive the agent's retry
+  // window: once an agent has stopped resending a batch, the row can never be consulted again.
+  INGEST_BATCH_RETENTION_DAYS: z.coerce.number().int().positive().default(7),
+
   // How stale a device's lastSeen may get before deviceAuth refreshes it. Writing on every
   // request means a row update per telemetry call — pure write amplification on the hottest
   // table, and needless contention on a single row. Liveness only needs minute granularity.

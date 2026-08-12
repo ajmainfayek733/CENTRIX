@@ -75,6 +75,18 @@ export interface TimelineRow {
   visits: BrowserVisitRow[];
 }
 
+/**
+ * One page of a keyset-paginated feed, matching the backend's `Page<T>`.
+ *
+ * `nextCursor` is opaque: the client hands it straight back to ask for the following page and
+ * never parses it. That is what lets the server change the sort key without a client release.
+ */
+export interface LogPageOf<T> {
+  rows: T[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
 export interface AttendanceRow {
   sessionId: string;
   loginTime: string;
@@ -93,7 +105,11 @@ export interface EmployeeDetail {
   };
   period: { start: string; end: string };
   totals: Totals;
-  timeline: TimelineRow[];
+  /**
+   * First page only. `totals` above is not derived from it — it comes from the daily rollup, so
+   * the percentages describe the whole period rather than whatever rows happen to be loaded.
+   */
+  timeline: LogPageOf<TimelineRow>;
   topApps: Array<{ appName: string | null; productivityTag: ProductivityTag; seconds: number }>;
   topDomains: Array<{ domain: string; productivityTag: ProductivityTag; seconds: number }>;
   attendance: AttendanceRow[];
@@ -197,6 +213,10 @@ export interface Policy {
     minRetryBackoffSeconds: number;
     maxRetryBackoffSeconds: number;
   };
+  /** Whether agents and dashboards hold a Socket.IO signalling connection. */
+  realtime: { enabled: boolean };
+  /** Rows a dashboard log window loads per page. */
+  logPageSize: number;
   retention: { retentionDays: number; undeliveredRetentionDays: number };
   workingHours: { startLocal: string; endLocal: string; workingDays: string[] };
   categories: CategoryRow[];

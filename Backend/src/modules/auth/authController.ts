@@ -1,8 +1,27 @@
 import { Request, Response, NextFunction } from 'express';
 import { authService } from './authService';
 import { AuthenticatedRequest } from '../../middleware/userAuth';
+import { issueRealtimeTicket } from '../../realtime/ticket';
 
 export class AuthController {
+  /**
+   * POST /v1/dashboard/auth/realtime-ticket
+   *
+   * Returns a credential that can open a Socket.IO connection and do nothing else. See
+   * realtime/ticket.ts for why the session token itself must not reach the browser.
+   */
+  async realtimeTicket(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const { ticket, expiresInMs } = issueRealtimeTicket({
+        userId: req.user!.id,
+        role: req.user!.role,
+      });
+      return res.status(200).json({ data: { ticket, expiresInMs } });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async register(req: Request, res: Response, next: NextFunction) {
     try {
       const result = await authService.registerUser(req.body);

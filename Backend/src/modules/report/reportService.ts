@@ -1,23 +1,34 @@
-import { ActivityType, Prisma, ProductivityTag } from '@prisma/client';
+import { ActivityType } from '@prisma/client';
 import { prisma } from '../../config/db';
+import { currentOrganizationId } from '../../config/tenant';
+import { decodeCursor, newestFirst, olderThan, resolvePageSize, toPage } from './pagination';
 
 /**
- * Dashboard read path (spec §5). Every query here reads the typed telemetry tables directly —
- * there is no blob to unpack, so aggregation happens in Postgres via groupBy rather than by
- * pulling rows into Node and reducing them.
+ * Dashboard read path (spec §5).
+ *
+ * TWO KINDS OF QUERY, AND THEY MUST NOT BE CONFUSED:
+ *
+ *   Aggregates (overview, roster, employee totals) read daily_activity_rollups — one row per
+ *   employee per day, maintained at ingest time. They never touch the log tables. This is the
+ *   change that lets the system go from 30 devices to 100+: summing a month of ten-second app
+ *   switches on every dashboard load is millions of rows re-scanned per viewer, and it degrades
+ *   with history rather than with headcount, so it gets worse forever.
+ *
+ *   Logs (timeline, alerts, USB) read the raw tables, but only ever one bounded page at a time
+ *   through a keyset cursor. No endpoint here returns "everything in the range".
  */
 
-/** Foreground work. Everything else is time the employee was not at the keyboard. */
-const ACTIVE_TYPES: ActivityType[] = [ActivityType.Application, ActivityType.Desktop];
-const IDLE_TYPES: ActivityType[] = [
-  ActivityType.Idle,
-  ActivityType.Locked,
-  ActivityType.Sleeping,
-  ActivityType.Disconnected,
-];
-
-/** A device seen within this window counts as "online now" on the overview screen. */
+/**
+ * A device seen within this window counts as "online now" on the overview screen.
+ *
+ * Derived from `devices.lastSeen`, which only an authenticated HTTP request updates — never from
+ * Socket.IO presence. A socket can stay open through a total backend failure and can be closed
+ * while an agent syncs happily over HTTP, so it answers a different question entirely.
+ */
 const ONLINE_WINDOW_MS = 5 * 60 * 1000;
+
+/** How many apps/domains the "top" lists show. Not a page — a fixed leaderboard. */
+const TOP_LIST_SIZE = 15;
 
 function startOfUtcDay(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
@@ -67,51 +78,41 @@ export class ReportService {
   }
 
   /**
-   * Rolls activity_sessions up per employee for a date range. Grouped by (device, type, tag)
-   * in Postgres, then folded onto employees in one pass — one query regardless of headcount.
+   * Per-employee totals for a date range, read from the pre-aggregated daily rollup.
+   *
+   * One indexed GROUP BY over at most (employees × days) rows — 100 employees over a month is
+   * ~3,000 rows, and that ceiling does not move as telemetry accumulates. The old version of
+   * this method grouped activity_sessions instead, which is the same answer computed from
+   * millions of rows on every page load.
    */
-  private async totalsByEmployee(where: Prisma.ActivitySessionWhereInput) {
-    // Kept as separate awaits rather than a Promise.all tuple: groupBy's return type is
-    // generic enough that tuple destructuring widens the sibling findMany to `unknown`.
-    const grouped = await prisma.activitySession.groupBy({
-      by: ['deviceId', 'type', 'productivityTag'],
-      where,
-      _sum: { durationSeconds: true },
+  private async totalsByEmployee(start: Date, end: Date, employeeIds?: string[]) {
+    const grouped = await prisma.dailyActivityRollup.groupBy({
+      by: ['employeeId'],
+      where: {
+        workDate: { gte: startOfUtcDay(start), lte: startOfUtcDay(end) },
+        ...(employeeIds ? { employeeId: { in: employeeIds } } : {}),
+      },
+      _sum: {
+        activeSeconds: true,
+        idleSeconds: true,
+        productiveSeconds: true,
+        unproductiveSeconds: true,
+        neutralSeconds: true,
+        blacklistedSeconds: true,
+      },
     });
-    const devices = await prisma.device.findMany({ select: { id: true, employeeId: true } });
-
-    const employeeByDevice = new Map<string, string>();
-    for (const d of devices) employeeByDevice.set(d.id, d.employeeId);
 
     const totals = new Map<string, Totals>();
 
     for (const row of grouped) {
-      const employeeId = employeeByDevice.get(row.deviceId);
-      if (!employeeId) continue;
-
-      const seconds = row._sum.durationSeconds ?? 0;
-      const t = totals.get(employeeId) ?? emptyTotals();
-
-      if (ACTIVE_TYPES.includes(row.type)) {
-        t.activeSeconds += seconds;
-        switch (row.productivityTag) {
-          case ProductivityTag.Productive:
-            t.productiveSeconds += seconds;
-            break;
-          case ProductivityTag.Unproductive:
-            t.unproductiveSeconds += seconds;
-            break;
-          case ProductivityTag.Blacklisted:
-            t.blacklistedSeconds += seconds;
-            break;
-          default:
-            t.neutralSeconds += seconds;
-        }
-      } else if (IDLE_TYPES.includes(row.type)) {
-        t.idleSeconds += seconds;
-      }
-
-      totals.set(employeeId, t);
+      totals.set(row.employeeId, {
+        activeSeconds: row._sum.activeSeconds ?? 0,
+        idleSeconds: row._sum.idleSeconds ?? 0,
+        productiveSeconds: row._sum.productiveSeconds ?? 0,
+        unproductiveSeconds: row._sum.unproductiveSeconds ?? 0,
+        neutralSeconds: row._sum.neutralSeconds ?? 0,
+        blacklistedSeconds: row._sum.blacklistedSeconds ?? 0,
+      });
     }
 
     return totals;
@@ -124,7 +125,7 @@ export class ReportService {
     const today = startOfUtcDay(new Date());
 
     const [totals, employees, onlineDevices, todaysAttendance, openAlerts] = await Promise.all([
-      this.totalsByEmployee({ startTime: { gte: start, lte: end } }),
+      this.totalsByEmployee(start, end),
       prisma.employee.findMany({
         where: { status: { not: 'placeholder' } },
         select: { id: true, name: true, department: true },
@@ -167,7 +168,7 @@ export class ReportService {
     const onlineSince = new Date(Date.now() - ONLINE_WINDOW_MS);
 
     const [totals, employees] = await Promise.all([
-      this.totalsByEmployee({ startTime: { gte: start, lte: end } }),
+      this.totalsByEmployee(start, end),
       prisma.employee.findMany({
         where: { status: { not: 'placeholder' } },
         orderBy: { name: 'asc' },
@@ -208,8 +209,13 @@ export class ReportService {
   }
 
   /**
-   * Employee detail (spec §5): timeline of apps/sites, active-vs-idle split, top apps and
+   * Employee detail (spec §5): first page of the timeline, active-vs-idle split, top apps and
    * domains for the range. Defaults to today when no range is given.
+   *
+   * The timeline is one page, not the whole range. It used to `take: 2000` and hand the lot to
+   * the browser, which is both an unbounded read as history grows and 2,000 rows rendered into a
+   * page nobody scrolls to the end of. The UI now shows a fixed-height window and asks for the
+   * next page when the operator reaches the bottom — see getActivityLog.
    */
   async getEmployeeDetail(employeeId: string, startDate?: string, endDate?: string) {
     const employee = await prisma.employee.findUnique({
@@ -230,61 +236,39 @@ export class ReportService {
 
     const deviceIds = employee.devices.map((d) => d.id);
     if (deviceIds.length === 0) {
-      return { employee, period: { start, end }, totals: { ...emptyTotals(), productivityPercent: 0 }, timeline: [], topApps: [], topDomains: [], attendance: [] };
+      return {
+        employee,
+        period: { start, end },
+        totals: { ...emptyTotals(), productivityPercent: 0 },
+        timeline: { rows: [], nextCursor: null, hasMore: false },
+        topApps: [],
+        topDomains: [],
+        attendance: [],
+      };
     }
 
     const deviceScope = { deviceId: { in: deviceIds } };
     const inRange = { ...deviceScope, startTime: { gte: start, lte: end } };
 
-    const [sessions, browserRows, appGroups, domainGroups, attendance] = await Promise.all([
-      prisma.activitySession.findMany({
-        where: inRange,
-        orderBy: { startTime: 'asc' },
-        take: 2000,
-        select: {
-          id: true,
-          activitySessionId: true,
-          appName: true,
-          processName: true,
-          type: true,
-          windowTitle: true,
-          startTime: true,
-          endTime: true,
-          durationSeconds: true,
-          reason: true,
-          productivityTag: true,
-        },
-      }),
-      prisma.browserActivity.findMany({
-        where: inRange,
-        orderBy: { startTime: 'asc' },
-        take: 2000,
-        select: {
-          id: true,
-          activitySessionId: true,
-          browser: true,
-          domain: true,
-          rawUrl: true,
-          pageTitle: true,
-          startTime: true,
-          endTime: true,
-          durationSeconds: true,
-          productivityTag: true,
-        },
-      }),
+    const [totalsByEmployee, timeline, appGroups, domainGroups, attendance] = await Promise.all([
+      // Totals come from the rollup, not from the timeline page. Deriving them from whatever
+      // rows happened to be on screen is how a "productivity %" silently becomes "productivity %
+      // of the first fifty rows".
+      this.totalsByEmployee(start, end, [employeeId]),
+      this.getActivityLog(employeeId, { startDate, endDate }),
       prisma.activitySession.groupBy({
         by: ['appName', 'productivityTag'],
         where: { ...inRange, type: ActivityType.Application },
         _sum: { durationSeconds: true },
         orderBy: { _sum: { durationSeconds: 'desc' } },
-        take: 15,
+        take: TOP_LIST_SIZE,
       }),
       prisma.browserActivity.groupBy({
         by: ['domain', 'productivityTag'],
         where: inRange,
         _sum: { durationSeconds: true },
         orderBy: { _sum: { durationSeconds: 'desc' } },
-        take: 15,
+        take: TOP_LIST_SIZE,
       }),
       prisma.attendanceSession.findMany({
         where: { ...deviceScope, loginTime: { gte: start, lte: end } },
@@ -293,34 +277,13 @@ export class ReportService {
       }),
     ]);
 
-    const totals = emptyTotals();
-    for (const s of sessions) {
-      if (ACTIVE_TYPES.includes(s.type)) {
-        totals.activeSeconds += s.durationSeconds;
-        if (s.productivityTag === ProductivityTag.Productive) totals.productiveSeconds += s.durationSeconds;
-        else if (s.productivityTag === ProductivityTag.Unproductive) totals.unproductiveSeconds += s.durationSeconds;
-        else if (s.productivityTag === ProductivityTag.Blacklisted) totals.blacklistedSeconds += s.durationSeconds;
-        else totals.neutralSeconds += s.durationSeconds;
-      } else if (IDLE_TYPES.includes(s.type)) {
-        totals.idleSeconds += s.durationSeconds;
-      }
-    }
-
-    // Browser visits are nested under the app session that contained them, so the UI can
-    // expand a "Chrome — 2h" row into the sites that made it up.
-    const visitsBySession = new Map<string, typeof browserRows>();
-    for (const row of browserRows) {
-      if (!row.activitySessionId) continue;
-      const list = visitsBySession.get(row.activitySessionId);
-      if (list) list.push(row);
-      else visitsBySession.set(row.activitySessionId, [row]);
-    }
+    const totals = totalsByEmployee.get(employeeId) ?? emptyTotals();
 
     return {
       employee,
       period: { start, end },
       totals: { ...totals, productivityPercent: productivityPercent(totals) },
-      timeline: sessions.map((s) => ({ ...s, visits: visitsBySession.get(s.activitySessionId) ?? [] })),
+      timeline,
       topApps: appGroups.map((g) => ({
         appName: g.appName,
         productivityTag: g.productivityTag,
@@ -335,38 +298,146 @@ export class ReportService {
     };
   }
 
+  // -------------------------------------------------------------------------
+  // Log feeds.
+  //
+  // All three follow the same shape: newest first, one page, keyset cursor. The page size comes
+  // from policy rather than a constant here, so an admin changes it from the settings screen.
+  // A caller may ask for fewer rows than policy allows but never more — otherwise the bound is
+  // decorative.
+  // -------------------------------------------------------------------------
+
+  /**
+   * Activity timeline for one employee, newest first.
+   *
+   * Browser visits are attached to the app session that contained them, so the UI can expand a
+   * "Chrome — 2h" row into the sites that made it up. They are fetched for the rows on *this
+   * page* only — the whole point of paging is not to load the range.
+   */
+  async getActivityLog(
+    employeeId: string,
+    options: { startDate?: string; endDate?: string; cursor?: string; limit?: number } = {}
+  ) {
+    const { start, end } = options.startDate || options.endDate
+      ? resolveRange(options.startDate, options.endDate)
+      : { start: startOfUtcDay(new Date()), end: new Date() };
+
+    const organizationId = await currentOrganizationId();
+    const pageSize = await resolvePageSize(organizationId, options.limit);
+    const cursor = decodeCursor(options.cursor);
+
+    const devices = await prisma.device.findMany({ where: { employeeId }, select: { id: true } });
+    if (devices.length === 0) return { rows: [], nextCursor: null, hasMore: false };
+
+    const rows = await prisma.activitySession.findMany({
+      where: {
+        deviceId: { in: devices.map((d) => d.id) },
+        startTime: { gte: start, lte: end },
+        ...olderThan('startTime', cursor),
+      },
+      orderBy: newestFirst('startTime'),
+      // One extra row, purely to answer "is there more?" without a second COUNT over the same
+      // predicate — which on a log table costs as much as the page itself.
+      take: pageSize + 1,
+      select: {
+        id: true,
+        activitySessionId: true,
+        appName: true,
+        processName: true,
+        type: true,
+        windowTitle: true,
+        startTime: true,
+        endTime: true,
+        durationSeconds: true,
+        reason: true,
+        productivityTag: true,
+      },
+    });
+
+    const page = toPage(rows, pageSize, (r) => r.startTime);
+
+    const visits = await prisma.browserActivity.findMany({
+      where: { activitySessionId: { in: page.rows.map((r) => r.activitySessionId) } },
+      orderBy: { startTime: 'asc' },
+      select: {
+        id: true,
+        activitySessionId: true,
+        browser: true,
+        domain: true,
+        rawUrl: true,
+        pageTitle: true,
+        startTime: true,
+        endTime: true,
+        durationSeconds: true,
+        productivityTag: true,
+      },
+    });
+
+    const visitsBySession = new Map<string, typeof visits>();
+    for (const visit of visits) {
+      if (!visit.activitySessionId) continue;
+      const list = visitsBySession.get(visit.activitySessionId);
+      if (list) list.push(visit);
+      else visitsBySession.set(visit.activitySessionId, [visit]);
+    }
+
+    return {
+      ...page,
+      rows: page.rows.map((r) => ({ ...r, visits: visitsBySession.get(r.activitySessionId) ?? [] })),
+    };
+  }
+
   /** Alert feed (Features.md "Alert Notification") for the dashboard. */
-  async getAlerts(limit = 100, includeResolved = false) {
-    const alerts = await prisma.alert.findMany({
-      where: includeResolved ? {} : { resolvedAt: null },
-      orderBy: { triggeredAt: 'desc' },
-      take: Math.min(limit, 500),
+  async getAlerts(options: { cursor?: string; limit?: number; includeResolved?: boolean } = {}) {
+    const organizationId = await currentOrganizationId();
+    const pageSize = await resolvePageSize(organizationId, options.limit);
+    const cursor = decodeCursor(options.cursor);
+
+    const rows = await prisma.alert.findMany({
+      where: {
+        ...(options.includeResolved ? {} : { resolvedAt: null }),
+        ...olderThan('triggeredAt', cursor),
+      },
+      orderBy: newestFirst('triggeredAt'),
+      take: pageSize + 1,
       include: {
         device: { select: { deviceName: true, employee: { select: { id: true, name: true } } } },
       },
     });
 
-    return { alerts };
+    return toPage(rows, pageSize, (r) => r.triggeredAt);
   }
 
   /** USB device audit trail (Features.md "USB Logs"). */
-  async getUsbEvents(startDate?: string, endDate?: string, limit = 200) {
-    const { start, end } = resolveRange(startDate, endDate);
+  async getUsbEvents(
+    options: { startDate?: string; endDate?: string; cursor?: string; limit?: number } = {}
+  ) {
+    const { start, end } = resolveRange(options.startDate, options.endDate);
 
-    const events = await prisma.usbEvent.findMany({
-      where: { eventTime: { gte: start, lte: end } },
-      orderBy: { eventTime: 'desc' },
-      take: Math.min(limit, 1000),
+    const organizationId = await currentOrganizationId();
+    const pageSize = await resolvePageSize(organizationId, options.limit);
+    const cursor = decodeCursor(options.cursor);
+
+    const rows = await prisma.usbEvent.findMany({
+      where: {
+        eventTime: { gte: start, lte: end },
+        ...olderThan('eventTime', cursor),
+      },
+      orderBy: newestFirst('eventTime'),
+      take: pageSize + 1,
       include: {
         device: { select: { deviceName: true, employee: { select: { id: true, name: true } } } },
       },
     });
+
+    const page = toPage(rows, pageSize, (r) => r.eventTime);
 
     // capacityBytes is a BigInt column; JSON.stringify throws on BigInt, so it is serialized
     // as a decimal string on the way out rather than silently losing precision as a Number.
     return {
+      ...page,
       period: { start, end },
-      events: events.map((e) => ({ ...e, capacityBytes: e.capacityBytes?.toString() ?? null })),
+      rows: page.rows.map((e) => ({ ...e, capacityBytes: e.capacityBytes?.toString() ?? null })),
     };
   }
 

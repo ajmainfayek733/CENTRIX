@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { env } from '../../config/env';
 
 export const createOrganizationSchema = z.object({
   name: z.string().min(2, 'Organization name is required'),
@@ -42,9 +43,19 @@ export const updatePolicySchema = z
     alertOutsideWorkingHours: z.boolean(),
 
     syncBatchIntervalSeconds: seconds.min(10).max(3600),
-    syncMaxBatchSize: z.number().int().min(1).max(2000),
+    // Capped at the server's own per-request ceiling. Allowing a larger value would let an admin
+    // configure the fleet to send batches this server is guaranteed to answer with a 400, which
+    // strands every agent's queue until someone works out why.
+    syncMaxBatchSize: z.number().int().min(1).max(env.INGEST_MAX_BATCH_EVENTS),
     syncMinRetryBackoffSeconds: seconds.min(1),
     syncMaxRetryBackoffSeconds: seconds.min(1),
+
+    realtimeEnabled: z.boolean(),
+
+    // Rows per page in the dashboard's log tables. Bounded on both ends: too small and scrolling
+    // becomes a request storm, too large and the fixed-height window it feeds stops being a
+    // bounded read.
+    logPageSize: z.number().int().min(10).max(500),
 
     retentionDays: z.number().int().min(1).max(3650),
     undeliveredRetentionDays: z.number().int().min(1).max(365),

@@ -1,9 +1,13 @@
-import { Prisma, ProductivityTag } from '@prisma/client';
+import { createHash } from 'crypto';
+import { ActivityType, Prisma, ProductivityTag } from '@prisma/client';
 import { prisma } from '../../config/db';
+import { env } from '../../config/env';
 import { categoryService } from '../report/categoryService';
 import { generateDeviceApiKey, hashDeviceApiKey, hashEnrollmentToken } from '../../utils/token';
 import { persistScreenshot } from './screenshotStorage';
 import { getOrCreatePolicy } from './policyService';
+import { RollupAccumulator, applyRollup, utcWorkDate } from './rollupService';
+import { broadcastTelemetryIngested } from '../../realtime';
 import type {
   ActivityMetricEventDto,
   ActivitySessionEventDto,
@@ -38,87 +42,302 @@ export class EnrollmentError extends Error {
   }
 }
 
+/** What a push did, so the controller can answer the agent and log honestly. */
+export interface PushOutcome {
+  /** Ids now durably stored — freshly written or already present. */
+  acknowledged: string[];
+  /** True when the whole batch was recognized as a replay and no work was redone. */
+  replay: boolean;
+}
+
 /**
- * Every write below is idempotent on a client-generated GUID, because the agent's offline
- * queue delivers at-least-once: a batch that was stored but whose HTTP response was lost gets
- * resent verbatim on the next sync. Insert-only channels use `skipDuplicates`; channels whose
- * rows legitimately change after first send (attendance, alerts) upsert instead.
+ * Everything a channel needs to write, resolved *before* the transaction opens.
+ *
+ * Splitting preparation from writing is the difference between a transaction that holds locks
+ * for the duration of several category lookups and one that holds them only for the inserts.
+ * With 100 agents syncing on the same interval that gap is the difference between contention and
+ * none.
+ */
+interface PreparedBatch {
+  /** Only the events not already stored. These are what the rollup may count. */
+  newEventIds: string[];
+  write: (tx: Prisma.TransactionClient) => Promise<void>;
+  accumulator: RollupAccumulator;
+}
+
+/**
+ * Two layers of idempotency, because the agent's queue is at-least-once and a batch that was
+ * committed but whose HTTP response was lost is resent verbatim:
+ *
+ *   1. Per batch (ingest_batches). A batchId already recorded, carrying the same event ids, is
+ *      answered from the ledger without touching the telemetry tables at all. This is the layer
+ *      that matters when a fleet reconnects after an outage and replays at once.
+ *
+ *   2. Per event (unique clientEventId). Still the backstop for an agent that predates batch
+ *      ids, or one whose retry repacked events into a different batch.
+ *
+ * Layer 2 is also what makes the daily rollup exact: counters are incremented rather than
+ * recomputed, so an event that was already stored must contribute nothing. Every prepare step
+ * below filters against the ids already present and counts only what it genuinely inserts.
  */
 class IngestService {
-  async pushEvents(device: DeviceContext, channel: Channel, events: unknown[]): Promise<string[]> {
-    switch (channel) {
-      case 'attendance':
-        await this.saveAttendance(device, events as AttendanceEventDto[]);
-        break;
-      case 'activity-metric':
-        await this.saveActivityMetrics(device, events as ActivityMetricEventDto[]);
-        break;
-      case 'activity-session':
-        await this.saveActivitySessions(device, events as ActivitySessionEventDto[]);
-        break;
-      case 'browser-activity':
-        await this.saveBrowserActivity(device, events as BrowserActivityEventDto[]);
-        break;
-      case 'usb-event':
-        await this.saveUsbEvents(device, events as UsbEventDto[]);
-        break;
-      case 'alert':
-        await this.saveAlerts(device, events as AlertEventDto[]);
-        break;
+  async pushEvents(
+    device: DeviceContext,
+    channel: Channel,
+    batchId: string | undefined,
+    events: unknown[]
+  ): Promise<PushOutcome> {
+    const eventIds = (events as Array<{ clientEventId: string }>).map((e) => e.clientEventId);
+    const eventIdsHash = hashEventIds(eventIds);
+
+    // -- Layer 1: has this exact batch already landed? ----------------------
+    let ledgerBatchId = batchId;
+
+    if (ledgerBatchId) {
+      const existing = await prisma.ingestBatch.findUnique({
+        where: { deviceId_batchId: { deviceId: device.id, batchId: ledgerBatchId } },
+        select: { eventIdsHash: true },
+      });
+
+      if (existing?.eventIdsHash === eventIdsHash) {
+        return { acknowledged: eventIds, replay: true };
+      }
+
+      if (existing) {
+        // Same id, different payload. Trusting the ledger here would silently discard real
+        // telemetry, so the batch is processed on its merits and the ledger row is left alone —
+        // per-event deduplication still guarantees correctness, it is just the slower path.
+        console.warn(
+          `ingest: device ${device.deviceId} reused batch ${ledgerBatchId} with different contents; ` +
+            'falling back to per-event deduplication'
+        );
+        ledgerBatchId = undefined;
+      }
     }
+
+    const prepared = await this.prepare(device, channel, events);
+
+    await prisma.$transaction(
+      async (tx) => {
+        await prepared.write(tx);
+
+        // The rollup commits with the rows that produced it. Were they separable, a crash
+        // between them would leave a day permanently miscounted with nothing to detect it.
+        await applyRollup(
+          tx,
+          { organizationId: device.organizationId, employeeId: device.employeeId, deviceId: device.id },
+          prepared.accumulator
+        );
+
+        // Written last and inside the same transaction, so the ledger can never claim a batch
+        // that did not land.
+        if (ledgerBatchId) {
+          await tx.ingestBatch.create({
+            data: {
+              deviceId: device.id,
+              batchId: ledgerBatchId,
+              channel,
+              eventCount: eventIds.length,
+              eventIdsHash,
+            },
+          });
+        }
+      },
+      { timeout: env.INGEST_TRANSACTION_TIMEOUT_MS }
+    );
+
+    // Signalling only, and only after the commit: dashboards are told to refetch, never handed
+    // rows. A failure here cannot fail the ingest — the data is already durable.
+    broadcastTelemetryIngested(device.organizationId, {
+      deviceId: device.id,
+      employeeId: device.employeeId,
+      channel,
+      workDate: prepared.accumulator.dates()[0] ?? null,
+      eventCount: prepared.newEventIds.length,
+    });
 
     // Atomic-batch contract: once the write above resolves, every row in this push is durably
     // stored — freshly inserted, or already present from an earlier partially-acked retry.
-    return (events as Array<{ clientEventId: string }>).map((e) => e.clientEventId);
+    return { acknowledged: eventIds, replay: false };
+  }
+
+  private prepare(device: DeviceContext, channel: Channel, events: unknown[]): Promise<PreparedBatch> {
+    switch (channel) {
+      case 'attendance':
+        return this.prepareAttendance(device, events as AttendanceEventDto[]);
+      case 'activity-metric':
+        return this.prepareActivityMetrics(device, events as ActivityMetricEventDto[]);
+      case 'activity-session':
+        return this.prepareActivitySessions(device, events as ActivitySessionEventDto[]);
+      case 'browser-activity':
+        return this.prepareBrowserActivity(device, events as BrowserActivityEventDto[]);
+      case 'usb-event':
+        return this.prepareUsbEvents(device, events as UsbEventDto[]);
+      case 'alert':
+        return this.prepareAlerts(device, events as AlertEventDto[]);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Work-date attribution.
+  //
+  // The rollup is keyed on the employee's local calendar date, which only the workstation knows
+  // — a fleet spanning timezones would otherwise have days that start at the server's midnight.
+  // Attendance carries that date, so telemetry that references an attendance session inherits
+  // it. Everything else falls back to the UTC date of its own timestamp, which is correct for a
+  // single-timezone office and never worse than guessing.
+  // -------------------------------------------------------------------------
+
+  private async workDatesBySession(sessionIds: string[]): Promise<Map<string, string>> {
+    const unique = [...new Set(sessionIds)];
+    if (unique.length === 0) return new Map();
+
+    const rows = await prisma.attendanceSession.findMany({
+      where: { sessionId: { in: unique } },
+      select: { sessionId: true, workDate: true },
+    });
+
+    return new Map(rows.map((r) => [r.sessionId, utcWorkDate(r.workDate)]));
+  }
+
+  /** The subset of ids already stored on this channel, so the rollup never counts them twice. */
+  private async existingEventIds(channel: Channel, ids: string[]): Promise<Set<string>> {
+    if (ids.length === 0) return new Set();
+
+    switch (channel) {
+      case 'attendance': {
+        const rows = await prisma.attendanceSession.findMany({
+          where: { sessionId: { in: ids } },
+          select: { sessionId: true },
+        });
+        return new Set(rows.map((r) => r.sessionId));
+      }
+      case 'activity-metric': {
+        const rows = await prisma.activityMetric.findMany({
+          where: { clientEventId: { in: ids } },
+          select: { clientEventId: true },
+        });
+        return new Set(rows.map((r) => r.clientEventId));
+      }
+      case 'activity-session': {
+        const rows = await prisma.activitySession.findMany({
+          where: { activitySessionId: { in: ids } },
+          select: { activitySessionId: true },
+        });
+        return new Set(rows.map((r) => r.activitySessionId));
+      }
+      case 'browser-activity': {
+        const rows = await prisma.browserActivity.findMany({
+          where: { browserActivityId: { in: ids } },
+          select: { browserActivityId: true },
+        });
+        return new Set(rows.map((r) => r.browserActivityId));
+      }
+      case 'usb-event': {
+        const rows = await prisma.usbEvent.findMany({
+          where: { clientEventId: { in: ids } },
+          select: { clientEventId: true },
+        });
+        return new Set(rows.map((r) => r.clientEventId));
+      }
+      case 'alert': {
+        const rows = await prisma.alert.findMany({
+          where: { clientEventId: { in: ids } },
+          select: { clientEventId: true },
+        });
+        return new Set(rows.map((r) => r.clientEventId));
+      }
+    }
   }
 
   // -------------------------------------------------------------------------
   // Attendance — upsert on sessionId. The agent re-sends the row as logoutTime
   // firms up (lock → sleep → shutdown), so later writes must overwrite earlier ones.
+  //
+  // Contributes no seconds to the rollup: totalActiveSeconds here is the agent's own sum of the
+  // activity sessions it already sent, and counting both would double every working day. It only
+  // establishes that the day exists.
   // -------------------------------------------------------------------------
 
-  private async saveAttendance(device: DeviceContext, events: AttendanceEventDto[]) {
-    await prisma.$transaction(
-      events.map((e) => {
-        const shared = {
-          deviceId: device.id,
-          userSid: e.userSid,
-          loginTime: e.loginTime,
-          logoutTime: e.logoutTime ?? null,
-          endReason: e.endReason ?? null,
-          workDate: new Date(`${e.workDate}T00:00:00.000Z`),
-          totalActiveSeconds: e.totalActiveSeconds,
-          totalIdleSeconds: e.totalIdleSeconds,
-        };
-        return prisma.attendanceSession.upsert({
-          where: { sessionId: e.sessionId },
-          create: { sessionId: e.sessionId, ...shared },
-          update: shared,
-        });
-      })
-    );
+  private async prepareAttendance(device: DeviceContext, events: AttendanceEventDto[]): Promise<PreparedBatch> {
+    const stored = await this.existingEventIds('attendance', events.map((e) => e.sessionId));
+    const accumulator = new RollupAccumulator();
+
+    for (const e of events) accumulator.touchDate(e.workDate);
+
+    return {
+      newEventIds: events.filter((e) => !stored.has(e.sessionId)).map((e) => e.sessionId),
+      accumulator,
+      write: async (tx) => {
+        for (const e of events) {
+          const shared = {
+            deviceId: device.id,
+            userSid: e.userSid,
+            loginTime: e.loginTime,
+            logoutTime: e.logoutTime ?? null,
+            endReason: e.endReason ?? null,
+            workDate: new Date(`${e.workDate}T00:00:00.000Z`),
+            totalActiveSeconds: e.totalActiveSeconds,
+            totalIdleSeconds: e.totalIdleSeconds,
+          };
+          await tx.attendanceSession.upsert({
+            where: { sessionId: e.sessionId },
+            create: { sessionId: e.sessionId, ...shared },
+            update: shared,
+          });
+        }
+      },
+    };
   }
 
   // -------------------------------------------------------------------------
   // Activity metric — insert-only counts. No content is accepted by the schema.
   // -------------------------------------------------------------------------
 
-  private async saveActivityMetrics(device: DeviceContext, events: ActivityMetricEventDto[]) {
-    const rows: Prisma.ActivityMetricCreateManyInput[] = events.map((e) => ({
-      deviceId: device.id,
-      sessionId: e.sessionId,
-      clientEventId: e.clientEventId,
-      keyCount: e.keyCount,
-      mouseCount: e.mouseCount,
-      mouseLeftKeyCount: e.mouseLeftKeyCount,
-      mouseRightKeyCount: e.mouseRightKeyCount,
-      mouseMiddleKeyCount: e.mouseMiddleKeyCount,
-      mouseOtherKeyCount: e.mouseOtherKeyCount,
-      windowStartUtc: e.windowStartUtc,
-      windowEndUtc: e.windowEndUtc,
-    }));
+  private async prepareActivityMetrics(
+    device: DeviceContext,
+    events: ActivityMetricEventDto[]
+  ): Promise<PreparedBatch> {
+    const stored = await this.existingEventIds('activity-metric', events.map((e) => e.clientEventId));
+    const fresh = events.filter((e) => !stored.has(e.clientEventId));
+    const workDates = await this.workDatesBySession(fresh.map((e) => e.sessionId));
 
-    await prisma.activityMetric.createMany({ data: rows, skipDuplicates: true });
+    const accumulator = new RollupAccumulator();
+    const rows: Prisma.ActivityMetricCreateManyInput[] = [];
+
+    for (const e of fresh) {
+      accumulator.addActivityMetric(
+        workDates.get(e.sessionId) ?? utcWorkDate(e.windowEndUtc),
+        e.keyCount,
+        e.mouseCount,
+        e.windowEndUtc
+      );
+
+      rows.push({
+        deviceId: device.id,
+        sessionId: e.sessionId,
+        clientEventId: e.clientEventId,
+        keyCount: e.keyCount,
+        mouseCount: e.mouseCount,
+        mouseLeftKeyCount: e.mouseLeftKeyCount,
+        mouseRightKeyCount: e.mouseRightKeyCount,
+        mouseMiddleKeyCount: e.mouseMiddleKeyCount,
+        mouseOtherKeyCount: e.mouseOtherKeyCount,
+        windowStartUtc: e.windowStartUtc,
+        windowEndUtc: e.windowEndUtc,
+      });
+    }
+
+    return {
+      newEventIds: fresh.map((e) => e.clientEventId),
+      accumulator,
+      write: async (tx) => {
+        // skipDuplicates is kept as a backstop even though `fresh` is already filtered: the
+        // filter read outside the transaction, so a concurrent insert would otherwise abort the
+        // whole batch instead of being absorbed.
+        if (rows.length > 0) await tx.activityMetric.createMany({ data: rows, skipDuplicates: true });
+      },
+    };
   }
 
   // -------------------------------------------------------------------------
@@ -128,15 +347,35 @@ class IngestService {
   // The agent's tag is kept only when no rule matches.
   // -------------------------------------------------------------------------
 
-  private async saveActivitySessions(device: DeviceContext, events: ActivitySessionEventDto[]) {
+  private async prepareActivitySessions(
+    device: DeviceContext,
+    events: ActivitySessionEventDto[]
+  ): Promise<PreparedBatch> {
+    const stored = await this.existingEventIds('activity-session', events.map((e) => e.activitySessionId));
+    const fresh = events.filter((e) => !stored.has(e.activitySessionId));
+    const workDates = await this.workDatesBySession(fresh.map((e) => e.sessionId));
+
+    const accumulator = new RollupAccumulator();
     const rows: Prisma.ActivitySessionCreateManyInput[] = [];
 
-    for (const e of events) {
+    for (const e of fresh) {
       const match = await categoryService.categorizeApp(
         device.organizationId,
         e.appName,
         e.processName,
         e.executablePath
+      );
+
+      const productivityTag = match ? match.tag : (e.productivityTag as ProductivityTag);
+      const workDate = workDates.get(e.sessionId) ?? utcWorkDate(e.startTime);
+
+      accumulator.addActivitySession(
+        workDate,
+        e.type as ActivityType,
+        productivityTag,
+        e.durationSeconds,
+        e.startTime,
+        e.endTime
       );
 
       rows.push({
@@ -152,11 +391,17 @@ class IngestService {
         endTime: e.endTime,
         durationSeconds: e.durationSeconds,
         reason: e.reason ?? null,
-        productivityTag: match ? match.tag : (e.productivityTag as ProductivityTag),
+        productivityTag,
       });
     }
 
-    await prisma.activitySession.createMany({ data: rows, skipDuplicates: true });
+    return {
+      newEventIds: fresh.map((e) => e.activitySessionId),
+      accumulator,
+      write: async (tx) => {
+        if (rows.length > 0) await tx.activitySession.createMany({ data: rows, skipDuplicates: true });
+      },
+    };
   }
 
   // -------------------------------------------------------------------------
@@ -167,25 +412,41 @@ class IngestService {
   // rather than rejected, so an out-of-order batch is not lost.
   // -------------------------------------------------------------------------
 
-  private async saveBrowserActivity(device: DeviceContext, events: BrowserActivityEventDto[]) {
-    const referenced = [...new Set(events.map((e) => e.activitySessionId).filter((v): v is string => !!v))];
-    const known = new Set(
-      (
-        await prisma.activitySession.findMany({
-          where: { activitySessionId: { in: referenced } },
-          select: { activitySessionId: true },
-        })
-      ).map((r) => r.activitySessionId)
-    );
+  private async prepareBrowserActivity(
+    device: DeviceContext,
+    events: BrowserActivityEventDto[]
+  ): Promise<PreparedBatch> {
+    const stored = await this.existingEventIds('browser-activity', events.map((e) => e.browserActivityId));
+    const fresh = events.filter((e) => !stored.has(e.browserActivityId));
 
+    const referenced = [...new Set(fresh.map((e) => e.activitySessionId).filter((v): v is string => !!v))];
+
+    // sessionId comes along for the ride: it is how a browser visit inherits the local work date
+    // of the attendance session that contained it, rather than being attributed by UTC midnight.
+    const parents = await prisma.activitySession.findMany({
+      where: { activitySessionId: { in: referenced } },
+      select: { activitySessionId: true, sessionId: true },
+    });
+
+    const parentSessionId = new Map(parents.map((p) => [p.activitySessionId, p.sessionId]));
+    const workDates = await this.workDatesBySession([...parentSessionId.values()]);
+
+    const accumulator = new RollupAccumulator();
     const rows: Prisma.BrowserActivityCreateManyInput[] = [];
-    for (const e of events) {
+
+    for (const e of fresh) {
       const match = await categoryService.categorizeDomain(device.organizationId, e.domain);
+
+      const parentSession = e.activitySessionId ? parentSessionId.get(e.activitySessionId) : undefined;
+      const workDate = (parentSession && workDates.get(parentSession)) ?? utcWorkDate(e.startTime);
+
+      accumulator.addBrowserVisit(workDate, e.startTime, e.endTime);
 
       rows.push({
         deviceId: device.id,
         browserActivityId: e.browserActivityId,
-        activitySessionId: e.activitySessionId && known.has(e.activitySessionId) ? e.activitySessionId : null,
+        activitySessionId:
+          e.activitySessionId && parentSessionId.has(e.activitySessionId) ? e.activitySessionId : null,
         browser: e.browser,
         browserVersion: e.browserVersion ?? null,
         profileName: e.profileName ?? null,
@@ -201,86 +462,119 @@ class IngestService {
       });
     }
 
-    await prisma.browserActivity.createMany({ data: rows, skipDuplicates: true });
+    return {
+      newEventIds: fresh.map((e) => e.browserActivityId),
+      accumulator,
+      write: async (tx) => {
+        if (rows.length > 0) await tx.browserActivity.createMany({ data: rows, skipDuplicates: true });
+      },
+    };
   }
 
   // -------------------------------------------------------------------------
   // USB events — connection/removal metadata only, never contents.
   // -------------------------------------------------------------------------
 
-  private async saveUsbEvents(device: DeviceContext, events: UsbEventDto[]) {
+  private async prepareUsbEvents(device: DeviceContext, events: UsbEventDto[]): Promise<PreparedBatch> {
+    const stored = await this.existingEventIds('usb-event', events.map((e) => e.clientEventId));
+    const fresh = events.filter((e) => !stored.has(e.clientEventId));
+
     // sessionId is a nullable FK onto attendance_sessions; null out ids we haven't seen
     // so a USB event that beat its attendance row to the server still lands.
-    const referenced = [...new Set(events.map((e) => e.sessionId).filter((v): v is string => !!v))];
-    const known = new Set(
-      (
-        await prisma.attendanceSession.findMany({
-          where: { sessionId: { in: referenced } },
-          select: { sessionId: true },
-        })
-      ).map((r) => r.sessionId)
-    );
+    const referenced = [...new Set(fresh.map((e) => e.sessionId).filter((v): v is string => !!v))];
+    const workDates = await this.workDatesBySession(referenced);
 
-    const rows: Prisma.UsbEventCreateManyInput[] = events.map((e) => ({
-      deviceId: device.id,
-      sessionId: e.sessionId && known.has(e.sessionId) ? e.sessionId : null,
-      clientEventId: e.clientEventId,
-      eventType: e.eventType,
-      deviceType: e.deviceType,
-      friendlyName: e.friendlyName ?? null,
-      manufacturer: e.manufacturer ?? null,
-      model: e.model ?? null,
-      serialNumber: e.serialNumber ?? null,
-      vendorId: e.vendorId ?? null,
-      productId: e.productId ?? null,
-      driveLetter: e.driveLetter ?? null,
-      volumeLabel: e.volumeLabel ?? null,
-      capacityBytes: e.capacityBytes ?? null,
-      fileSystem: e.fileSystem ?? null,
-      eventTime: e.eventTime,
-    }));
+    const accumulator = new RollupAccumulator();
+    const rows: Prisma.UsbEventCreateManyInput[] = [];
 
-    await prisma.usbEvent.createMany({ data: rows, skipDuplicates: true });
+    for (const e of fresh) {
+      const known = !!e.sessionId && workDates.has(e.sessionId);
+      accumulator.addUsbEvent(
+        (known && workDates.get(e.sessionId!)) || utcWorkDate(e.eventTime),
+        e.eventTime
+      );
+
+      rows.push({
+        deviceId: device.id,
+        sessionId: known ? e.sessionId! : null,
+        clientEventId: e.clientEventId,
+        eventType: e.eventType,
+        deviceType: e.deviceType,
+        friendlyName: e.friendlyName ?? null,
+        manufacturer: e.manufacturer ?? null,
+        model: e.model ?? null,
+        serialNumber: e.serialNumber ?? null,
+        vendorId: e.vendorId ?? null,
+        productId: e.productId ?? null,
+        driveLetter: e.driveLetter ?? null,
+        volumeLabel: e.volumeLabel ?? null,
+        capacityBytes: e.capacityBytes ?? null,
+        fileSystem: e.fileSystem ?? null,
+        eventTime: e.eventTime,
+      });
+    }
+
+    return {
+      newEventIds: fresh.map((e) => e.clientEventId),
+      accumulator,
+      write: async (tx) => {
+        if (rows.length > 0) await tx.usbEvent.createMany({ data: rows, skipDuplicates: true });
+      },
+    };
   }
 
   // -------------------------------------------------------------------------
   // Alerts — upsert, because an escalating incident (idle 30 → 45 → 60 min)
   // reuses one clientEventId rather than creating a new row per escalation.
+  //
+  // Every alert is written, but only first sightings are counted: an escalation is the same
+  // incident, and counting it again would inflate the day's alert total on every re-send.
   // -------------------------------------------------------------------------
 
-  private async saveAlerts(device: DeviceContext, events: AlertEventDto[]) {
-    await prisma.$transaction(
-      events.map((e) => {
-        const shared = {
-          deviceId: device.id,
-          userSid: e.userSid,
-          type: e.type,
-          severity: e.severity,
-          state: e.state,
-          title: e.title,
-          message: e.message,
-          idleSeconds: e.idleSeconds ?? null,
-          thresholdSeconds: e.thresholdSeconds ?? null,
-          contextAppName: e.contextAppName ?? null,
-          contextProcessName: e.contextProcessName ?? null,
-          contextDomain: e.contextDomain ?? null,
-          contextUrl: e.contextUrl ?? null,
-          contextUsbSerialNumber: e.contextUsbSerialNumber ?? null,
-          contextUsbFriendlyName: e.contextUsbFriendlyName ?? null,
-          triggeredAt: e.triggeredAt,
-          acknowledgedAt: e.acknowledgedAt ?? null,
-          resolvedAt: e.resolvedAt ?? null,
-          lastNotifiedAt: e.lastNotifiedAt ?? null,
-          escalationLevel: e.escalationLevel,
-          notificationCount: e.notificationCount,
-        };
-        return prisma.alert.upsert({
-          where: { clientEventId: e.clientEventId },
-          create: { clientEventId: e.clientEventId, ...shared },
-          update: shared,
-        });
-      })
-    );
+  private async prepareAlerts(device: DeviceContext, events: AlertEventDto[]): Promise<PreparedBatch> {
+    const stored = await this.existingEventIds('alert', events.map((e) => e.clientEventId));
+    const accumulator = new RollupAccumulator();
+
+    for (const e of events) {
+      if (!stored.has(e.clientEventId)) accumulator.addAlert(utcWorkDate(e.triggeredAt), e.triggeredAt);
+    }
+
+    return {
+      newEventIds: events.filter((e) => !stored.has(e.clientEventId)).map((e) => e.clientEventId),
+      accumulator,
+      write: async (tx) => {
+        for (const e of events) {
+          const shared = {
+            deviceId: device.id,
+            userSid: e.userSid,
+            type: e.type,
+            severity: e.severity,
+            state: e.state,
+            title: e.title,
+            message: e.message,
+            idleSeconds: e.idleSeconds ?? null,
+            thresholdSeconds: e.thresholdSeconds ?? null,
+            contextAppName: e.contextAppName ?? null,
+            contextProcessName: e.contextProcessName ?? null,
+            contextDomain: e.contextDomain ?? null,
+            contextUrl: e.contextUrl ?? null,
+            contextUsbSerialNumber: e.contextUsbSerialNumber ?? null,
+            contextUsbFriendlyName: e.contextUsbFriendlyName ?? null,
+            triggeredAt: e.triggeredAt,
+            acknowledgedAt: e.acknowledgedAt ?? null,
+            resolvedAt: e.resolvedAt ?? null,
+            lastNotifiedAt: e.lastNotifiedAt ?? null,
+            escalationLevel: e.escalationLevel,
+            notificationCount: e.notificationCount,
+          };
+          await tx.alert.upsert({
+            where: { clientEventId: e.clientEventId },
+            create: { clientEventId: e.clientEventId, ...shared },
+            update: shared,
+          });
+        }
+      },
+    };
   }
 
   // -------------------------------------------------------------------------
@@ -368,7 +662,10 @@ class IngestService {
       systemType: dto.systemType ?? null,
       edition: dto.edition ?? null,
       version: dto.version ?? null,
-      macAddress: dto.macAddress,
+      // Already normalized by macAddressSchema, and null when the agent could not determine one.
+      // A previously known address is kept rather than overwritten with null: an agent that
+      // enrolls before the NIC is up should not erase what we learned last time.
+      macAddress: dto.macAddress ?? existing?.macAddress ?? null,
       agentVersion: dto.agentVersion ?? null,
       lastSeen: new Date(),
     };
@@ -418,20 +715,47 @@ class IngestService {
    * GET /api/v1/heartbeat — Features.md "Device Auth". The agent must pass this before it
    * starts syncing, so it doubles as a check that the credential is still valid and a cheap
    * way for the agent to learn the current policy version without pulling the whole document.
+   *
+   * This, not the Socket.IO connection, is the agent's availability gate. It proves the
+   * credential is accepted *and* that the server can reach Postgres to answer — neither of
+   * which an open socket implies.
    */
   async heartbeat(device: DeviceContext) {
     const policy = await prisma.policy.findUnique({
       where: { organizationId: device.organizationId },
-      select: { version: true },
+      select: { version: true, realtimeEnabled: true },
     });
 
     return {
       authenticated: true,
       deviceId: device.deviceId,
       policyVersion: policy?.version ?? 1,
+      realtimeEnabled: policy?.realtimeEnabled ?? true,
       serverTimeUtc: new Date().toISOString(),
     };
   }
+
+  /**
+   * Prunes the batch-idempotency ledger. It only has to outlive the agent's retry window: once
+   * an agent has stopped resending a batch the row can never be consulted again, and leaving it
+   * would grow a table nothing reads at roughly one row per device per channel per interval.
+   */
+  async pruneIngestBatches(): Promise<number> {
+    const cutoff = new Date(Date.now() - env.INGEST_BATCH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    const { count } = await prisma.ingestBatch.deleteMany({ where: { receivedAt: { lt: cutoff } } });
+    return count;
+  }
+}
+
+/**
+ * Fingerprints a batch's contents.
+ *
+ * Sorted before hashing so a retry that repacked the same events in a different order is still
+ * recognized as the same batch. This is a contents check against one agent's own previous batch,
+ * not a security boundary — nothing here is trusted on the strength of the hash alone.
+ */
+function hashEventIds(ids: string[]): string {
+  return createHash('sha256').update([...ids].sort().join(',')).digest('hex');
 }
 
 export const ingestService = new IngestService();

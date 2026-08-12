@@ -10,10 +10,22 @@ namespace Agent.Service;
 /// guarded by a lock: <see cref="AgentPolicy"/> is an immutable record, so a reader either sees
 /// the whole old document or the whole new one, never a half-applied mix.
 /// </summary>
-public sealed class AgentState
+public sealed class AgentState : IDisposable
 {
     private volatile AgentPolicy _policy = new();
     private volatile string? _activeUserSid;
+
+    /// <summary>
+    /// Wake-up signals from the realtime channel to the workers that own the actual work.
+    ///
+    /// Each is a semaphore capped at one permit, which coalesces on purpose: ten force-sync
+    /// commands arriving while a sync is already running should produce one more cycle, not ten
+    /// queued ones. A worker waits on its signal *instead of* sleeping, so a nudge shortens the
+    /// current wait rather than adding a second timer racing the first — no extra thread, and
+    /// nothing to leak if the signal never comes.
+    /// </summary>
+    private readonly SemaphoreSlim _syncRequested = new(0, 1);
+    private readonly SemaphoreSlim _policyRefreshRequested = new(0, 1);
 
     /// <summary>
     /// The policy in force. Starts at the Features.md defaults so collection begins at boot
@@ -60,5 +72,55 @@ public sealed class AgentState
         var versionChanged = policy.Version != previousVersion;
         PolicyChanged?.Invoke(policy, versionChanged);
         return versionChanged;
+    }
+
+    // -----------------------------------------------------------------------
+    // Wake-up signals.
+    //
+    // NOTE FOR ANYONE ADDING A CALLER: requesting a sync is a request to try *sooner*, not an
+    // assertion that the backend is available. Nothing here may set BackendReachable — that is
+    // decided by the HTTP heartbeat, and only by it.
+    // -----------------------------------------------------------------------
+
+    /// <summary>Asks the sync worker to drain the queue now instead of waiting out its interval.</summary>
+    public void RequestSync() => Signal(_syncRequested);
+
+    /// <summary>Asks the connectivity worker to re-read policy now.</summary>
+    public void RequestPolicyRefresh() => Signal(_policyRefreshRequested);
+
+    /// <summary>
+    /// Waits for a sync request, or for <paramref name="timeout"/> to elapse.
+    /// </summary>
+    /// <returns>True when a request arrived, false when the normal interval simply expired.</returns>
+    public Task<bool> WaitForSyncRequestAsync(TimeSpan timeout, CancellationToken ct) =>
+        _syncRequested.WaitAsync(timeout, ct);
+
+    /// <summary>Waits for a policy-refresh request, or for <paramref name="timeout"/> to elapse.</summary>
+    public Task<bool> WaitForPolicyRefreshAsync(TimeSpan timeout, CancellationToken ct) =>
+        _policyRefreshRequested.WaitAsync(timeout, ct);
+
+    /// <summary>
+    /// Releases a permit unless one is already pending.
+    ///
+    /// The count is checked rather than catching <see cref="SemaphoreFullException"/>: a burst of
+    /// commands is entirely normal traffic, and using exceptions for it would fill the log with
+    /// stack traces describing correct behaviour.
+    ///
+    /// Locked because check-then-release is not atomic on its own: two callers could both observe
+    /// an empty semaphore and both release, which is exactly the exception the check exists to
+    /// avoid. The semaphore instance is private and never handed out, so it is safe to lock on.
+    /// </summary>
+    private static void Signal(SemaphoreSlim semaphore)
+    {
+        lock (semaphore)
+        {
+            if (semaphore.CurrentCount == 0) semaphore.Release();
+        }
+    }
+
+    public void Dispose()
+    {
+        _syncRequested.Dispose();
+        _policyRefreshRequested.Dispose();
     }
 }

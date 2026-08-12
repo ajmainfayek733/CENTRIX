@@ -179,7 +179,14 @@ public sealed record DeviceRegistration
     public string? SystemType { get; init; }
     public string? Edition { get; init; }
     public string? Version { get; init; }
-    public required string MacAddress { get; init; }
+    /// <summary>
+    /// Nullable on purpose. There are real moments — a service starting before the NIC is up,
+    /// a machine whose only adapter is virtual — when no hardware address can be determined,
+    /// and the honest answer is "unknown". The previous contract required a string, so those
+    /// cases sent 00:00:00:00:00:00 and every such device looked identical in the dashboard
+    /// while hiding the fact that detection had failed. The server maps null to a null column.
+    /// </summary>
+    public string? MacAddress { get; init; }
     public string? AgentVersion { get; init; }
 }
 

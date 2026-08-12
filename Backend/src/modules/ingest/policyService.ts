@@ -37,6 +37,12 @@ export interface AgentPolicyDto {
     minRetryBackoffSeconds: number;
     maxRetryBackoffSeconds: number;
   };
+  /// Whether the agent should hold a Socket.IO signalling connection. It syncs on its own
+  /// interval regardless — this only decides whether it also listens for a nudge.
+  realtime: { enabled: boolean };
+  /// Rows a dashboard log window loads per page. Served in the same document as everything else
+  /// so the settings screen has one place to read and write policy; agents simply ignore it.
+  logPageSize: number;
   retention: { retentionDays: number; undeliveredRetentionDays: number };
   workingHours: { startLocal: string; endLocal: string; workingDays: string[] };
   /// Blacklist and productivity rules, flattened from the categories table so the agent can
@@ -92,6 +98,8 @@ export function toAgentPolicy(
       minRetryBackoffSeconds: policy.syncMinRetryBackoffSeconds,
       maxRetryBackoffSeconds: policy.syncMaxRetryBackoffSeconds,
     },
+    realtime: { enabled: policy.realtimeEnabled },
+    logPageSize: policy.logPageSize,
     retention: {
       retentionDays: policy.retentionDays,
       undeliveredRetentionDays: policy.undeliveredRetentionDays,

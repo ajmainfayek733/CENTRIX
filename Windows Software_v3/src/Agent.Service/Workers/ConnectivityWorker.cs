@@ -58,7 +58,10 @@ public sealed class ConnectivityWorker(
                 if (healthy)
                 {
                     backoff = MinBackoff;
-                    await Task.Delay(PolicyRefreshInterval, stoppingToken).ConfigureAwait(false);
+                    // Returns early when the server signals a policy change, so an admin's edit
+                    // lands in seconds instead of waiting out the refresh interval. The interval
+                    // remains the guarantee: an agent that missed the signal still converges.
+                    await _state.WaitForPolicyRefreshAsync(PolicyRefreshInterval, stoppingToken).ConfigureAwait(false);
                     continue;
                 }
             }

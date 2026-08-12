@@ -93,6 +93,9 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<IpcServer>());
 
 builder.Services.AddHostedService<ConnectivityWorker>();
 builder.Services.AddHostedService<SyncWorker>();
+// Signalling only, and entirely optional: if it never connects the agent still collects, still
+// syncs on its interval, and still learns policy from the heartbeat. See RealtimeWorker.
+builder.Services.AddHostedService<RealtimeWorker>();
 builder.Services.AddHostedService<UsbWorker>();
 builder.Services.AddHostedService<RetentionWorker>();
 builder.Services.AddHostedService<HostSupervisorWorker>();

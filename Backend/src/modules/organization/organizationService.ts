@@ -2,6 +2,7 @@ import { prisma } from '../../config/db';
 import { categoryService } from '../report/categoryService';
 import { toAgentPolicy } from '../ingest/policyService';
 import { generateEnrollmentToken, hashEnrollmentToken } from '../../utils/token';
+import { broadcastPolicyUpdated } from '../../realtime';
 import { CreateOrganizationDto, UpdatePolicyDto, UpsertCategoryDto } from './organization.dto';
 
 export class OrganizationService {
@@ -92,6 +93,11 @@ export class OrganizationService {
       create: { organizationId, ...dto },
       update: { ...dto, version: { increment: 1 } },
     });
+
+    // Push the version bump to every connected agent instead of leaving them to discover it on
+    // the next heartbeat. Agents still poll — this only shortens the window, it does not replace
+    // it, because an agent that was offline for the broadcast must still converge on its own.
+    broadcastPolicyUpdated(organizationId, updated.version);
 
     const categories = await prisma.category.findMany({
       where: { organizationId },

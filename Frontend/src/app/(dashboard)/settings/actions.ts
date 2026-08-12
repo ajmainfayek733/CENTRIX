@@ -31,6 +31,14 @@ export interface PolicyFormValues {
   retentionDays: number;
   workingHoursStartLocal: string;
   workingHoursEndLocal: string;
+
+  // -- Sync and scale -------------------------------------------------------
+  // The levers that decide what the server costs under load. Configured here rather than in
+  // code because the right value depends on fleet size, which changes without a deploy.
+  syncBatchIntervalSeconds: number;
+  syncMaxBatchSize: number;
+  logPageSize: number;
+  realtimeEnabled: boolean;
 }
 
 export async function updatePolicy(organizationId: string, values: PolicyFormValues) {

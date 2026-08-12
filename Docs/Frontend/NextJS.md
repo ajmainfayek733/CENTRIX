@@ -294,3 +294,55 @@ theme script in `layout.tsx` does.
   to Times New Roman.
 - Running `shadcn init` again will overwrite the palette with the preset's greyscale
   defaults. Use `add`, not `init`.
+---
+
+## 12. Live updates and bounded log windows
+
+### 12.1 The dashboard updates without a refresh
+
+`RealtimeProvider` wraps the `(dashboard)` route group and holds one Socket.IO connection to the
+API's `/dashboard` namespace.
+
+**The socket never carries rows.** It carries "something landed", and the provider calls
+`router.refresh()`, which re-runs the server components for the current route and streams new HTML
+in without a navigation or a reload. That keeps exactly one source of truth — the database, read
+through the API — instead of a socket-fed client cache that drifts from it and has to be
+reconciled. Every rule in §3 and §4 still holds: nothing here fetches the API directly.
+
+Refreshes are **coalesced** to one per 3s window. A hundred agents on a two-minute cycle produce a
+steady trickle of events, and refreshing per event would put the dashboard into a permanent
+refetch loop costing more than the polling it replaced.
+
+Every (re)connection also triggers one refresh: data may have changed while the socket was down,
+and nothing announces what was missed.
+
+**Authentication.** The browser must never hold the session token — it lives in an httpOnly cookie
+precisely so page scripts cannot read it. `POST /api/realtime/ticket` (a route handler, so it runs
+server-side and can read the cookie) exchanges it at the API for a short-lived ticket that can open
+a socket and do nothing else. If the ticket call fails, the page still renders from its own
+server-side fetch; it simply will not update on its own. **Live updates are never load-bearing.**
+
+`useRealtime()` exposes `connectedDevices`. This is *not* an online indicator — a device is shown
+as online from `lastSeen`. It answers only whether a force-sync would be delivered right now.
+
+### 12.2 Log tables are fixed-height scroll windows
+
+`LogScroller` renders a bounded window: the first page arrives with the server-rendered page, and
+an `IntersectionObserver` on a sentinel fetches the next page when the operator scrolls to the end.
+
+The employee timeline previously did `take: 2000` and handed the lot to the browser — an unbounded
+query as history grows, and thousands of DOM nodes for rows nobody scrolls to.
+
+- Page size is **not** decided in the component. The server reads it from `Policy.logPageSize`, so
+  an admin changes it on the settings screen.
+- Client components cannot hold the session token, so paging goes through `/api/logs/[feed]`,
+  which attaches the credential server-side. That route resolves the feed through an **explicit
+  allowlist**, not by interpolating the path segment — a catch-all proxy would be an open door
+  onto every API endpoint.
+- Cursors are opaque. The client hands back whatever `nextCursor` it was given, which is what lets
+  the server change the sort key without a client release.
+- Rows already held are dropped on append. The cursor makes duplicates impossible in a static
+  feed, but this one is live: a row inserted above the cursor between requests can appear twice.
+- Totals are never derived from loaded rows. They come from the daily rollup, so a "productivity %"
+  describes the period rather than the first fifty rows. Counts in card titles say
+  "showing N", not "N entries", because only one page is loaded.

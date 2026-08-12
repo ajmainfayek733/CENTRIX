@@ -26,6 +26,10 @@ function toFormValues(policy: Policy): PolicyFormValues {
     retentionDays: policy.retention.retentionDays,
     workingHoursStartLocal: policy.workingHours.startLocal,
     workingHoursEndLocal: policy.workingHours.endLocal,
+    syncBatchIntervalSeconds: policy.sync.batchIntervalSeconds,
+    syncMaxBatchSize: policy.sync.maxBatchSize,
+    logPageSize: policy.logPageSize,
+    realtimeEnabled: policy.realtime.enabled,
   };
 }
 
@@ -53,7 +57,9 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
     startTransition(async () => {
       try {
         await updatePolicy(organizationId, values);
-        setStatus('Saved. Agents will apply this on their next heartbeat.');
+        // Connected agents are signalled immediately; the heartbeat is the fallback for any
+        // that were offline, so the message describes the guarantee rather than the fast path.
+        setStatus('Saved. Connected agents apply this now; others on their next heartbeat.');
       } catch {
         setStatus('Could not save. Check that the API is reachable.');
       }
@@ -212,6 +218,47 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
             onChange={(v) => set('workingHoursEndLocal', v)}
           />
         </Section>
+
+        {/*
+          Sync and page size live here rather than in code because they are the two levers that
+          decide what this server costs under load, and the right value depends on the fleet —
+          which is exactly the thing that changes without a deploy.
+        */}
+        <Section title="Sync &amp; scale">
+          <NumberField
+            label="Events per batch"
+            unit="events"
+            hint="Smaller batches commit faster and hold locks for less time. 100 suits 30–100 devices."
+            value={values.syncMaxBatchSize}
+            min={1}
+            max={500}
+            onChange={(v) => set('syncMaxBatchSize', v)}
+          />
+          <NumberField
+            label="Sync interval"
+            unit="seconds"
+            hint="How often an agent drains its queue when nothing is forcing it sooner"
+            value={values.syncBatchIntervalSeconds}
+            min={10}
+            max={3600}
+            onChange={(v) => set('syncBatchIntervalSeconds', v)}
+          />
+          <NumberField
+            label="Log rows per page"
+            unit="rows"
+            hint="Rows a log window loads at a time, and fetches again when scrolled to the end"
+            value={values.logPageSize}
+            min={10}
+            max={500}
+            onChange={(v) => set('logPageSize', v)}
+          />
+          <Toggle
+            label="Realtime updates"
+            hint="Off falls back to polling — data still arrives, just not instantly"
+            checked={values.realtimeEnabled}
+            onChange={(v) => set('realtimeEnabled', v)}
+          />
+        </Section>
       </div>
     </Card>
   );
@@ -256,6 +303,7 @@ function Toggle({
 function NumberField({
   label,
   unit,
+  hint,
   value,
   min,
   max,
@@ -264,6 +312,8 @@ function NumberField({
 }: {
   label: string;
   unit: string;
+  /** One line explaining what moving this number actually costs or buys. */
+  hint?: string;
   value: number;
   min?: number;
   max?: number;
@@ -273,6 +323,7 @@ function NumberField({
   return (
     <label className={`block ${disabled ? 'opacity-50' : ''}`}>
       <span className="mb-1 block text-xs text-text-secondary">{label}</span>
+      {hint && <span className="mb-1 block text-xs text-text-secondary/80">{hint}</span>}
       <span className="flex items-center gap-2">
         <input
           type="number"

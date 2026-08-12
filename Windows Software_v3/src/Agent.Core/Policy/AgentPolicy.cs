@@ -27,6 +27,7 @@ public sealed record AgentPolicy
     public UsbPolicy Usb { get; init; } = new();
     public AlertPolicy Alert { get; init; } = new();
     public SyncPolicy Sync { get; init; } = new();
+    public RealtimePolicy Realtime { get; init; } = new();
     public RetentionPolicy Retention { get; init; } = new();
     public WorkingHoursPolicy WorkingHours { get; init; } = new();
 
@@ -103,9 +104,27 @@ public sealed record IdleAlertPolicy
 public sealed record SyncPolicy
 {
     public int BatchIntervalSeconds { get; init; } = 120;
-    public int MaxBatchSize { get; init; } = 500;
+
+    /// <summary>
+    /// Events per push. Matches the backend's policy default: batch size is the main lever on
+    /// peak server cost, and a fleet draining a backlog together multiplies whatever this is.
+    /// Admins change it from the settings screen — the agent never hardcodes a size.
+    /// </summary>
+    public int MaxBatchSize { get; init; } = 100;
+
     public int MinRetryBackoffSeconds { get; init; } = 5;
     public int MaxRetryBackoffSeconds { get; init; } = 120;
+}
+
+/// <summary>
+/// Whether the agent holds a Socket.IO signalling connection.
+///
+/// Signalling only. The agent syncs on its own interval and gates that on the HTTP heartbeat
+/// whether or not this is on — turning it off costs promptness, never data.
+/// </summary>
+public sealed record RealtimePolicy
+{
+    public bool Enabled { get; init; } = true;
 }
 
 public sealed record RetentionPolicy

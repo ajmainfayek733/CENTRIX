@@ -242,8 +242,10 @@ async function main() {
     // window titles and executable paths exceeds that, and every push 413'd in normal operation.
     console.log('\nRequest size limits');
 
-    // ~250 bytes of title per event x 600 events -> comfortably past the old 100kb default.
-    const bulkSessions = Array.from({ length: 600 }, () => ({
+    // ~700 bytes per event x 400 events -> comfortably past the old 100kb default, while staying
+    // inside INGEST_MAX_BATCH_EVENTS. This assertion is about the *body size* limit; the
+    // event-count ceiling is a separate bound with its own case below.
+    const bulkSessions = Array.from({ length: 400 }, () => ({
       clientEventId: randomUUID(),
       activitySessionId: randomUUID(),
       sessionId,
@@ -268,6 +270,126 @@ async function main() {
       bulk.body?.acknowledgedEventIds?.length === bulkSessions.length,
       { acked: bulk.body?.acknowledgedEventIds?.length, sent: bulkSessions.length }
     );
+
+    // Event count is bounded independently of body size. The operational batch size is
+    // Policy.syncMaxBatchSize (100); this ceiling is the abuse bound above it, and a batch past
+    // it must be refused even though the body itself is small.
+    const tooManyEvents = Array.from({ length: env.INGEST_MAX_BATCH_EVENTS + 1 }, () => ({
+      clientEventId: randomUUID(),
+      activitySessionId: randomUUID(),
+      sessionId,
+      type: 'Desktop',
+      startTime: earlier.toISOString(),
+      endTime: now.toISOString(),
+      durationSeconds: 60,
+      productivityTag: 'Neutral',
+    }));
+    const overCount = await push('activity-session', tooManyEvents);
+    check('rejects a batch with more events than the ceiling allows', overCount.status === 400, {
+      status: overCount.status,
+      sent: tooManyEvents.length,
+      ceiling: env.INGEST_MAX_BATCH_EVENTS,
+    });
+
+    // -- Batch idempotency ---------------------------------------------------
+    // The agent's queue is at-least-once: a batch that was committed but whose response was lost
+    // is resent verbatim. Replaying it must be a no-op, not a second set of rows and not a second
+    // contribution to the daily rollup.
+    console.log('\nBatch idempotency');
+
+    const replayBatchId = randomUUID();
+    const replaySessionId = randomUUID();
+    const replayEvents = [
+      {
+        clientEventId: randomUUID(),
+        activitySessionId: replaySessionId,
+        sessionId,
+        appName: 'Replay Test',
+        processName: 'replay',
+        type: 'Application',
+        startTime: earlier.toISOString(),
+        endTime: now.toISOString(),
+        durationSeconds: 90,
+        productivityTag: 'Productive',
+      },
+    ];
+
+    async function pushBatch(events: unknown[], batchId: string) {
+      const res = await fetch(`${BASE}/api/v1/events/activity-session`, {
+        method: 'POST',
+        headers: auth,
+        body: JSON.stringify({ batchId, events }),
+      });
+      return { status: res.status, body: (await res.json()) as any };
+    }
+
+    const firstPush = await pushBatch(replayEvents, replayBatchId);
+    check('stores a batch carrying a batchId', firstPush.status === 200 && firstPush.body.replay === false, firstPush.body);
+
+    const rollupAfterFirst = await prisma.dailyActivityRollup.aggregate({
+      where: { deviceId: deviceRowId },
+      _sum: { activeSeconds: true, activitySessionCount: true },
+    });
+
+    const replayPush = await pushBatch(replayEvents, replayBatchId);
+    check('recognizes a replayed batch instead of redoing the work',
+      replayPush.status === 200 && replayPush.body.replay === true,
+      replayPush.body
+    );
+    check('still acknowledges every event on a replay',
+      replayPush.body?.acknowledgedEventIds?.length === replayEvents.length,
+      replayPush.body
+    );
+
+    const rollupAfterReplay = await prisma.dailyActivityRollup.aggregate({
+      where: { deviceId: deviceRowId },
+      _sum: { activeSeconds: true, activitySessionCount: true },
+    });
+
+    check('a replay does not double-count the daily rollup',
+      rollupAfterFirst._sum.activeSeconds === rollupAfterReplay._sum.activeSeconds &&
+        rollupAfterFirst._sum.activitySessionCount === rollupAfterReplay._sum.activitySessionCount,
+      { before: rollupAfterFirst._sum, after: rollupAfterReplay._sum }
+    );
+
+    // The same events sent under a *different* batch id must also not double-count: per-event
+    // deduplication is the backstop when a retry repacks its queue.
+    const repacked = await pushBatch(replayEvents, randomUUID());
+    const rollupAfterRepack = await prisma.dailyActivityRollup.aggregate({
+      where: { deviceId: deviceRowId },
+      _sum: { activeSeconds: true, activitySessionCount: true },
+    });
+    check('resending under a new batch id still does not double-count',
+      repacked.status === 200 &&
+        rollupAfterFirst._sum.activeSeconds === rollupAfterRepack._sum.activeSeconds &&
+        rollupAfterFirst._sum.activitySessionCount === rollupAfterRepack._sum.activitySessionCount,
+      { before: rollupAfterFirst._sum, after: rollupAfterRepack._sum }
+    );
+
+    // -- MAC address normalization -------------------------------------------
+    // An agent that cannot determine a hardware address must not have that recorded as though it
+    // were one: the all-zero address is what enumeration returns when it found nothing.
+    console.log('\nDevice identity');
+
+    const zeroMacEnroll = await fetch(`${BASE}/api/v1/device/enroll`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-enrollment-token': enrollmentToken },
+      body: JSON.stringify({ deviceId: `${machineGuid}-zero-mac`, deviceName: 'ZERO-MAC-PC', macAddress: '00:00:00:00:00:00' }),
+    });
+    check('accepts an enrollment with no usable MAC', zeroMacEnroll.status === 201 || zeroMacEnroll.status === 200, zeroMacEnroll.status);
+
+    const zeroMacDevice = await prisma.device.findUnique({ where: { deviceId: `${machineGuid}-zero-mac` } });
+    check('stores the all-zero MAC as null rather than as an address', zeroMacDevice?.macAddress === null, zeroMacDevice?.macAddress);
+
+    const dashedMacEnroll = await fetch(`${BASE}/api/v1/device/enroll`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-enrollment-token': enrollmentToken },
+      body: JSON.stringify({ deviceId: `${machineGuid}-dashed-mac`, deviceName: 'DASHED-MAC-PC', macAddress: 'a0-b1-c2-d3-e4-f5' }),
+    });
+    check('accepts a dash-separated MAC', dashedMacEnroll.status === 201 || dashedMacEnroll.status === 200, dashedMacEnroll.status);
+
+    const dashedMacDevice = await prisma.device.findUnique({ where: { deviceId: `${machineGuid}-dashed-mac` } });
+    check('normalizes a MAC to canonical colon form', dashedMacDevice?.macAddress === 'A0:B1:C2:D3:E4:F5', dashedMacDevice?.macAddress);
 
     // Past the ceiling the server still refuses — but with an actionable body, not a stack trace.
     const oversized = await fetch(`${BASE}/api/v1/events/activity-session`, {

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { env } from '../../config/env';
 
 /**
  * Wire contract for POST /api/v1/events/:channel.
@@ -27,10 +28,11 @@ export const channelParamSchema = z.object({
 });
 
 /**
- * Sanity ceiling well above the policy default MaxBatchSize (500) so we never reject a batch
- * the agent was configured to send, while still bounding request size against abuse.
+ * Sanity ceiling, kept well above the policy default MaxBatchSize (100) so we never reject a
+ * batch the agent was configured to send, while still bounding request size against abuse.
+ * Configurable because the right value depends on fleet size — see INGEST_MAX_BATCH_EVENTS.
  */
-const MAX_EVENTS_PER_PUSH = 2000;
+const MAX_EVENTS_PER_PUSH = env.INGEST_MAX_BATCH_EVENTS;
 
 const uuid = z.string().uuid();
 const utc = z.coerce.date();
@@ -192,9 +194,17 @@ export const EVENT_SCHEMA_BY_CHANNEL = {
   alert: alertEventSchema,
 } as const;
 
-/** `{ events: [...] }` validator for one channel. */
+/**
+ * `{ batchId, events: [...] }` validator for one channel.
+ *
+ * `batchId` identifies this push so a replay is recognized as one and answered without redoing
+ * the work — see IngestBatch in the Prisma schema. Optional so an older agent that predates it
+ * still ingests: those batches fall back to per-event deduplication, which is correct but does
+ * the expensive work again on every replay.
+ */
 export function batchSchemaFor(channel: Channel) {
   return z.object({
+    batchId: uuid.optional(),
     events: z.array(EVENT_SCHEMA_BY_CHANNEL[channel]).min(1).max(MAX_EVENTS_PER_PUSH),
   });
 }
@@ -228,8 +238,36 @@ export type ScreenshotFieldsDto = z.infer<typeof screenshotFieldsSchema>;
 export type ConsentDto = z.infer<typeof consentSchema>;
 
 /**
+ * Hardware addresses arrive in whichever notation the source used — `00:11:22:33:44:55`,
+ * `00-11-22-33-44-55`, `00.11.22.33.44.55` or bare hex. They are normalized to one canonical
+ * uppercase colon form here so the same NIC cannot appear as several distinct values, which
+ * would make the `devices.macAddress` index useless for finding a machine.
+ *
+ * The all-zero address is normalized to null rather than stored. It is not an address: it is
+ * what an enumeration returns when it found nothing, and persisting it makes every such device
+ * look identical in the dashboard while quietly hiding the fact that detection failed. Null says
+ * "unknown", which is the truth. The agent has its own fix for producing it — see
+ * Agent.Core/DeviceIdentity.cs — but the server must not depend on every agent being current.
+ */
+const MAC_HEX_DIGITS = 12;
+const ALL_ZERO_MAC = '0'.repeat(MAC_HEX_DIGITS);
+
+export const macAddressSchema = z
+  .string()
+  .nullish()
+  .transform((value) => {
+    if (!value) return null;
+
+    const hex = value.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
+    if (hex.length !== MAC_HEX_DIGITS) return null;
+    if (hex === ALL_ZERO_MAC) return null;
+
+    return hex.match(/.{2}/g)!.join(':');
+  });
+
+/**
  * Device self-registration — Features.md "Device Auth".
- * POST /api/v1/device/register, keyed on the MAC address the agent reports.
+ * Identity is the Windows MachineGuid in `deviceId`; the MAC is reported metadata.
  */
 export const deviceRegisterSchema = z.object({
   deviceId: z.string().min(1),
@@ -237,7 +275,7 @@ export const deviceRegisterSchema = z.object({
   systemType: z.string().nullish(),
   edition: z.string().nullish(),
   version: z.string().nullish(),
-  macAddress: z.string().min(1),
+  macAddress: macAddressSchema,
   agentVersion: z.string().nullish(),
 });
 

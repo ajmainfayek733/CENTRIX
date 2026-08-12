@@ -185,7 +185,19 @@ Static class building the device profile.
 | Member | Description |
 |---|---|
 | `GetMachineGuid()` | Reads `HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid` (64-bit view). Stable for the life of the OS install and unaffected by hardware swaps, renames or re-IPing. Falls back to `fallback-{MachineName}` rather than crash-looping at boot. |
-| `GetPrimaryMacAddress()` | MAC of the first operational **physical** adapter, Ethernet preferred. Skips loopback and tunnel types, and filters descriptions containing `virtual`, `hyper-v`, `vmware`, `virtualbox`, `tap-` or `pseudo` — those change independently of the hardware. Returns `00:00:00:00:00:00` when nothing qualifies. |
+| `GetPrimaryMacAddress()` | MAC of the best available adapter, or **`null`** when none can be determined. Searched in tiers: (1) up, physical, non-virtual; (2) any non-virtual, whatever its operational status; (3) anything left, including virtual adapters. Within a tier, Ethernet before Wi-Fi before the rest, then by adapter id so the pick is stable. Loopback and tunnel adapters are always skipped, as is any adapter reporting an empty or all-zero address. The first real answer is cached for the process lifetime. |
+
+> **Why the tiers.** The earlier version required an adapter that was `Up` *and* physical *and*
+> not virtual-sounding, and returned `00:00:00:00:00:00` when nothing matched. All three
+> conditions fail routinely — the service starts at boot and enrolls before any adapter reaches
+> `Up`; a laptop on Wi-Fi with the dock unplugged has no Ethernet; on a host running Hyper-V or
+> WSL2 the adapter carrying traffic is described as virtual. The zero address was not an edge
+> case, it was the common result, and because it is a well-formed string nothing downstream could
+> tell it apart from a real one: every affected device showed the same MAC in the dashboard.
+>
+> `DeviceRegistration.MacAddress` is nullable for the same reason, and the backend normalizes what
+> it receives — canonical uppercase colon form, with the all-zero address stored as `NULL`. "We do
+> not know" is a fact worth recording accurately.
 | `GetEdition()` | `ProductName` from `CurrentVersion` (e.g. `Windows 11 Pro`), falling back to `RuntimeInformation.OSDescription`. Read from the registry rather than inferred from the build number. |
 | `GetOsVersion()` | `Environment.OSVersion.Version` (e.g. `10.0.26200`). Accurate only because `app.manifest` declares Windows 10/11 support — without it Windows reports 6.2. |
 | `GetSystemType()` | System Information wording, e.g. `64-bit operating system, x64-based processor`. |

@@ -29,6 +29,15 @@ router.get(
   reportController.getEmployeeDetail
 );
 
+// Paged timeline behind the detail screen's scroll window. Separate from the detail endpoint so
+// scrolling fetches rows only, not the totals and leaderboards that never change between pages.
+router.get(
+  '/employees/:employeeId/activity',
+  requireRole('super_admin', 'manager', 'auditor'),
+  auditLogger('VIEW_EMPLOYEE_ACTIVITY_LOG', (req) => `Employee:${req.params.employeeId}`),
+  reportController.getActivityLog
+);
+
 router.get('/alerts', requireRole('super_admin', 'manager', 'auditor'), auditLogger('VIEW_ALERTS'), reportController.getAlerts);
 
 router.get(

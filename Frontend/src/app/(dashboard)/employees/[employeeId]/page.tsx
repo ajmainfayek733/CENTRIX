@@ -13,13 +13,11 @@ import {
   EmptyState,
   ProductivityBar,
 } from '@/components/ui';
-import type { EmployeeDetail, ActivityType } from '@/types/api';
+import type { EmployeeDetail } from '@/types/api';
 import { DateRangePicker } from '@/components/DateRangePicker';
+import { TimelineTable } from './TimelineTable';
 
 export const dynamic = 'force-dynamic';
-
-/** Idle, locked and sleeping rows are shown muted so the eye lands on real work first. */
-const NON_WORKING: ActivityType[] = ['Idle', 'Locked', 'Sleeping', 'Disconnected'];
 
 export default async function EmployeeDetailPage({
   params,
@@ -45,6 +43,7 @@ export default async function EmployeeDetailPage({
   }
 
   const { employee, totals, timeline, topApps, topDomains, attendance } = detail;
+  const { startDate, endDate } = range;
 
   return (
     <div className="space-y-6">
@@ -151,65 +150,17 @@ export default async function EmployeeDetailPage({
         )}
       </Card>
 
-      <Card title={`Timeline · ${timeline.length} entries`}>
-        {timeline.length === 0 ? (
-          <EmptyState message="No activity recorded in this period." />
-        ) : (
-          <TableWrap>
-            <table className="w-full min-w-[720px] border-collapse">
-              <thead>
-                <tr>
-                  <Th>Time</Th>
-                  <Th>Application</Th>
-                  <Th>Window</Th>
-                  <Th align="right">Duration</Th>
-                  <Th align="right">Tag</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {timeline.map((row) => {
-                  const isIdle = NON_WORKING.includes(row.type);
-
-                  return [
-                    <tr key={row.id} className={isIdle ? 'opacity-60' : undefined}>
-                      <Td numeric muted>
-                        {formatTime(row.startTime)}
-                      </Td>
-                      <Td>{isIdle ? row.type : (row.appName ?? row.processName ?? 'Unknown')}</Td>
-                      <Td muted>
-                        <span className="block max-w-[26rem] truncate">{row.windowTitle ?? '—'}</span>
-                      </Td>
-                      <Td align="right" numeric>
-                        {formatDuration(row.durationSeconds)}
-                      </Td>
-                      <Td align="right">{!isIdle && <TagBadge tag={row.productivityTag} />}</Td>
-                    </tr>,
-
-                    // Browser visits nest under the app session that contained them, so a
-                    // "Chrome — 2h" row can be read as the sites that made it up.
-                    ...row.visits.map((visit) => (
-                      <tr key={visit.id} className="text-xs">
-                        <Td />
-                        <Td muted>
-                          <span className="pl-4 text-text-secondary">↳ {visit.domain}</span>
-                        </Td>
-                        <Td muted>
-                          <span className="block max-w-[26rem] truncate">{visit.pageTitle ?? visit.rawUrl}</span>
-                        </Td>
-                        <Td align="right" numeric muted>
-                          {formatDuration(visit.durationSeconds)}
-                        </Td>
-                        <Td align="right">
-                          <TagBadge tag={visit.productivityTag} />
-                        </Td>
-                      </tr>
-                    )),
-                  ];
-                })}
-              </tbody>
-            </table>
-          </TableWrap>
-        )}
+      {/*
+        "showing N" rather than "N entries": only the first page is loaded here, so a total is a
+        number this page does not have. The window fetches the rest as it is scrolled.
+      */}
+      <Card title={`Timeline · showing ${timeline.rows.length}${timeline.hasMore ? '+' : ''}`}>
+        <TimelineTable
+          initial={timeline}
+          employeeId={employee.id}
+          startDate={startDate}
+          endDate={endDate}
+        />
       </Card>
     </div>
   );

@@ -408,3 +408,120 @@ held.
 - No dashboard route is reachable without a valid JWT + correct role.
 - No device token can reach any `/v1/dashboard/*` route, and no user JWT can reach
   `/v1/ingest/*`.
+
+---
+
+## 12. Realtime signalling, ingest idempotency, and the daily rollup
+
+Three changes that belong together: they are what takes this server from "works at 30 devices"
+to "works at 100+".
+
+### 12.1 Socket.IO is signalling — never data, never availability
+
+`src/realtime/` mounts two authenticated namespaces on the same port as the REST API:
+
+| Namespace | Who | Credential |
+|---|---|---|
+| `/agents` | Windows agents | device API key in the handshake `auth.apiKey` |
+| `/dashboard` | Browsers | short-lived ticket in `auth.ticket` (see below) |
+
+It carries **"something changed, come and get it"** and nothing that matters if it is lost:
+`policy:updated`, `sync:force`, `device:deactivated` to agents; `telemetry:ingested`,
+`device:presence`, `policy:updated` to dashboards.
+
+Telemetry keeps travelling over HTTP. That path is acknowledged, retried and idempotent; a socket
+that silently half-dies would lose data with no way to detect it.
+
+**An open socket is not proof the server is available.** This is a rule, not a preference. A
+connection survives a database outage, a deploy, and a half-open TCP path that will not surface
+for minutes — so treating "connected" as "available" has agents confidently pushing telemetry at a
+server that is dropping it. Therefore:
+
+- the **agent** gates syncing on `GET /api/v1/heartbeat`, which proves the credential is accepted
+  *and* that the server reached Postgres to answer;
+- `GET /health` runs a real `SELECT 1` and answers **503** when the database is unreachable;
+- the **dashboard** shows a device as online from `devices.lastSeen`, which only an authenticated
+  HTTP request writes. Socket presence is exposed separately and answers a narrower question:
+  would a force-sync sent right now be delivered immediately?
+
+**Dashboard tickets.** The dashboard's session lives in an httpOnly cookie so page scripts cannot
+read it. Handing that token to the browser for a handshake would undo the only protection the
+cookie provides. Instead `POST /v1/dashboard/auth/realtime-ticket` exchanges the session for a
+signed, ~60-second credential that opens a socket and can do nothing else — the REST API does not
+accept it. See `src/realtime/ticket.ts`.
+
+Single-process by design: at this fleet size one Node process holds every connection, so there is
+no Redis adapter. Running more than one instance would need one.
+
+### 12.2 Two layers of ingest idempotency
+
+The agent's queue is at-least-once, so a batch that was committed but whose HTTP response was lost
+is resent verbatim.
+
+1. **Per batch** — `ingest_batches`, unique on `(deviceId, batchId)`. The agent derives `batchId`
+   deterministically from a SHA-256 of its sorted event ids, so a resend of the same events
+   produces the same id and is recognized. A known batch is answered from the ledger without
+   touching the telemetry tables. This is the layer that matters when a fleet reconnects after an
+   outage and replays at once. `eventIdsHash` guards against an id being reused for different
+   content: a mismatch falls back to layer 2 rather than discarding real telemetry.
+2. **Per event** — the unique `clientEventId` on every channel. Still the backstop for an older
+   agent, or a retry that repacked its queue into a different batch.
+
+The ledger row is written **inside the same transaction as the events**, so it can never claim a
+batch that did not land. It is pruned after `INGEST_BATCH_RETENTION_DAYS` (default 7) — it only has
+to outlive the agent's retry window.
+
+### 12.3 The daily rollup
+
+`daily_activity_rollups` holds one row per `(workDate, deviceId, employeeId)`, maintained as data
+arrives. Reports read it; they never scan the log tables to aggregate.
+
+This is the query that does not survive the jump to 100+ devices. Summing `activity_sessions` over
+a date range means millions of ten-second app switches re-scanned by every manager who opens the
+overview — and it degrades with *history*, not headcount, so it gets worse forever. A month for
+100 employees is ~3,000 rollup rows, and that ceiling does not move.
+
+Keyed on employee as well as device so a workstation reassigned mid-day produces two rows rather
+than one row silently changing owner — yesterday's report does not move when today's assignment
+changes.
+
+**Counters are incremented, never recomputed**, so counting one event twice corrupts a day
+permanently and silently. Exactly-once is guaranteed by the batch ledger plus a pre-filter: each
+channel counts only the events it genuinely inserted. Browser time is deliberately *not* added to
+`activeSeconds` — the browser was already the foreground app for that interval and its
+`ActivitySession` counted it.
+
+Work dates come from the agent's own calendar date via the attendance session, falling back to the
+UTC date of the event's timestamp. A fleet spanning timezones would otherwise have days starting
+at the server's midnight.
+
+### 12.4 Log feeds are keyset-paginated
+
+No log endpoint returns "everything in the range". Each serves one page, newest first, through an
+opaque cursor (`src/modules/report/pagination.ts`).
+
+`OFFSET` is deliberately not used: `OFFSET 5000` makes Postgres walk and discard 5,000 rows to
+return 50, so a page costs more the further an operator scrolls — backwards for a log whose
+interesting rows are at the end. It is also unstable under a live feed, repeating or skipping rows
+as data arrives. A keyset cursor carries `(timestamp, id)` of the last row; every page is the same
+indexed seek. The id is part of the key because timestamps collide — an agent can close several
+app sessions in the same millisecond.
+
+Pages are over-fetched by one row to answer "is there more?" without a second `COUNT` over the same
+predicate.
+
+Page size comes from `Policy.logPageSize` (default 50), so an admin changes it from the settings
+screen. A caller may request fewer, never more.
+
+### 12.5 Admin-configurable limits
+
+| Setting | Default | What it controls |
+|---|---|---|
+| `Policy.syncMaxBatchSize` | 100 | Events per agent push. The main lever on peak server cost. |
+| `Policy.syncBatchIntervalSeconds` | 120 | How often an agent drains its queue. |
+| `Policy.logPageSize` | 50 | Rows per dashboard log page. |
+| `Policy.realtimeEnabled` | true | Whether agents and dashboards hold a socket at all. |
+| `INGEST_MAX_BATCH_EVENTS` (env) | 500 | Server-side abuse bound. The policy value is capped to it, so an admin cannot configure batches the server would reject. |
+
+Turning `realtimeEnabled` off falls the fleet back to poll-only without a redeploy. The HTTP paths
+are the system of record either way, so it is a safe switch to flip under load.

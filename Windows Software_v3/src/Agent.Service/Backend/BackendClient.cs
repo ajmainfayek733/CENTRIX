@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text;
 using Agent.Core;
 using Agent.Core.Configuration;
@@ -264,7 +265,9 @@ public sealed class BackendClient(
         CancellationToken ct) where T : ITelemetryEvent
     {
         using var request = Authorized(HttpMethod.Post, $"api/v1/events/{channel.ToWireName()}");
-        request.Content = JsonContent.Create(new { events }, options: AgentJson.Options);
+        request.Content = JsonContent.Create(
+            new { batchId = DeterministicBatchId(events), events },
+            options: AgentJson.Options);
 
         using var response = await _http.SendAsync(request, ct).ConfigureAwait(false);
         await ThrowIfCredentialRejectedAsync(response, ct).ConfigureAwait(false);
@@ -312,6 +315,43 @@ public sealed class BackendClient(
             events.Count, channel, (int)response.StatusCode, body);
 
         return new PushResult([], [], TransientFailure: true);
+    }
+
+    /// <summary>
+    /// A batch identifier derived from the batch's own contents, so a resend is recognizable.
+    ///
+    /// Deliberately NOT a fresh Guid per attempt. The case this exists for is the one where the
+    /// server committed the batch and the response was lost on the way back: the queue still
+    /// holds those events as unacknowledged and sends them again. A random id would look like a
+    /// brand new batch and the server would redo the whole validate-categorize-aggregate pass to
+    /// reach the same conclusion — at exactly the moment a fleet is replaying a backlog and can
+    /// least afford it.
+    ///
+    /// Hashing the sorted event ids means the same set of events always produces the same batch
+    /// id, whichever order the queue handed them over, so the server can answer from its ledger.
+    ///
+    /// The digest is shaped into an RFC 4122 version-5 UUID because the server validates the
+    /// field as a uuid; the version and variant nibbles are not decoration.
+    /// </summary>
+    private static Guid DeterministicBatchId<T>(IEnumerable<T> events) where T : ITelemetryEvent
+    {
+        var ids = events
+            .Select(e => e.ClientEventId.ToString("D"))
+            .OrderBy(id => id, StringComparer.Ordinal);
+
+        var digest = SHA256.HashData(Encoding.UTF8.GetBytes(string.Join(",", ids)));
+
+        Span<byte> uuid = stackalloc byte[16];
+        digest.AsSpan(0, 16).CopyTo(uuid);
+
+        // Version 5 (name-based), RFC 4122 variant.
+        uuid[6] = (byte)((uuid[6] & 0x0F) | 0x50);
+        uuid[8] = (byte)((uuid[8] & 0x3F) | 0x80);
+
+        // Built from the hex text rather than `new Guid(bytes)`: that constructor reads the first
+        // three fields little-endian, which would reorder the digest and make the id depend on
+        // the platform's endianness rather than only on the events.
+        return Guid.ParseExact(Convert.ToHexString(uuid), "N");
     }
 
     private async Task<PushResult> PushHalvesAsync<T>(

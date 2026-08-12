@@ -40,12 +40,23 @@ export class IngestController {
     }
   }
 
-  /** POST /api/v1/events/:channel */
+  /**
+   * POST /api/v1/events/:channel
+   *
+   * `replay` is reported back so the agent's log distinguishes "the server stored these" from
+   * "the server had already stored these" — the two look identical from the queue's point of
+   * view, and only one of them means the previous response was lost.
+   */
   async pushEvents(req: DeviceAuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       const channel = req.params.channel as Channel;
-      const acknowledgedEventIds = await ingestService.pushEvents(req.device!, channel, req.body.events);
-      return res.status(200).json({ acknowledgedEventIds });
+      const { acknowledged, replay } = await ingestService.pushEvents(
+        req.device!,
+        channel,
+        req.body.batchId,
+        req.body.events
+      );
+      return res.status(200).json({ acknowledgedEventIds: acknowledged, replay });
     } catch (error) {
       next(error);
     }

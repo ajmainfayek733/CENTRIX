@@ -144,10 +144,11 @@ model Organization {
   /// stored, so a database read cannot recover the token.
   enrollmentTokenHash String? @unique
 
-  employees  Employee[]
-  devices    Device[]
-  policy     Policy?
-  categories Category[]
+  employees    Employee[]
+  devices      Device[]
+  policy       Policy?
+  categories   Category[]
+  dailyRollups DailyActivityRollup[]
 
   @@map("organizations")
 }
@@ -162,7 +163,8 @@ model Employee {
   status         String       @default("active")
   createdAt      DateTime     @default(now())
 
-  devices Device[]
+  devices      Device[]
+  dailyRollups DailyActivityRollup[]
 
   @@index([organizationId])
   @@map("employees")
@@ -211,11 +213,125 @@ model Device {
   alerts             Alert[]
   screenshots        Screenshot[]
   consents           ConsentRecord[]
+  ingestBatches      IngestBatch[]
+  dailyRollups       DailyActivityRollup[]
 
   @@index([organizationId])
   @@index([employeeId])
   @@index([macAddress])
   @@map("devices")
+}
+
+// ---------------------------------------------------------------------------
+// Ingest idempotency — one row per batch the agent successfully delivered.
+//
+// The agent's queue is at-least-once: a batch that was committed but whose HTTP response was
+// lost is resent verbatim. Per-row `skipDuplicates` already prevented duplicate *rows*, but the
+// server still re-validated, re-categorized and re-aggregated the whole batch to reach that
+// conclusion. With a fleet of 100 replaying after an outage that is the expensive path taken at
+// the worst possible moment.
+//
+// This table makes the *batch* the unit of idempotency: a batchId already recorded is answered
+// from here without touching the telemetry tables at all. Critically, the row is written inside
+// the same transaction as the events, so it can never claim a batch that did not land.
+//
+// `eventIdsHash` guards against a batch id being reused for different content — a replay must
+// prove it is the same batch before it is short-circuited, otherwise a client bug that recycles
+// ids would silently discard real telemetry.
+// ---------------------------------------------------------------------------
+
+model IngestBatch {
+  id       String @id @default(uuid())
+  deviceId String
+  device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  /// Agent-generated GUID for this batch. Unique per device, not globally: two agents
+  /// generating the same GUID is not a collision worth failing a write over.
+  batchId String
+
+  /// Which channel the batch was pushed to. Plain text rather than the Channel enum because
+  /// this table is an operational log, and an unknown future channel must not fail the write.
+  channel String
+
+  eventCount Int
+
+  /// SHA-256 of the batch's clientEventIds, sorted and joined. Proves a replay carries the
+  /// same payload as the batch already stored under this id.
+  eventIdsHash String
+
+  receivedAt DateTime @default(now())
+
+  @@unique([deviceId, batchId])
+  /// Drives the retention sweep that prunes this table; it only needs to outlive the agent's
+  /// retry window, not the telemetry itself.
+  @@index([receivedAt])
+  @@map("ingest_batches")
+}
+
+// ---------------------------------------------------------------------------
+// Daily rollup — the read path's aggregate, maintained on write.
+//
+// Reporting used to sum activity_sessions over a date range on every dashboard load. That is
+// the query that does not survive the jump from 30 devices to 100+: a month of ten-second app
+// switches is millions of rows, and every manager opening the overview re-scans them.
+//
+// Instead each arriving batch folds itself into one row per (workDate, device, employee), so a
+// report reads at most one row per employee per day. The counters are incremented, never
+// recomputed, which is what keeps ingest O(batch) rather than O(history).
+//
+// Keyed on employee as well as device deliberately: when a workstation is reassigned mid-day the
+// two employees get their own rows rather than one row silently changing owner, so yesterday's
+// report does not move when today's assignment changes.
+// ---------------------------------------------------------------------------
+
+model DailyActivityRollup {
+  id String @id @default(uuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  deviceId String
+  device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  /// Local calendar date the activity is attributed to — the agent's own date, not the
+  /// server's, so a fleet spanning timezones still rolls up to the employee's working day.
+  workDate DateTime @db.Date
+
+  // -- Time, in seconds ---------------------------------------------------
+  activeSeconds       Int @default(0)
+  idleSeconds         Int @default(0)
+  productiveSeconds   Int @default(0)
+  unproductiveSeconds Int @default(0)
+  neutralSeconds      Int @default(0)
+  blacklistedSeconds  Int @default(0)
+
+  // -- Input counts — from activity_metrics, counts only, never content ----
+  keyCount   Int @default(0)
+  mouseCount Int @default(0)
+
+  // -- Row counts, so the UI can show volume without counting the log tables
+  activitySessionCount Int @default(0)
+  browserVisitCount    Int @default(0)
+  usbEventCount        Int @default(0)
+  alertCount           Int @default(0)
+
+  /// Earliest and latest activity folded into this day, for "first seen / last seen" columns
+  /// that would otherwise need a min/max over the log tables.
+  firstActivityAt DateTime?
+  lastActivityAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workDate, deviceId, employeeId])
+  /// The employee-and-range query behind every report screen.
+  @@index([employeeId, workDate])
+  /// Org-wide overview for a range.
+  @@index([organizationId, workDate])
+  @@map("daily_activity_rollups")
 }
 
 // ---------------------------------------------------------------------------
@@ -550,9 +666,24 @@ model Policy {
 
   // -- Sync ---------------------------------------------------------------
   syncBatchIntervalSeconds Int @default(120)
-  syncMaxBatchSize         Int @default(500)
+  /// Events per push. 100 rather than a larger number because batch size is the main lever on
+  /// peak server cost: a fleet of 100 draining a backlog together multiplies whatever this is,
+  /// and smaller batches commit faster, hold row locks for less time and fail cheaper. Admins
+  /// change it from the settings screen; the agent reads it from policy rather than a constant.
+  syncMaxBatchSize         Int @default(100)
   syncMinRetryBackoffSeconds Int @default(5)
   syncMaxRetryBackoffSeconds Int @default(120)
+
+  // -- Realtime -----------------------------------------------------------
+  /// Whether agents and dashboards should hold a Socket.IO connection at all. Turning this off
+  /// falls the fleet back to poll-only behaviour without a redeploy — the HTTP paths are the
+  /// system of record either way, so this is a safe switch to flip under load.
+  realtimeEnabled Boolean @default(true)
+
+  // -- Dashboard read path ------------------------------------------------
+  /// Rows per page in the dashboard's log tables. The UI never asks for "everything"; it asks
+  /// for a page of this size and fetches the next one when the operator scrolls to the end.
+  logPageSize Int @default(50)
 
   // -- Retention — spec §3.1 configurable auto-deletion --------------------
   retentionDays            Int @default(90)
