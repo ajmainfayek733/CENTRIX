@@ -1,1 +1,0 @@
-export { userAuth, userAuth as requireAuth } from './userAuth';
