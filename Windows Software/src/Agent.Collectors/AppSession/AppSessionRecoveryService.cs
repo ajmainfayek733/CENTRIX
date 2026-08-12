@@ -4,8 +4,8 @@ using Microsoft.Extensions.Logging;
 namespace Agent.Collectors.AppSession;
 
 /// <summary>
-/// Runs once at startup. Unlike Attendance, no synthetic "reopen" is needed here — the poller's
-/// very next observation naturally opens a fresh session — so this only closes the dangling row.
+/// Runs once at startup. Unlike Attendance, no synthetic "reopen" is needed here - the poller's
+/// very next observation naturally opens a fresh session - so this only closes the dangling row.
 /// </summary>
 public sealed class AppSessionRecoveryService(
     IAppSessionRepository repository,

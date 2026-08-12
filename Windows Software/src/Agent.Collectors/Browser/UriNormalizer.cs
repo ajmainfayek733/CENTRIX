@@ -9,7 +9,7 @@ public interface IUriNormalizer
 
 /// <summary>
 /// Lowercases scheme/host, strips default ports, and converts IDN hosts to their ASCII
-/// (Punycode) form deterministically via <see cref="IdnMapping"/> — not relying on ambient
+/// (Punycode) form deterministically via <see cref="IdnMapping"/> - not relying on ambient
 /// System.Uri IDN behavior, which has varied across .NET versions. IPv4/IPv6 literal hosts are
 /// passed through unchanged (IDNA label rules don't apply to them and would throw).
 /// </summary>

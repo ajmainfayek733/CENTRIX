@@ -10,7 +10,7 @@ namespace Agent.Sync;
 /// Polls the backend for policy updates and caches the last-known-good document locally so the
 /// agent keeps running correctly offline. Starts from the cached file (or
 /// <see cref="PolicyDocument.Default"/> on first run) rather than blocking startup on a network
-/// call — "Admin can turn off any feature" doesn't require the network to be up first.
+/// call - "Admin can turn off any feature" doesn't require the network to be up first.
 /// </summary>
 public sealed class RemotePolicyProvider : IPolicyProvider, IHostedService, IDisposable
 {

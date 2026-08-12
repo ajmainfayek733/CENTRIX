@@ -83,7 +83,7 @@ public static class TrayServiceCollectionExtensions
             sp.GetRequiredService<ILogger<RemotePolicyProvider>>()));
         services.AddHostedService(sp => (RemotePolicyProvider)sp.GetRequiredService<IPolicyProvider>());
 
-        // Activity also implements IIdleStateSource — both App Session (via its own poll) and
+        // Activity also implements IIdleStateSource - both App Session (via its own poll) and
         // Attendance (via TrayIdleAttendanceBridge) consume its idle transitions.
         services.AddSingleton<ActivityCollectorService>();
         services.AddSingleton<IIdleStateSource>(sp => sp.GetRequiredService<ActivityCollectorService>());

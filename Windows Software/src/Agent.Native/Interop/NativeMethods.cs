@@ -4,7 +4,7 @@ using System.Runtime.Versioning;
 namespace Agent.Native.Interop;
 
 /// <summary>
-/// Raw P/Invoke declarations only — no business logic. See Microsoft Learn:
+/// Raw P/Invoke declarations only - no business logic. See Microsoft Learn:
 /// GetLastInputInfo (https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-getlastinputinfo),
 /// WTSQuerySessionInformation (https://learn.microsoft.com/windows/win32/api/wtsapi32/nf-wtsapi32-wtsquerysessioninformationw).
 /// </summary>

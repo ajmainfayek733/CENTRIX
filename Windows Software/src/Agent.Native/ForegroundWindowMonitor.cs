@@ -29,7 +29,7 @@ public sealed class ForegroundWindowMonitor : IForegroundWindowMonitor
         if (executablePath is null)
         {
             // Elevated process while the agent is not (or vice versa), or the process has
-            // already exited between the two calls — a documented, expected race.
+            // already exited between the two calls - a documented, expected race.
             return null;
         }
 

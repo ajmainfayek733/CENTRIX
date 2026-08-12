@@ -2,7 +2,7 @@ root = true
 
 [*.cs]
 # CA1848 (use LoggerMessage source generators), CA1873 (avoid expensive logging args without
-# an IsEnabled guard — same underlying concern as CA1848), and CA1727 (PascalCase log
+# an IsEnabled guard - same underlying concern as CA1848), and CA1727 (PascalCase log
 # placeholders) are perf/style micro-optimizations that would force boilerplate on every log
 # call across this codebase. Every other CA rule from AnalysisLevel=latest-recommended stays
 # at error.

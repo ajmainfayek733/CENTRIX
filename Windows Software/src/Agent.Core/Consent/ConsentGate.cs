@@ -5,7 +5,7 @@ namespace Agent.Core.Consent;
 /// transmitting data until consent has been acknowledged, without those services having to poll
 /// the consent store themselves. Agent.Host has no interactive UI to show the consent dialog
 /// itself (that's Agent.TrayHelper's job, once a user is logged in), so this is populated from a
-/// background poll of the shared consent store — see ConsentGateHostedService.
+/// background poll of the shared consent store - see ConsentGateHostedService.
 /// </summary>
 public interface IConsentGate
 {

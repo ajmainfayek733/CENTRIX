@@ -4,10 +4,10 @@ namespace Agent.Core.Identity;
 
 /// <summary>
 /// Imports the one-time device API key an administrator issued at registration (Workforce
-/// Dashboard &gt; Employees &gt; Register Device, spec §2.2) into the local DPAPI-protected
+/// Dashboard &gt; Employees &gt; Register Device, spec section 2.2) into the local DPAPI-protected
 /// credential store, if it hasn't been imported already. The raw key is supplied via a
-/// machine-scoped environment variable — set once by IT tooling (GPO/Intune/SCCM) as part of
-/// deploying the Agent to a specific device — rather than a config file, so nothing sensitive
+/// machine-scoped environment variable - set once by IT tooling (GPO/Intune/SCCM) as part of
+/// deploying the Agent to a specific device - rather than a config file, so nothing sensitive
 /// is left sitting in plaintext on disk after the store has captured it.
 /// </summary>
 public static class DeviceEnrollmentBootstrapper

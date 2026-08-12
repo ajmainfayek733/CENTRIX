@@ -4,7 +4,7 @@ using Agent.Native;
 namespace Agent.Collectors.Usb;
 
 /// <summary>
-/// Immediate sync priority — a USB insertion needs to reach the Alert engine's
+/// Immediate sync priority - a USB insertion needs to reach the Alert engine's
 /// UsbViolationRule without waiting for the next 2-minute batch tick.
 /// </summary>
 public sealed record UsbDeviceEvent : ISyncableEvent

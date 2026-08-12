@@ -7,8 +7,8 @@ using Microsoft.Extensions.Logging;
 namespace Agent.TrayHelper;
 
 /// <summary>
-/// The single place any alert — regardless of which process (service or tray helper) created it
-/// — actually gets shown to the user, since only this process can display UI in the
+/// The single place any alert - regardless of which process (service or tray helper) created it
+/// - actually gets shown to the user, since only this process can display UI in the
 /// interactive session.
 /// </summary>
 public sealed class PendingAlertNotificationPoller(

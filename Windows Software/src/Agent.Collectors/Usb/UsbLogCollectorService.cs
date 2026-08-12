@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 namespace Agent.Collectors.Usb;
 
 /// <summary>
-/// USB belongs to the machine, not to a desktop session — this runs once per machine (service
+/// USB belongs to the machine, not to a desktop session - this runs once per machine (service
 /// context), independent of which user is logged in, per the spec's multi-user-systems rule.
 /// </summary>
 public sealed class UsbLogCollectorService(

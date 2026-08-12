@@ -5,7 +5,7 @@ namespace Agent.Collectors.AppSession;
 /// <summary>
 /// Persisted immediately on open (EndTimeUtc null) so a crash mid-session still leaves a durable
 /// row for recovery to find and close, then completed in place when the session closes. Only the
-/// completed row is ever enqueued to the sync outbox — the backend never sees a half-open session.
+/// completed row is ever enqueued to the sync outbox - the backend never sees a half-open session.
 /// </summary>
 public sealed record AppSessionRecord : ISyncableEvent
 {

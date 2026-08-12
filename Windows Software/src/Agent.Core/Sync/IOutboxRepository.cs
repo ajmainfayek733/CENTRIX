@@ -2,7 +2,7 @@ namespace Agent.Core.Sync;
 
 /// <summary>
 /// Backing store for the outbox pattern: every collector enqueues here in the same local
-/// transaction as its own domain write, and the Sync Worker only ever talks to this contract —
+/// transaction as its own domain write, and the Sync Worker only ever talks to this contract -
 /// it never sees per-module schemas.
 /// </summary>
 public interface IOutboxRepository

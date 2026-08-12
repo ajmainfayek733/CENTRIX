@@ -11,7 +11,7 @@ namespace Agent.Collectors.Browser;
 /// Polls the foreground window at the same cadence as App Session; when it's a known browser
 /// and the window title has changed since the last check (Chromium/Firefox titles reflect the
 /// active page, so a navigation always changes it), re-reads the address bar via UI Automation.
-/// This avoids continuous UIA polling — a real cost driver against the CPU budget — while still
+/// This avoids continuous UIA polling - a real cost driver against the CPU budget - while still
 /// catching every navigation.
 /// </summary>
 public sealed class BrowserMonitorCollectorService(

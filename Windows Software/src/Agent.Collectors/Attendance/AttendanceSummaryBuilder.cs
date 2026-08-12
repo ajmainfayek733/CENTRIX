@@ -3,7 +3,7 @@ using Agent.Core.Intervals;
 namespace Agent.Collectors.Attendance;
 
 /// <summary>
-/// Derives daily summaries from session records. Splits at UTC midnight (not local midnight —
+/// Derives daily summaries from session records. Splits at UTC midnight (not local midnight -
 /// the spec forbids relying on local time internally) and merges overlapping non-working
 /// intervals (idle/lock/sleep) before subtracting, so overlapping periods are never double
 /// counted.

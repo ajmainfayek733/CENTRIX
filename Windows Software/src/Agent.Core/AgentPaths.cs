@@ -1,7 +1,7 @@
 namespace Agent.Core;
 
 /// <summary>
-/// Shared by both the service (Agent.Host) and the per-user tray helper (Agent.TrayHelper) —
+/// Shared by both the service (Agent.Host) and the per-user tray helper (Agent.TrayHelper) -
 /// both processes open the same encrypted SQLite database and DPAPI key files directly (DPAPI
 /// LocalMachine scope is readable across users/processes on one machine, and SQLite's WAL mode
 /// supports safe concurrent multi-process access), which is what lets the tray helper host the

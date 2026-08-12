@@ -1,6 +1,6 @@
 namespace Agent.Alerts;
 
-/// <summary>Declared in ascending order — comparisons (e.g. "is this an escalation?") rely on
+/// <summary>Declared in ascending order - comparisons (e.g. "is this an escalation?") rely on
 /// the enum's ordinal value increasing with severity.</summary>
 public enum AlertSeverity
 {

@@ -11,7 +11,7 @@ namespace Agent.Collectors.Attendance;
 
 /// <summary>
 /// Translates raw Windows session/power/idle signals into immutable <see cref="AttendanceRawEvent"/>
-/// rows. Contains no business rules itself (those live in <see cref="AttendanceEngine"/>) — this
+/// rows. Contains no business rules itself (those live in <see cref="AttendanceEngine"/>) - this
 /// class is purely an adapter from native events to the event log, per SRP.
 /// </summary>
 /// <remarks>

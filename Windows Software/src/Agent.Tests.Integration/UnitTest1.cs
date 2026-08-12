@@ -1,4 +1,4 @@
-﻿namespace Agent.Tests.Integration;
+namespace Agent.Tests.Integration;
 
 public class UnitTest1
 {

@@ -10,7 +10,7 @@ public sealed record UsbReconciliationResult(
 /// <summary>
 /// Pure diff between two point-in-time snapshots, keyed by PNPDeviceID. Run on every
 /// reconciliation tick to "recover from missed WMI event / missed device notification" per the
-/// spec — since it's a snapshot diff rather than an event stream, a missed intermediate tick
+/// spec - since it's a snapshot diff rather than an event stream, a missed intermediate tick
 /// self-heals on the next one automatically.
 /// </summary>
 public static class UsbReconciliationEngine
@@ -21,7 +21,7 @@ public static class UsbReconciliationEngine
     {
         // Capacity, not volume presence, distinguishes "empty card reader slot" (Size null/0)
         // from "a real drive whose volume hasn't mounted yet" (Size is known immediately even
-        // before the filesystem mounts) — using volume presence alone would miss delayed mounts.
+        // before the filesystem mounts) - using volume presence alone would miss delayed mounts.
         var currentWithMedia = current
             .Where(HasMedia)
             .ToDictionary(d => d.PnpDeviceId);

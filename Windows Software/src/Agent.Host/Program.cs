@@ -34,7 +34,7 @@ try
 
     // Best-effort: does nothing if already enrolled, and does not block service startup if not
     // (SyncWorker/ScreenshotUploadWorker will keep 401ing and logging clearly until an admin
-    // provisions this device — see DeviceAuthDelegatingHandler).
+    // provisions this device - see DeviceAuthDelegatingHandler).
     await DeviceEnrollmentBootstrapper.EnsureEnrolledAsync(
         host.Services.GetRequiredService<IDeviceCredentialStore>(),
         host.Services.GetRequiredService<ILoggerFactory>().CreateLogger(nameof(DeviceEnrollmentBootstrapper)),
@@ -43,7 +43,7 @@ try
     if (Environment.UserInteractive)
     {
         // Local/dev convenience: `dotnet run` without installing the service.
-        Log.Information("Running interactively — install as a Windows Service for production use.");
+        Log.Information("Running interactively - install as a Windows Service for production use.");
         service.StartInteractive(args);
 
         Console.WriteLine("Press Enter to stop.");

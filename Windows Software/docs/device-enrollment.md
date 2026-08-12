@@ -1,4 +1,4 @@
-# Device Enrollment (Agent ↔ Backend Authentication)
+# Device Enrollment (Agent <-> Backend Authentication)
 
 This describes how a Workforce Agent installation gets a credential that lets it talk to the
 backend, and why a freshly-installed Agent returns `401 Unauthorized` until this is done.
@@ -7,7 +7,7 @@ backend, and why a freshly-installed Agent returns `401 Unauthorized` until this
 
 The backend authenticates every Agent request with a per-device API key (`Authorization: Bearer
 <key>`, see `Backend/src/middleware/deviceAuth.ts`). That key does not exist until an
-administrator explicitly registers the device — there is no self-service "phone home and
+administrator explicitly registers the device - there is no self-service "phone home and
 register yourself" endpoint, by design: an unauthenticated enrollment endpoint would let anyone
 register an arbitrary device against any employee. Until a device is registered and its key is
 provisioned onto the machine, every backend call it makes will correctly receive `401 Unauthorized:
@@ -24,14 +24,14 @@ Invalid device credential`.
    ```json
    {
      "employeeId": "<employee-uuid>",
-     "machineId": "<Windows MachineGuid — HKLM\\SOFTWARE\\Microsoft\\Cryptography\\MachineGuid>",
+     "machineId": "<Windows MachineGuid - HKLM\\SOFTWARE\\Microsoft\\Cryptography\\MachineGuid>",
      "hostname": "<hostname>",
      "os": "Windows 11 Pro",
      "agentVersion": "0.1.0"
    }
    ```
 
-   The response includes `rawApiKey` **exactly once** — it is never recoverable after this call
+   The response includes `rawApiKey` **exactly once** - it is never recoverable after this call
    (only its HMAC is stored). Copy it immediately.
 
 3. **Provision the key onto the device.** The Agent looks for it in a machine-scoped environment
@@ -45,17 +45,17 @@ Invalid device credential`.
    ```
 
    On next start, the Agent imports the key into a DPAPI-protected local store
-   (`C:\ProgramData\WorkforceAgent\keys\device.key`, LocalMachine scope — readable only by that
+   (`C:\ProgramData\WorkforceAgent\keys\device.key`, LocalMachine scope - readable only by that
    machine, matching the SQLite database key's existing protection pattern) and uses it for every
    subsequent request via `Agent.Sync.DeviceAuthDelegatingHandler`. The environment variable does
-   not need to be removed afterward — it's simply ignored once a credential is already stored —
+   not need to be removed afterward - it's simply ignored once a credential is already stored -
    but clearing it after confirming enrollment succeeded avoids leaving a live secret in machine
    environment state.
 
 4. **Confirm.** Check the Agent's log (`C:\ProgramData\WorkforceAgent\logs\agent-*.log` /
    `tray-*.log`) for `"Device enrolled successfully"`. If instead you see `"This device is not
    enrolled"`, the environment variable wasn't set (or the process needs restarting to pick it
-   up — environment variable changes are not visible to already-running processes).
+   up - environment variable changes are not visible to already-running processes).
 
 ## Rotation / revocation
 

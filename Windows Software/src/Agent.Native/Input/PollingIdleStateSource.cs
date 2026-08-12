@@ -6,9 +6,9 @@ namespace Agent.Native.Input;
 /// <summary>
 /// Polls <see cref="IIdleInputMonitor"/> (GetLastInputInfo) at a fixed interval and raises a
 /// transition only when crossing the idle threshold, per the Active/Idle spec's "store
-/// transitions, not every tick" guidance. Must run in the interactive user session — a Session
+/// transitions, not every tick" guidance. Must run in the interactive user session - a Session
 /// 0 Windows Service has no meaningful GetLastInputInfo signal (Microsoft Learn: Session 0
-/// Isolation) — so this is intended to be hosted by the per-user tray helper, which relays
+/// Isolation) - so this is intended to be hosted by the per-user tray helper, which relays
 /// transitions to the service over IPC.
 /// </summary>
 [SupportedOSPlatform("windows")]

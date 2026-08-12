@@ -1,7 +1,7 @@
 namespace Agent.TrayHelper;
 
 /// <summary>
-/// No visible main window — a tray icon only. The context menu is deliberately minimal
+/// No visible main window - a tray icon only. The context menu is deliberately minimal
 /// (status/about, no way to pause or exit monitoring): "Admin is in control" per Rules.md, not
 /// the employee.
 /// </summary>

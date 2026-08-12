@@ -7,7 +7,7 @@ namespace Agent.Alerts.Rules;
 
 /// <summary>
 /// Idle escalation needs to be re-checked while a session stays open, not just once when it
-/// starts — this drives that by periodically re-submitting the currently-open Idle session(s)
+/// starts - this drives that by periodically re-submitting the currently-open Idle session(s)
 /// through the same AlertEngine that event-driven rules use.
 /// </summary>
 public sealed class IdleAlertPeriodicChecker(

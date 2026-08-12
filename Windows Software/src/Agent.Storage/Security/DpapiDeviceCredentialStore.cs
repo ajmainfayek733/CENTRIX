@@ -7,7 +7,7 @@ namespace Agent.Storage.Security;
 
 /// <summary>
 /// Protects the device API key at rest with Windows DPAPI (LocalMachine scope, matching the
-/// agent's LocalSystem service identity), the same pattern used for the SQLite database key —
+/// agent's LocalSystem service identity), the same pattern used for the SQLite database key -
 /// see Agent.Storage.Sqlite.DpapiDatabaseKeyProvider. Reads are cached in memory after the first
 /// hit since the file only ever changes via SaveApiKeyAsync from this same process tree.
 /// </summary>

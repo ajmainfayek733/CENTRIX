@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 namespace Agent.Alerts;
 
 /// <summary>
-/// Coordinates only — per the spec's "AlertEngine should only coordinate, no business logic
+/// Coordinates only - per the spec's "AlertEngine should only coordinate, no business logic
 /// belongs here": load policy, find applicable rules, execute, dedup/escalate via
 /// AlertStateManager, persist, notify. All actual rule logic lives in IAlertRule implementations.
 /// </summary>

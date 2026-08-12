@@ -12,7 +12,7 @@ public sealed class AttendanceEngine
     /// <param name="events">All raw events, any session, any order.</param>
     /// <param name="recoveryCloseAtUtc">
     /// When supplied, any session left open at the end of its event stream is closed at this
-    /// timestamp instead of being returned as open — used only by startup crash recovery.
+    /// timestamp instead of being returned as open - used only by startup crash recovery.
     /// </param>
     public static IReadOnlyList<SessionAttendanceRecord> BuildSessions(
         IEnumerable<AttendanceRawEvent> events,
@@ -60,7 +60,7 @@ public sealed class AttendanceEngine
                 case AttendanceEventType.Login:
                     if (current is not null)
                     {
-                        // Dangling open session (missed/duplicate logout) — close it here
+                        // Dangling open session (missed/duplicate logout) - close it here
                         // rather than merge, so two logins never overlap in one record.
                         results.Add(current.Close(evt.OccurredAtUtc));
                     }
@@ -115,7 +115,7 @@ public sealed class AttendanceEngine
     /// once) and each has its own start/end pair. A single "is something non-working active"
     /// flag would let one source's End event incorrectly close an interval another source is
     /// still holding open, so each source is tracked independently in <see cref="_activeSources"/>
-    /// — the merged interval only closes once every source that opened it has also closed.
+    /// - the merged interval only closes once every source that opened it has also closed.
     /// </summary>
     private sealed class SessionBuilder(AttendanceRawEvent loginEvent)
     {

@@ -13,8 +13,8 @@ namespace Agent.Collectors.AppSession;
 /// <summary>
 /// Drives <see cref="AppSessionTracker"/> from three input sources: a foreground-window poll
 /// timer, and the Lock/Unlock/Sleep/Resume/RDP-disconnect native events also used by Attendance.
-/// While Locked, Idle, or Sleeping, the poll loop is suppressed entirely — "never allow app
-/// sessions while locked" — and only the pseudo-state events themselves drive transitions.
+/// While Locked, Idle, or Sleeping, the poll loop is suppressed entirely - "never allow app
+/// sessions while locked" - and only the pseudo-state events themselves drive transitions.
 /// </summary>
 /// <remarks>
 /// GetForegroundWindow only returns meaningful data in the interactive session, so this runs
@@ -109,7 +109,7 @@ public sealed class AppSessionCollectorService(
             case SessionChangeReasonKind.RemoteDisconnect:
                 // Paused, not closed: "foreground session continues... without corrupting
                 // sessions." Resuming the poll after reconnect naturally either no-ops (same
-                // app still foreground) or opens a new session — never a synthetic one.
+                // app still foreground) or opens a new session - never a synthetic one.
                 _suppressPolling = true;
                 break;
             case SessionChangeReasonKind.ConsoleConnect:

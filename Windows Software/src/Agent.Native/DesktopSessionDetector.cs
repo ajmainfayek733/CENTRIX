@@ -6,7 +6,7 @@ namespace Agent.Native;
 public interface IDesktopSessionDetector
 {
     /// <summary>False when the secure desktop is active (UAC elevation prompt, some lock-screen
-    /// configurations) — capturing then would either fail or capture nothing meaningful.</summary>
+    /// configurations) - capturing then would either fail or capture nothing meaningful.</summary>
     bool IsInteractiveDesktopAvailable();
 }
 

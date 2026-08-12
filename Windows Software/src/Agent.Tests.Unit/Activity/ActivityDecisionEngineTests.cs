@@ -45,7 +45,7 @@ public class ActivityDecisionEngineTests
     [Fact]
     public void JigglingMouseJustUnderThreshold_RemainsActive()
     {
-        // Edge case 1: user jiggles mouse every 4m59s — should remain Active.
+        // Edge case 1: user jiggles mouse every 4m59s - should remain Active.
         var result = ActivityDecisionEngine.Evaluate(Signal(TimeSpan.FromSeconds(4 * 60 + 59)), Policy);
         Assert.Equal(ActivityState.Active, result.State);
     }
@@ -75,7 +75,7 @@ public class ActivityDecisionEngineTests
     [Fact]
     public void HighCpuWithNoInput_RemainsActive()
     {
-        // Edge case 6: long compilation/rendering — 0 mouse movement, CPU 95%, remain Active.
+        // Edge case 6: long compilation/rendering - 0 mouse movement, CPU 95%, remain Active.
         var result = ActivityDecisionEngine.Evaluate(Signal(TimeSpan.FromMinutes(10), cpu: 95.0), Policy);
         Assert.Equal(ActivityState.Active, result.State);
         Assert.Equal(ActivityReason.CpuBusy, result.Reason);
@@ -84,7 +84,7 @@ public class ActivityDecisionEngineTests
     [Fact]
     public void LargeDownloadWithZeroCpuAndNoInput_RemainsIdle()
     {
-        // Edge case 7: large download, no input, CPU 0% — should remain Idle.
+        // Edge case 7: large download, no input, CPU 0% - should remain Idle.
         var result = ActivityDecisionEngine.Evaluate(Signal(TimeSpan.FromMinutes(10), cpu: 0.0), Policy);
         Assert.Equal(ActivityState.Idle, result.State);
     }

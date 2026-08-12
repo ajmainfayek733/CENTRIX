@@ -12,7 +12,7 @@ namespace Agent.Collectors.Activity;
 /// <summary>
 /// The real Active/Idle/Locked/Sleeping/Offline authority for the whole agent. Also implements
 /// <see cref="IIdleStateSource"/> so Attendance and App Session consume this richer,
-/// policy-aware signal directly instead of a bare idle-threshold poll — this is the
+/// policy-aware signal directly instead of a bare idle-threshold poll - this is the
 /// implementation that resolves the interim gap flagged when those two modules were built.
 /// </summary>
 /// <remarks>

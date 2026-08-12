@@ -44,7 +44,7 @@ public sealed class TrayIdleAttendanceBridge(
             return;
         }
 
-        // The tray helper's own session, not "whichever session is active at the console" —
+        // The tray helper's own session, not "whichever session is active at the console" -
         // those differ when this process is running under RDP while someone else is on the
         // physical console.
         var sessionId = Process.GetCurrentProcess().SessionId;

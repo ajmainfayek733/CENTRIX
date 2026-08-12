@@ -1,7 +1,7 @@
 namespace Agent.Collectors.Screenshot;
 
 /// <summary>
-/// Deliberately not an ISyncableEvent through the generic JSON outbox — the payload is a large
+/// Deliberately not an ISyncableEvent through the generic JSON outbox - the payload is a large
 /// binary blob, uploaded via IBackendClient.UploadScreenshotAsync's dedicated path, not batched
 /// JSON. Only this metadata plus a reference to the encrypted local file crosses that boundary.
 /// </summary>

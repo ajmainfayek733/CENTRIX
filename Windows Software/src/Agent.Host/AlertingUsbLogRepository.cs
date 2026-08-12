@@ -4,7 +4,7 @@ using Agent.Collectors.Usb;
 namespace Agent.Host;
 
 /// <summary>
-/// Decorator, not a modification to Agent.Collectors — Collectors has no dependency on Alerts
+/// Decorator, not a modification to Agent.Collectors - Collectors has no dependency on Alerts
 /// (only Alerts depends on Collectors, to avoid a cycle), so triggering the alert engine after
 /// a successful write happens here at the composition root instead.
 /// </summary>

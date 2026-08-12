@@ -3,7 +3,7 @@ using Agent.Alerts;
 namespace Agent.TrayHelper;
 
 /// <summary>
-/// A NotifyIcon balloon tip rather than the newer Action Center toast API — reliable without
+/// A NotifyIcon balloon tip rather than the newer Action Center toast API - reliable without
 /// extra AppUserModelID/manifest registration, and functionally serves the same purpose (the
 /// spec's "Windows Toast Notifications" requirement) for a tray-icon-hosted agent.
 /// </summary>

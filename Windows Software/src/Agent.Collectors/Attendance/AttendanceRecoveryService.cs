@@ -6,7 +6,7 @@ namespace Agent.Collectors.Attendance;
 /// <summary>
 /// Runs once at startup. Finds any session left open by a prior crash/kill/power-loss and
 /// closes it at the current time with a synthetic Logout, then immediately reopens a new
-/// session for continuity — "find open session, close at restart, create new session" per
+/// session for continuity - "find open session, close at restart, create new session" per
 /// the Attendance and App-Session specs' crash-recovery requirements. Never leaves a dangling
 /// open session across a restart.
 /// </summary>

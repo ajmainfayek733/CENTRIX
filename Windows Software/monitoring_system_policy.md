@@ -12,7 +12,7 @@
 
 As the owner of this organization, my goal is to ensure high operational efficiency, fair performance evaluations, and team accountability across our 30-person workforce while maintaining an ethical, legally compliant work environment.
 
-This document establishes the binding operational policy and technical specification for our internal **Workplace Productivity Telemetry System**. This software exists strictly to track productivity, active work time, and system integrity on company-provided assets. It is explicitly designed as a transparent workplace management tool—**not covert spyware or unauthorized surveillance**.
+This document establishes the binding operational policy and technical specification for our internal **Workplace Productivity Telemetry System**. This software exists strictly to track productivity, active work time, and system integrity on company-provided assets. It is explicitly designed as a transparent workplace management tool-**not covert spyware or unauthorized surveillance**.
 
 ---
 
@@ -35,7 +35,7 @@ This document establishes the binding operational policy and technical specifica
 
 ### 2.1 Regulatory Compliance
 
-- **Data Protection:** The system strictly complies with Singapore’s **Personal Data Protection Act (PDPA)** and international data protection standards (including **GDPR** where remote/offshore staff or data resides).
+- **Data Protection:** The system strictly complies with Singapore's **Personal Data Protection Act (PDPA)** and international data protection standards (including **GDPR** where remote/offshore staff or data resides).
 - **Data Minimization:** Only data directly required for productivity analytics and IT operational safety is logged.
 
 ### 2.2 Hard Privacy Prohibitions (Out of Scope)
@@ -50,7 +50,7 @@ This document establishes the binding operational policy and technical specifica
 
 ### 3.1 Resource & Performance Limits
 
-- **CPU Bound:** Agent total CPU footprint must remain **< 2–3% total bound CPU usage** during all runtime operations.
+- **CPU Bound:** Agent total CPU footprint must remain **< 2-3% total bound CPU usage** during all runtime operations.
 - **RAM Minimization:** Memory utilization must be kept strictly to a minimum using lightweight, native execution routines.
 
 ### 3.2 Inactivity, Alerts & Session Logic

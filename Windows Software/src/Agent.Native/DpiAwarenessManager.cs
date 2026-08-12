@@ -6,7 +6,7 @@ namespace Agent.Native;
 public interface IDpiAwarenessManager
 {
     /// <summary>
-    /// Must be called once, before any window is created or any DPI-dependent metric is read —
+    /// Must be called once, before any window is created or any DPI-dependent metric is read -
     /// per Microsoft Learn, DPI awareness can only be set once per process and takes effect from
     /// that point on. Without Per-Monitor-V2 awareness, virtual-screen metrics come back
     /// DPI-virtualized rather than as true pixel dimensions.

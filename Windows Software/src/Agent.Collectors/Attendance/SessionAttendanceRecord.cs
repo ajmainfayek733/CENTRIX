@@ -4,7 +4,7 @@ namespace Agent.Collectors.Attendance;
 
 /// <summary>
 /// One Login-to-Logout span for a single Windows session (console, RDP, or fast-user-switch
-/// session are always tracked independently — never merged at this layer).
+/// session are always tracked independently - never merged at this layer).
 /// </summary>
 public sealed record SessionAttendanceRecord
 {

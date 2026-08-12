@@ -1,6 +1,6 @@
 namespace Agent.Collectors.Activity;
 
-/// <summary>Exactly the five states from the spec's "Enterprise State Machine" — never skip states.</summary>
+/// <summary>Exactly the five states from the spec's "Enterprise State Machine" - never skip states.</summary>
 public enum ActivityState
 {
     Active,

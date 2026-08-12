@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 namespace Agent.Sync;
 
 /// <summary>
-/// Screenshots don't flow through the generic outbox — the payload is a large binary blob
+/// Screenshots don't flow through the generic outbox - the payload is a large binary blob
 /// uploaded via IBackendClient's dedicated multipart-style path, decrypted locally first since
 /// TLS (not double encryption) covers transit. Uploads are held back until <see cref="ConsentGate"/>
 /// reports the device's monitoring notice has been acknowledged (see ConsentGateHostedService).

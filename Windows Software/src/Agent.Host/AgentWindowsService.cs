@@ -9,7 +9,7 @@ namespace Agent.Host;
 /// Classic ServiceBase rather than the generic host's WindowsServiceLifetime: only ServiceBase
 /// exposes OnSessionChange/OnPowerEvent, which the generic host's simplified wrapper does not
 /// (confirmed against Microsoft Learn and open dotnet/runtime issues before choosing this
-/// approach — see the architecture plan). A generic IHost is built and run internally so DI,
+/// approach - see the architecture plan). A generic IHost is built and run internally so DI,
 /// configuration, and hosted services still work exactly as they would under UseWindowsService.
 /// </summary>
 public sealed class AgentWindowsService : ServiceBase
@@ -71,7 +71,7 @@ public sealed class AgentWindowsService : ServiceBase
             publisher.Publish(new PowerChangeNotification(mappedKind, clock.UtcNow));
         }
 
-        // Never deny a suspend query — a monitoring agent must never block OS power transitions.
+        // Never deny a suspend query - a monitoring agent must never block OS power transitions.
         return true;
     }
 

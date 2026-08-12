@@ -1,10 +1,10 @@
-# Workforce Agent — Privacy Policy
+# Workforce Agent - Privacy Policy
 
-> **Before you use this document:** this is a working draft describing the actual data practices of the Workforce Agent software, based on its technical specification, written to align with the general principles of Singapore's Personal Data Protection Act (PDPA) and the EU/UK GDPR (for any remote or offshore staff, or where data may be accessed from those jurisdictions). It is **not legal advice**. Data protection obligations depend on your specific jurisdictions, workforce composition, and how you configure the software — have qualified counsel and/or your Data Protection Officer review and finalize this before publishing it to employees.
+> **Before you use this document:** this is a working draft describing the actual data practices of the Workforce Agent software, based on its technical specification, written to align with the general principles of Singapore's Personal Data Protection Act (PDPA) and the EU/UK GDPR (for any remote or offshore staff, or where data may be accessed from those jurisdictions). It is **not legal advice**. Data protection obligations depend on your specific jurisdictions, workforce composition, and how you configure the software - have qualified counsel and/or your Data Protection Officer review and finalize this before publishing it to employees.
 
 **Company:** [Company Legal Name]
 **Effective Date:** [Date]
-**Policy Version:** [tracked automatically by the Agent — see §9]
+**Policy Version:** [tracked automatically by the Agent - see section 9]
 
 ---
 
@@ -20,36 +20,36 @@ We collect only what is directly required for productivity analytics, attendance
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Attendance**           | Login, logout, screen lock/unlock, and sleep/resume timestamps                                                                              | Calculating hours present and worked; attendance record-keeping                                                                                      |
 | **Active vs. idle time** | Whether you are actively using the device (keyboard/mouse/touch input, or high CPU activity such as compiling or rendering) versus idle     | Distinguishing genuine working time from time away from the keyboard; avoiding misclassifying meetings, presentations, or compute-bound work as idle |
-| **Application usage**    | The name, window title, and duration of the application in the foreground                                                                   | Understanding how work time is spent across tools; productivity classification (see §3)                                                              |
+| **Application usage**    | The name, window title, and duration of the application in the foreground                                                                   | Understanding how work time is spent across tools; productivity classification (see section 3)                                                              |
 | **Browser activity**     | The domain and URL of websites visited in a supported browser                                                                               | Productivity classification; enforcing acceptable-use policy where a website restriction list is configured                                          |
-| **Screenshots**          | Periodic images of your screen — **only if your administrator has enabled this feature**; disabled unless explicitly turned on              | Visual verification of work activity, where enabled                                                                                                  |
-| **USB device activity**  | Connection/disconnection of USB storage devices, and identifying information about the device (make, model, capacity) — not the files on it | Data-loss prevention and endpoint security                                                                                                           |
+| **Screenshots**          | Periodic images of your screen - **only if your administrator has enabled this feature**; disabled unless explicitly turned on              | Visual verification of work activity, where enabled                                                                                                  |
+| **USB device activity**  | Connection/disconnection of USB storage devices, and identifying information about the device (make, model, capacity) - not the files on it | Data-loss prevention and endpoint security                                                                                                           |
 | **Security alerts**      | System-generated notices (e.g., extended idle time, restricted-site access, USB connection, if configured)                                  | Operational and security oversight, and to notify you when such an event has been logged                                                             |
 | **Consent record**       | The fact and date that you acknowledged this policy, and which version                                                                      | Proof of notice, for compliance purposes                                                                                                             |
 
 ### What we explicitly do not collect
 
-- **Keystroke content.** We do not log what you type — passwords, messages, or any other typed content. Only the fact that input activity occurred (for idle-detection purposes) is used, never its content.
+- **Keystroke content.** We do not log what you type - passwords, messages, or any other typed content. Only the fact that input activity occurred (for idle-detection purposes) is used, never its content.
 - **Personal account contents.** We do not read personal email, private messaging, or personal social media content, even if accessed on a Company device.
 - **File contents.** USB monitoring records that a device was connected, not the files transferred to or from it.
 - **Off-hours/off-device activity.** The Agent only runs on Company-owned devices and only collects data while you are logged into your work account on that device.
 
 ## 3. Productivity Classification
 
-Administrators may configure a list mapping applications or websites to productivity categories (e.g., "Productive," "Neutral," "Unproductive"). This classification is applied automatically based on the application/site in use — it is not based on the content of your work, your communications, or any manual review of your individual activity by another person as a matter of routine.
+Administrators may configure a list mapping applications or websites to productivity categories (e.g., "Productive," "Neutral," "Unproductive"). This classification is applied automatically based on the application/site in use - it is not based on the content of your work, your communications, or any manual review of your individual activity by another person as a matter of routine.
 
 ## 4. Legal Basis for Processing
 
 - **Legitimate interest / contractual necessity**: monitoring is necessary to manage the employment relationship, verify attendance, and protect Company assets and data, consistent with [Singapore PDPA's provisions for employee data processed in the ordinary course of employment / GDPR Article 6(1)(f) legitimate interest, or (b) contractual necessity, as applicable].
 - **Consent / notice**: independent of the above legal bases, you are notified before monitoring begins on your account and asked to acknowledge this policy, both as a matter of transparency and, where required by law, as a condition precedent to specific processing activities (e.g., screenshot capture, where enabled).
 
-Where members of your workforce are located outside Singapore, or where data may be accessed from outside Singapore (e.g., a backend hosted in another jurisdiction), GDPR or other local data protection law may apply in addition to the PDPA; §8 addresses international transfer.
+Where members of your workforce are located outside Singapore, or where data may be accessed from outside Singapore (e.g., a backend hosted in another jurisdiction), GDPR or other local data protection law may apply in addition to the PDPA; section 8 addresses international transfer.
 
 ## 5. Data Minimization and Retention
 
 - Data is retained locally on your device only until it is successfully transmitted to the central backend, at which point it is deleted from the device.
-- If your device is offline and cannot transmit data, it is held locally for up to **30 days** (organization-configurable) before being automatically discarded — it is not held indefinitely on the device.
-- Retention of data on the central backend after receipt is set by [Company Legal Name]'s data retention schedule: **[retention period — to be defined by the organization; not determined by the Agent software itself]**. We recommend defining a retention period no longer than necessary for the stated purposes in §2, with periodic deletion or anonymization thereafter.
+- If your device is offline and cannot transmit data, it is held locally for up to **30 days** (organization-configurable) before being automatically discarded - it is not held indefinitely on the device.
+- Retention of data on the central backend after receipt is set by [Company Legal Name]'s data retention schedule: **[retention period - to be defined by the organization; not determined by the Agent software itself]**. We recommend defining a retention period no longer than necessary for the stated purposes in section 2, with periodic deletion or anonymization thereafter.
 - Screenshots, where enabled, follow the same retention principles and are encrypted at rest both on the device and expected to be encrypted at rest on the backend.
 
 ## 6. Security Measures
@@ -64,7 +64,7 @@ Where members of your workforce are located outside Singapore, or where data may
 
 - **Your manager and HR**, for performance and attendance purposes, per Company policy.
 - **IT and security personnel**, for endpoint security and policy enforcement (e.g., investigating a security alert).
-- **The Company's designated system administrator(s)**, who configure monitoring policy (thresholds, feature toggles, website restrictions) — referred to in the technical documentation as the Super Admin / Organization Owner role.
+- **The Company's designated system administrator(s)**, who configure monitoring policy (thresholds, feature toggles, website restrictions) - referred to in the technical documentation as the Super Admin / Organization Owner role.
 - We do not sell your data or share it with third parties for advertising or marketing purposes.
 - [If a third-party hosting provider, analytics vendor, or backend operator will process this data on the Company's behalf, name them here and confirm a data processing agreement is in place.]
 
@@ -83,7 +83,7 @@ Subject to applicable law (PDPA and, where applicable, GDPR), you may have the r
 - **Access** the personal data we hold about you.
 - **Correct** inaccurate data.
 - **Request deletion** of your data, subject to our legitimate need to retain employment and security records for the periods required by law or legitimate business purposes.
-- **Withdraw consent**, where processing is based on consent rather than another legal basis — noting that some processing (e.g., attendance records) may continue to be required as a condition of your employment or under separate legal obligation even if you withdraw consent to this notice.
+- **Withdraw consent**, where processing is based on consent rather than another legal basis - noting that some processing (e.g., attendance records) may continue to be required as a condition of your employment or under separate legal obligation even if you withdraw consent to this notice.
 - **Lodge a complaint** with Singapore's Personal Data Protection Commission (PDPC) or, where GDPR applies, your relevant national data protection authority.
 
 To exercise any of these rights, contact: [Data Protection Officer name/email].

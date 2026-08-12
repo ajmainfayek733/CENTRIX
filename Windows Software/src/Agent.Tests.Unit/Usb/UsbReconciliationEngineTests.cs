@@ -86,7 +86,7 @@ public class UsbReconciliationEngineTests
     public void RealDriveWithDelayedMount_IsStillReportedAsInserted_EvenWithNoVolumesYet()
     {
         // Delayed mount: the physical device (with known capacity) is present, but its volume
-        // hasn't mounted yet — capacity, not volume presence, is what should trigger insertion.
+        // hasn't mounted yet - capacity, not volume presence, is what should trigger insertion.
         var delayedMountDrive = Drive("USB\\VID_1234", capacity: 16_000_000_000);
         var previous = new Dictionary<string, UsbDriveSnapshot>();
 

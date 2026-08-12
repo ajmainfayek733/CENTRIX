@@ -8,7 +8,7 @@ namespace Agent.Sync;
 
 /// <summary>
 /// Agent.Host (the Session-0 service) has no interactive desktop and so cannot show the consent
-/// dialog itself — that only happens in Agent.TrayHelper, once a user is logged in. This polls
+/// dialog itself - that only happens in Agent.TrayHelper, once a user is logged in. This polls
 /// the shared consent store for an acknowledgement recorded by any user on this machine and
 /// flips <see cref="ConsentGate"/> once one is found at or above the current policy version, so
 /// SyncWorker and ScreenshotUploadWorker know not to transmit anything before that happens.

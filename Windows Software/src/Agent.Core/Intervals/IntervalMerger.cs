@@ -2,7 +2,7 @@ namespace Agent.Core.Intervals;
 
 /// <summary>
 /// Merges overlapping intervals (e.g. Idle and Locked periods that cover the same span) so
-/// callers never double-subtract the same wall-clock time twice — the root cause called out
+/// callers never double-subtract the same wall-clock time twice - the root cause called out
 /// in the Attendance spec's "Locked time overlaps idle time" edge case.
 /// </summary>
 public static class IntervalMerger

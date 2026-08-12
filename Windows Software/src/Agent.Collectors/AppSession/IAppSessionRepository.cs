@@ -6,7 +6,7 @@ public interface IAppSessionRepository
     Task OpenAsync(AppSessionRecord openSession, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Completes the row in place and only then enqueues it to the sync outbox — the backend
+    /// Completes the row in place and only then enqueues it to the sync outbox - the backend
     /// never sees a session before it's finished.
     /// </summary>
     Task CloseAsync(Guid clientEventId, DateTimeOffset endTimeUtc, string? productivityTag, CancellationToken cancellationToken);

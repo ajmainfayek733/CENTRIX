@@ -7,7 +7,7 @@ namespace Agent.Native;
 /// Standard, well-documented WMI associator-query pattern: Win32_DiskDrive (filtered to USB
 /// interface) -> Win32_DiskDriveToDiskPartition -> Win32_LogicalDiskToPartition ->
 /// Win32_LogicalDisk. PNPDeviceID (from Win32_DiskDrive) is used as the stable device identity
-/// rather than SerialNumber — cheap flash drives are well known to report duplicate or blank
+/// rather than SerialNumber - cheap flash drives are well known to report duplicate or blank
 /// serial numbers, while PNPDeviceID is Windows-assigned per physical enumeration and reliably
 /// unique, so it's used ahead of the spec's literal Serial-first priority for that reason.
 /// </summary>

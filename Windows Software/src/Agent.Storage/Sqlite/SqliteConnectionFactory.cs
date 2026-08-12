@@ -44,7 +44,7 @@ public sealed class SqliteConnectionFactory : ISqliteConnectionFactory
 
         // WAL + a busy timeout make it safe for the service and the per-user tray helper to
         // open the same database file concurrently (the tray helper hosts the collectors that
-        // must run in an interactive session — see Agent.TrayHelper) instead of one process
+        // must run in an interactive session - see Agent.TrayHelper) instead of one process
         // getting SQLITE_BUSY immediately on a write conflict.
         using var pragmaCommand = connection.CreateCommand();
         pragmaCommand.CommandText = "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;";

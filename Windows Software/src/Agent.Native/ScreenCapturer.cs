@@ -9,7 +9,7 @@ public sealed record CapturedImage(byte[] JpegBytes, int Width, int Height);
 
 public interface IScreenCapturer
 {
-    /// <summary>Null on any capture failure (driver reset, GDI exhaustion, etc.) — callers retry
+    /// <summary>Null on any capture failure (driver reset, GDI exhaustion, etc.) - callers retry
     /// on the next scheduled interval rather than treating this as fatal.</summary>
     CapturedImage? Capture(VirtualScreenBounds bounds, int jpegQuality);
 }
@@ -43,7 +43,7 @@ public sealed class ScreenCapturer : IScreenCapturer
         catch (Exception ex) when (ex is OutOfMemoryException or ExternalException or InvalidOperationException)
         {
             // GDI+ notoriously reports many unrelated capture failures (driver resets, resource
-            // exhaustion) as a generic OutOfMemoryException — this is documented GDI+ behavior,
+            // exhaustion) as a generic OutOfMemoryException - this is documented GDI+ behavior,
             // not literal memory exhaustion, so it's treated as a transient capture failure.
             return null;
         }

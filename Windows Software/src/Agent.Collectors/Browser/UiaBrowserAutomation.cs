@@ -6,13 +6,13 @@ using Microsoft.Extensions.Logging;
 namespace Agent.Collectors.Browser;
 
 /// <summary>
-/// UI Automation only (no Chrome DevTools Protocol — CDP requires launching or attaching with a
+/// UI Automation only (no Chrome DevTools Protocol - CDP requires launching or attaching with a
 /// remote-debugging port, which the spec's own strategy table doesn't require and which most
 /// enterprise Chrome/Edge policies restrict). Locates the address bar with a positional
 /// heuristic rather than a hardcoded per-browser AutomationId: Chromium/Firefox address bars
 /// are Edit controls near the top of the window, but the exact AutomationId/Name strings are
 /// version- and locale-dependent and are not something to hardcode without per-version
-/// verification — this is a documented best-effort approach, not a guaranteed one.
+/// verification - this is a documented best-effort approach, not a guaranteed one.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class UiaBrowserAutomation(ILogger<UiaBrowserAutomation> logger) : IBrowserAutomation
@@ -45,7 +45,7 @@ public sealed class UiaBrowserAutomation(ILogger<UiaBrowserAutomation> logger) :
         }
         catch (ElementNotAvailableException)
         {
-            // Window or control closed mid-read — an expected race, not a failure to log loudly.
+            // Window or control closed mid-read - an expected race, not a failure to log loudly.
             return null;
         }
         catch (COMException ex)

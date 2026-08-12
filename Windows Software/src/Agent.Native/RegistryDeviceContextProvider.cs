@@ -8,7 +8,7 @@ namespace Agent.Native;
 /// MachineGuid (HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid) is the standard, documented,
 /// stable-across-reinstalls machine identifier used by many Microsoft components for exactly
 /// this purpose. OrganizationId comes from policy/config, not the registry, and is populated
-/// once the backend assigns one — empty until then.
+/// once the backend assigns one - empty until then.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class RegistryDeviceContextProvider : IDeviceContextProvider

@@ -5,7 +5,7 @@ using Agent.Core.Policy;
 namespace Agent.Alerts.Rules;
 
 /// <summary>
-/// Not fired by a single point-in-time event — <see cref="IdleAlertPeriodicChecker"/> feeds this
+/// Not fired by a single point-in-time event - <see cref="IdleAlertPeriodicChecker"/> feeds this
 /// rule a repeated snapshot of the currently-open Idle session (with EndTimeUtc set to "now" for
 /// that check), so the same escalation/dedup machinery in AlertEngine works uniformly for both
 /// event-driven and time-driven rules.

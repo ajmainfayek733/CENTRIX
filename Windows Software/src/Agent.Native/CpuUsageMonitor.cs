@@ -6,7 +6,7 @@ namespace Agent.Native;
 
 public interface ICpuUsageMonitor
 {
-    /// <summary>Null when the counter is unavailable (disabled perf counter service, etc.) —
+    /// <summary>Null when the counter is unavailable (disabled perf counter service, etc.) -
     /// the spec treats CPU as an optional signal, so callers must degrade gracefully.</summary>
     double? GetTotalProcessorUsagePercent();
 }
@@ -15,7 +15,7 @@ public interface ICpuUsageMonitor
 /// See Microsoft Learn: PerformanceCounter class
 /// (https://learn.microsoft.com/dotnet/api/system.diagnostics.performancecounter). Wrapped
 /// defensively since the "Processor Information" counter category can be missing or disabled
-/// on locked-down enterprise images — this signal is explicitly optional per the Active/Idle spec.
+/// on locked-down enterprise images - this signal is explicitly optional per the Active/Idle spec.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class CpuUsageMonitor : ICpuUsageMonitor, IDisposable

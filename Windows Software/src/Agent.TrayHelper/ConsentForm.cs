@@ -2,7 +2,7 @@ namespace Agent.TrayHelper;
 
 /// <summary>
 /// Blocking first-run (and post-policy-change) disclosure. No collector starts until this is
-/// acknowledged — see Program.cs's EnsureConsentAcknowledged. The written/signed acknowledgment
+/// acknowledged - see Program.cs's EnsureConsentAcknowledged. The written/signed acknowledgment
 /// your organization's policy requires is an HR process outside this software; this dialog is
 /// the technical enforcement half of that requirement and the record synced to the backend
 /// (POST /api/v1/consent) as proof of notice. Once acknowledged by any user on this machine, it
@@ -24,7 +24,7 @@ public sealed class ConsentForm : Form
 
     public ConsentForm(int policyVersion)
     {
-        Text = "Workforce Agent — Monitoring Notice";
+        Text = "Workforce Agent - Monitoring Notice";
         ClientSize = new Size(680, 700);
         MinimumSize = new Size(680, 560);
         StartPosition = FormStartPosition.CenterScreen;
@@ -69,7 +69,7 @@ public sealed class ConsentForm : Form
 
         var subtitleLabel = new Label
         {
-            Text = $"Workforce Agent monitoring notice · Policy version {policyVersion}",
+            Text = $"Workforce Agent monitoring notice - Policy version {policyVersion}",
             ForeColor = Color.FromArgb(198, 208, 226),
             Font = new Font("Segoe UI", 9.5f),
             AutoSize = true,
@@ -101,7 +101,7 @@ public sealed class ConsentForm : Form
         AppendParagraph(body,
             "This device is owned and provided by your employer for work purposes. It runs the Workforce " +
             "Agent, workplace management software that records attendance, active working time, application " +
-            "and browser usage, and endpoint security events. This is disclosed, transparent monitoring — " +
+            "and browser usage, and endpoint security events. This is disclosed, transparent monitoring - " +
             "the Agent is always visible in Task Manager and Programs and Features, and it contains no " +
             "remote-control, remote-shell, or remote screen-viewing capability.");
 
@@ -111,14 +111,14 @@ public sealed class ConsentForm : Form
             "Login, logout, lock, unlock, and idle/active time",
             "Application name, window title, and duration in the foreground",
             "Domain and URL of websites visited in a supported browser",
-            "Periodic screenshots — only if enabled by your administrator; disabled by default",
+            "Periodic screenshots - only if enabled by your administrator; disabled by default",
             "USB storage device connection and disconnection events",
         ]);
 
         AppendHeading(body, "What is never collected");
         AppendBullets(body,
         [
-            "The content of what you type — no keystroke logging of content, only that input occurred",
+            "The content of what you type - no keystroke logging of content, only that input occurred",
             "Personal email, private messages, or personal social media content",
             "Login credentials, passwords, or the contents of personal accounts",
             "Any activity while you are not logged into this device with your work account",
@@ -129,7 +129,7 @@ public sealed class ConsentForm : Form
             "Subject to applicable law, you may have the right to access, correct, or request deletion of " +
             "your data, and to be notified of material changes to this policy before they take effect. Full " +
             "detail, including retention periods, legal basis, and how to exercise these rights, is set out " +
-            "in the complete Terms of Use and Privacy Policy — use the links below to read them in full " +
+            "in the complete Terms of Use and Privacy Policy - use the links below to read them in full " +
             "before acknowledging this notice.");
 
         body.Select(0, 0);
@@ -186,11 +186,11 @@ public sealed class ConsentForm : Form
 
         var termsLink = MakeLinkButton("Read the full Terms of Use");
         termsLink.Left = 0;
-        termsLink.Click += (_, _) => ShowPolicyDocument("Workforce Agent — Terms of Use", "Agent.TrayHelper.Policies.terms-of-service.md");
+        termsLink.Click += (_, _) => ShowPolicyDocument("Workforce Agent - Terms of Use", "Agent.TrayHelper.Policies.terms-of-service.md");
 
         var privacyLink = MakeLinkButton("Read the full Privacy Policy");
         privacyLink.Left = termsLink.Right + 24;
-        privacyLink.Click += (_, _) => ShowPolicyDocument("Workforce Agent — Privacy Policy", "Agent.TrayHelper.Policies.privacy-policy.md");
+        privacyLink.Click += (_, _) => ShowPolicyDocument("Workforce Agent - Privacy Policy", "Agent.TrayHelper.Policies.privacy-policy.md");
 
         row.Controls.Add(termsLink);
         row.Controls.Add(privacyLink);

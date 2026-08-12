@@ -4,7 +4,7 @@ using Agent.Storage.Sqlite;
 namespace Agent.DevTools;
 
 /// <summary>
-/// Not part of the shipped product — a developer/QA utility for inspecting the Agent's local
+/// Not part of the shipped product - a developer/QA utility for inspecting the Agent's local
 /// database, which is SQLCipher-encrypted and therefore not directly readable by most SQLite
 /// GUI tools (Beekeeper Studio has no SQLCipher support as of this writing:
 /// https://github.com/beekeeper-studio/beekeeper-studio/issues/625). Uses SQLCipher's
@@ -53,7 +53,7 @@ internal static class Program
         }
 
         // ATTACH DATABASE opens/creates the file itself but never creates missing parent
-        // directories — SQLite returns SQLITE_CANTOPEN (error 14) if the directory isn't there.
+        // directories - SQLite returns SQLITE_CANTOPEN (error 14) if the directory isn't there.
         var outputDirectory = Path.GetDirectoryName(outputPath);
         if (!string.IsNullOrEmpty(outputDirectory))
         {
@@ -87,7 +87,7 @@ internal static class Program
 
         Console.WriteLine($"Plaintext copy written to: {outputPath}");
         Console.WriteLine("This file is NOT encrypted. Open it in Beekeeper Studio, DB Browser for");
-        Console.WriteLine("SQLite, or any standard SQLite client. Delete it when you're done —");
+        Console.WriteLine("SQLite, or any standard SQLite client. Delete it when you're done -");
         Console.WriteLine("it contains the same monitoring data as the live database, in the clear.");
     }
 
@@ -109,7 +109,7 @@ internal static class Program
 
     private static void PrintUsage()
     {
-        Console.WriteLine("Agent.DevTools — local database inspection helper (not part of the shipped product).");
+        Console.WriteLine("Agent.DevTools - local database inspection helper (not part of the shipped product).");
         Console.WriteLine();
         Console.WriteLine("  export-db [--data-dir <dir>] [--output <path>]");
         Console.WriteLine("      Decrypts the Agent's SQLite database to a plaintext copy for inspection");

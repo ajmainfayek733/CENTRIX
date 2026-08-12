@@ -6,8 +6,8 @@ using Microsoft.Extensions.Logging;
 namespace Agent.Sync;
 
 /// <summary>
-/// Attaches the device's bearer credential (spec §2.2) to every outgoing backend request, and
-/// logs a clear, actionable message when the backend rejects it — this is the piece that was
+/// Attaches the device's bearer credential (spec section 2.2) to every outgoing backend request, and
+/// logs a clear, actionable message when the backend rejects it - this is the piece that was
 /// entirely missing before: HttpBackendClient's own doc comment used to say authentication was
 /// "expected to be configured on the injected HttpClient ... by the composition root", but no
 /// composition root ever did it, so every call went out with no Authorization header at all and

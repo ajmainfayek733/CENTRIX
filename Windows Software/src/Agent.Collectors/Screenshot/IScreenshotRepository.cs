@@ -6,7 +6,7 @@ public interface IScreenshotRepository
 
     Task<IReadOnlyList<ScreenshotRecord>> GetPendingUploadsAsync(int maxBatchSize, CancellationToken cancellationToken);
 
-    /// <summary>Deletes the row and the local encrypted file — retention is "delete on sync ack."</summary>
+    /// <summary>Deletes the row and the local encrypted file - retention is "delete on sync ack."</summary>
     Task MarkUploadedAsync(Guid clientEventId, CancellationToken cancellationToken);
 
     Task<int> PurgeExpiredUnuploadedAsync(TimeSpan maxAge, CancellationToken cancellationToken);

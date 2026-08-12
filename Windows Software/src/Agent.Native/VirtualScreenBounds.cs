@@ -4,7 +4,7 @@ using Agent.Native.Interop;
 namespace Agent.Native;
 
 /// <summary>
-/// Left/Top can be negative when a secondary monitor is positioned above/left of the primary —
+/// Left/Top can be negative when a secondary monitor is positioned above/left of the primary -
 /// GetSystemMetrics' virtual-screen metrics already account for this, for portrait monitors,
 /// and for mixed-DPI setups, so no separate per-monitor topology calculation is needed just to
 /// capture everything in one image.

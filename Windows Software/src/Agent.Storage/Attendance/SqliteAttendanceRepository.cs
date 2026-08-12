@@ -7,7 +7,7 @@ namespace Agent.Storage.Attendance;
 
 /// <summary>
 /// Writes the domain row and the outbox row in a single local transaction (the outbox pattern),
-/// so a crash between the two writes is impossible — either both are durable or neither is.
+/// so a crash between the two writes is impossible - either both are durable or neither is.
 /// </summary>
 public sealed class SqliteAttendanceRepository(ISqliteConnectionFactory connectionFactory) : IAttendanceRepository
 {
@@ -39,7 +39,7 @@ public sealed class SqliteAttendanceRepository(ISqliteConnectionFactory connecti
             var rowsInserted = await insertEvent.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             if (rowsInserted == 0)
             {
-                // Duplicate ClientEventId — Windows APIs occasionally fire the same
+                // Duplicate ClientEventId - Windows APIs occasionally fire the same
                 // notification twice. Already recorded, nothing more to do.
                 await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
                 return;

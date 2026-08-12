@@ -52,7 +52,7 @@ public static class HostServiceCollectionExtensions
         services.AddSingleton<IPowerEventSource>(sp => sp.GetRequiredService<PowerEventPublisher>());
 
         // Idle events for Attendance are supplied by the tray helper writing directly to the
-        // shared database (see TrayIdleAttendanceBridge) — the service process has no
+        // shared database (see TrayIdleAttendanceBridge) - the service process has no
         // interactive-session idle signal of its own.
         services.AddSingleton<IIdleStateSource, NullIdleStateSource>();
 
@@ -79,7 +79,7 @@ public static class HostServiceCollectionExtensions
             .AddHttpMessageHandler<DeviceAuthDelegatingHandler>();
 
         // Agent.Host has no interactive desktop to show the consent dialog itself (that's
-        // Agent.TrayHelper's job) — this gate starts closed and is opened by
+        // Agent.TrayHelper's job) - this gate starts closed and is opened by
         // ConsentGateHostedService once it observes an acknowledgement recorded by any user on
         // this machine, so SyncWorker/ScreenshotUploadWorker never transmit before that happens.
         services.AddSingleton<ConsentGate>();
@@ -99,7 +99,7 @@ public static class HostServiceCollectionExtensions
 
         // Alerts: USB and idle-escalation are evaluated here since their source data is
         // Host-observable or DB-readable; the tray helper evaluates browser-navigation alerts
-        // where that event actually originates. IAlertNotifier is a no-op here — the tray
+        // where that event actually originates. IAlertNotifier is a no-op here - the tray
         // helper's PendingAlertNotificationPoller displays alerts regardless of which process
         // created them, by reading the shared alerts table.
         services.AddSingleton<IAlertNotifier, NullAlertNotifier>();

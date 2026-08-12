@@ -1,7 +1,7 @@
 namespace Agent.Collectors.Attendance;
 
 /// <summary>
-/// A recomputable view over raw events for one UTC calendar day — never itself the source of
+/// A recomputable view over raw events for one UTC calendar day - never itself the source of
 /// truth, so it can be regenerated if attendance business rules change later.
 /// </summary>
 public sealed record DailyAttendanceSummary

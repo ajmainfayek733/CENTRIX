@@ -3,7 +3,7 @@ namespace Agent.Alerts;
 public sealed record AlertDecision(bool IsNewAlert, bool IsEscalation, bool ShouldNotify);
 
 /// <summary>
-/// Pure dedup/escalation/throttle logic — no I/O — implementing the spec's "one alert,
+/// Pure dedup/escalation/throttle logic - no I/O - implementing the spec's "one alert,
 /// escalated" model instead of a new row per poll tick, plus renotify throttling so an
 /// unresolved alert doesn't spam a notification on every evaluation.
 /// </summary>

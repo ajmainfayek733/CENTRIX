@@ -1,8 +1,8 @@
 namespace Agent.Collectors.AppSession;
 
 /// <summary>
-/// The full comparable identity of "what's currently in the foreground." Any field changing —
-/// including WindowTitle alone (a new document, a browser tab navigation) — means a new session
+/// The full comparable identity of "what's currently in the foreground." Any field changing -
+/// including WindowTitle alone (a new document, a browser tab navigation) - means a new session
 /// per the spec's window-title-change edge case.
 /// </summary>
 public sealed record AppSessionState(AppSessionKind Kind, int ProcessId, string Executable, string WindowTitle)

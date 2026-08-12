@@ -2,7 +2,7 @@ namespace Agent.Core.Policy;
 
 /// <summary>
 /// A single immutable, versioned snapshot of every admin-controlled setting. Collectors never
-/// read individual settings directly from config — they read the current snapshot via
+/// read individual settings directly from config - they read the current snapshot via
 /// <see cref="IPolicyProvider"/> so a policy update is atomic across the whole agent.
 /// </summary>
 public sealed record PolicyDocument

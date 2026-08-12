@@ -37,7 +37,7 @@ public sealed class SystemEventsSessionAndPowerBridge : ISessionEventSource, IPo
         if (reason is { } mapped)
         {
             // SessionSwitchEventArgs carries no session ID; the tray helper only ever cares
-            // about its own session, so that's what belongs here — not a process ID.
+            // about its own session, so that's what belongs here - not a process ID.
             var sessionId = Process.GetCurrentProcess().SessionId;
             SessionChanged?.Invoke(this, new SessionChangeNotification(mapped, sessionId, DateTimeOffset.UtcNow));
         }

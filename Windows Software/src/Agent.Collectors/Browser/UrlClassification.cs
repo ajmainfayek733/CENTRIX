@@ -25,7 +25,7 @@ public interface IUrlValidator
 /// <summary>
 /// Covers every scheme the Browser Monitor spec explicitly lists: about:blank, chrome://
 /// (and edge/brave/opera equivalents), file://, data:, mailto:, javascript:, ftp://.
-/// javascript:/mailto:/data:/about:blank are classified non-navigable — they're not a page the
+/// javascript:/mailto:/data:/about:blank are classified non-navigable - they're not a page the
 /// user is "visiting" in the sense productivity/blacklist policy cares about.
 /// </summary>
 public sealed class UrlValidator : IUrlValidator

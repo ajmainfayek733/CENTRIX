@@ -8,7 +8,7 @@ public sealed record UsbPolicy
 
     public TimeSpan EventCorrelationWindow { get; init; } = TimeSpan.FromSeconds(3);
 
-    /// <summary>Disabled by default, matching the blacklist's admin-opt-in pattern — most
+    /// <summary>Disabled by default, matching the blacklist's admin-opt-in pattern - most
     /// organizations don't want every USB insertion raising an alert.</summary>
     public bool AlertOnInsertion { get; init; }
 }

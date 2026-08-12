@@ -4,7 +4,7 @@ using Agent.Core.Policy;
 namespace Agent.Collectors.Activity;
 
 /// <summary>
-/// Pure decision logic — no I/O — implementing the spec's "Activity Decision Rules" and priority
+/// Pure decision logic - no I/O - implementing the spec's "Activity Decision Rules" and priority
 /// order: Offline and Sleeping and Locked are checked first and are unconditional (Locked is
 /// "immediate, ignore idle timer"; Sleeping "pauses all timers"); only once none of those apply
 /// do input/CPU/meeting signals decide Active vs Idle.

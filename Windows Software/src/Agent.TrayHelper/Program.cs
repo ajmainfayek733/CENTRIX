@@ -92,7 +92,7 @@ internal static class Program
         var logger = provider.GetRequiredService<ILogger<ConsentForm>>();
 
         // Not wtsSessionInfo.TryGetUserSid: that calls WTSQueryUserToken, which requires the
-        // SE_TCB_NAME privilege held by LocalSystem — not by this process, which always runs as
+        // SE_TCB_NAME privilege held by LocalSystem - not by this process, which always runs as
         // the interactive user already and can just ask for its own identity.
         var userSid = currentUserProvider.GetCurrentUserSid();
         if (string.IsNullOrEmpty(userSid))
@@ -105,7 +105,7 @@ internal static class Program
 
         // Gate on the machine, not the current user: once any employee on this device has
         // acknowledged the current policy, the notice is not shown again for the lifetime of the
-        // installation — re-prompting every other Windows account that logs into the same
+        // installation - re-prompting every other Windows account that logs into the same
         // machine would contradict "ask once for the life of the agent" and just train people to
         // click through without reading. It resurfaces only when a materially higher policy
         // version is published.
@@ -126,7 +126,7 @@ internal static class Program
 
         // Best-effort: the local record already satisfies the gate above regardless of whether
         // this succeeds. If the backend is unreachable right now, ConsentGateHostedService /
-        // the next Agent.Host sync cycle will still see the local row directly — the only thing
+        // the next Agent.Host sync cycle will still see the local row directly - the only thing
         // a failure here delays is the backend's own copy of the proof-of-notice.
         var synced = await backendClient.PostConsentAsync(record, CancellationToken.None).ConfigureAwait(false);
         if (!synced)

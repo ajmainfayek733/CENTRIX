@@ -7,7 +7,7 @@ namespace Agent.Native.Interop;
 /// See Microsoft Learn: GetForegroundWindow (https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-getforegroundwindow),
 /// QueryFullProcessImageNameW (https://learn.microsoft.com/windows/win32/api/processthreadsapi/nf-processthreadsapi-queryfullprocessimagenamew).
 /// GetWindowTextW/QueryFullProcessImageNameW use classic DllImport with char[] buffers (per
-/// CA1838, avoiding StringBuilder) rather than LibraryImport — LibraryImport's blittable-only
+/// CA1838, avoiding StringBuilder) rather than LibraryImport - LibraryImport's blittable-only
 /// marshaller rejects an [Out] char[] buffer without opting the whole assembly out of runtime
 /// marshalling (SYSLIB1051), which would also affect the bool-returning WTS P/Invokes below.
 /// </summary>

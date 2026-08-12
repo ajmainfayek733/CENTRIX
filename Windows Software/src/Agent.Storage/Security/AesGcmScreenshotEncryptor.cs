@@ -8,7 +8,7 @@ namespace Agent.Storage.Security;
 /// <summary>
 /// AES-256-GCM (authenticated encryption) with a random 96-bit nonce per file, key sourced from
 /// the same DPAPI-protected-key-file pattern used for the SQLite database password, but a
-/// distinct key file — a compromised database key doesn't also expose cached screenshots.
+/// distinct key file - a compromised database key doesn't also expose cached screenshots.
 /// Layout: [12-byte nonce][16-byte tag][ciphertext].
 /// </summary>
 [SupportedOSPlatform("windows")]

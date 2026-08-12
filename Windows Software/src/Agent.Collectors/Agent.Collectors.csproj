@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\Agent.Core\Agent.Core.csproj" />
@@ -15,7 +15,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <!-- UseWPF is the standard, Microsoft-documented way to reference System.Windows.Automation
-         (UIAutomationClient/UIAutomationTypes) for UI Automation from .NET — this project has
+         (UIAutomationClient/UIAutomationTypes) for UI Automation from .NET - this project has
          no WPF UI, it only needs the automation client assemblies. -->
     <UseWPF>true</UseWPF>
   </PropertyGroup>
