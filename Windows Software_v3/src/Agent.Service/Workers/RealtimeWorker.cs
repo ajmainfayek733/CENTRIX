@@ -49,6 +49,7 @@ public sealed class RealtimeWorker(
     private const string SyncForceEvent = "sync:force";
     private const string DeviceDeactivatedEvent = "device:deactivated";
     private const string HelloEvent = "agent:hello";
+    private const string HeartbeatEvent = "agent:heartbeat";
 
     /// <summary>
     /// How long to wait before checking again when there is nothing to connect with — no
@@ -165,20 +166,74 @@ public sealed class RealtimeWorker(
             [new { agentVersion = DeviceIdentity.GetAgentVersion(), policyVersion = _state.Policy.Version }],
             ct).ConfigureAwait(false);
 
-        // Park until the socket drops or the service stops. No polling: the client's own
-        // receive loop drives the handlers above.
-        await WaitUntilCancelledAsync(disconnected.Token).ConfigureAwait(false);
+        // Emit proof of life until the socket drops or the service stops.
+        await HeartbeatUntilDisconnectedAsync(client, disconnected.Token).ConfigureAwait(false);
 
         await client.DisconnectAsync().ConfigureAwait(false);
     }
 
-    /// <summary>Awaits cancellation without throwing, so a normal disconnect is not an error path.</summary>
-    private static async Task WaitUntilCancelledAsync(CancellationToken token)
+    /// <summary>
+    /// Emits a heartbeat on the configured interval for as long as the connection lasts.
+    ///
+    /// WHY THE AGENT PUSHES RATHER THAN THE SERVER POLLING: only this side knows whether the
+    /// service is actually running and whether anyone is signed in. A server-side timer could
+    /// observe that a socket object still exists, which is precisely the thing that keeps being
+    /// true after a workstation has been unplugged.
+    ///
+    /// The interval is read fresh each pass rather than captured once, so an admin changing it
+    /// takes effect on the next beat instead of at the next reconnect.
+    ///
+    /// A failed emit ends the loop rather than being retried: if the frame could not be written
+    /// the connection is already gone, and the outer loop rebuilds it. Retrying here would keep a
+    /// dead socket looking alive, which is exactly the failure this heartbeat exists to expose.
+    /// </summary>
+    private async Task HeartbeatUntilDisconnectedAsync(SocketIOClient.SocketIO client, CancellationToken ct)
     {
-        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var registration = token.Register(() => completion.TrySetResult());
-        await completion.Task.ConfigureAwait(false);
+        while (!ct.IsCancellationRequested)
+        {
+            var interval = TimeSpan.FromSeconds(Math.Clamp(
+                _state.Policy.Realtime.HeartbeatSeconds,
+                MinHeartbeatSeconds,
+                MaxHeartbeatSeconds));
+
+            try
+            {
+                await Task.Delay(interval, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            try
+            {
+                // A signed-in user is the difference between "this workstation is powered on" and
+                // "someone is at it". A locked machine overnight heartbeats identically otherwise.
+                await client.EmitAsync(
+                    HeartbeatEvent,
+                    [new { userPresent = _state.ActiveUserSid is not null }],
+                    ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Heartbeat could not be sent; treating the connection as lost");
+                return;
+            }
+        }
     }
+
+    /// <summary>
+    /// Bounds on the policy-supplied interval, applied client-side as well as server-side.
+    ///
+    /// A misconfigured policy must not be able to turn an agent into a frame generator, and the
+    /// agent cannot assume the server validated the value it was handed.
+    /// </summary>
+    private const int MinHeartbeatSeconds = 5;
+    private const int MaxHeartbeatSeconds = 300;
 
     /// <summary>Delay that treats shutdown as an exit condition rather than an exception.</summary>
     private static async Task DelayAsync(TimeSpan delay, CancellationToken ct)

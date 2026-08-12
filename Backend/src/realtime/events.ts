@@ -76,11 +76,30 @@ export interface SyncForcePayload {
 export const AgentClientEvent = {
   /** Sent once after connecting, so the server can log what version is out there. */
   Hello: 'agent:hello',
+
+  /**
+   * Periodic proof of life, emitted on a fixed interval while connected.
+   *
+   * This exists because an open socket does not prove an agent is alive: a half-open TCP
+   * connection survives an unplugged cable, a suspended laptop or a dropped VPN for minutes,
+   * because nothing needs to be sent for the OS to keep believing in it. A heartbeat that
+   * *arrives* is positive evidence at a known instant, which is what "active now" needs.
+   */
+  Heartbeat: 'agent:heartbeat',
 } as const;
 
 export interface AgentHelloPayload {
   agentVersion: string;
   policyVersion: number;
+}
+
+export interface AgentHeartbeatPayload {
+  /**
+   * Whether a user is signed in on the interactive desktop. Distinguishes "the workstation is
+   * powered on and the service is running" from "someone is actually at it" — a locked machine
+   * at 3am heartbeats exactly like one in use, and the dashboard should not call both active.
+   */
+  userPresent: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -94,8 +113,17 @@ export const DashboardEvent = {
    */
   TelemetryIngested: 'telemetry:ingested',
 
-  /** A device's socket connected or dropped. A soft signal; `lastSeen` remains authoritative. */
+  /** An agent connected, heartbeated, or dropped. Carries the device's current liveness. */
   DevicePresence: 'device:presence',
+
+  /**
+   * Full presence table, sent once when a dashboard connects.
+   *
+   * Without it a freshly opened dashboard would know nothing about devices that connected before
+   * it did, and would show them as offline until each happened to heartbeat — up to a full
+   * interval of wrong information on the screen an operator looks at first.
+   */
+  PresenceSnapshot: 'device:presence-snapshot',
 
   /** Policy was edited, by this admin or another one. */
   PolicyUpdated: 'policy:updated',
@@ -111,8 +139,29 @@ export interface TelemetryIngestedPayload {
 }
 
 export interface DevicePresencePayload {
+  /** Device row id, matching `devices.id` — not the MachineGuid. */
   deviceId: string;
+  /** Whether a command sent right now would reach the agent's socket. */
   connected: boolean;
+  /**
+   * Whether the agent is considered live: it heartbeated within the expected interval plus a
+   * grace margin. False for a device holding a socket it has gone silent on.
+   */
+  live: boolean;
+  /** Whether a user is signed in at the workstation, as of the last heartbeat. */
+  userPresent: boolean;
+  /** ISO timestamp the agent was last heard from. Drives the "N seconds ago" in the UI. */
+  lastSeen: string;
+}
+
+export interface PresenceSnapshotPayload {
+  devices: DevicePresencePayload[];
+  /**
+   * How long a dashboard should wait before deciding a silent device has gone. Sent rather than
+   * hardcoded in the client so an admin changing the heartbeat interval does not need a frontend
+   * release for the two to stay consistent.
+   */
+  maxSilenceMs: number;
 }
 
 // ---------------------------------------------------------------------------

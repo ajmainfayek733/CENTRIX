@@ -52,6 +52,10 @@ export const updatePolicySchema = z
 
     realtimeEnabled: z.boolean(),
 
+    // Bounded on both ends: below ~5s a fleet of 100 becomes a needless frame storm, and above a
+    // minute "active now" stops being a useful answer to the question it claims to answer.
+    presenceHeartbeatSeconds: seconds.min(5).max(300),
+
     // Rows per page in the dashboard's log tables. Bounded on both ends: too small and scrolling
     // becomes a request storm, too large and the fixed-height window it feeds stops being a
     // bounded read.

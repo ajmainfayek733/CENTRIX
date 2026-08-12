@@ -8,6 +8,7 @@ import {
   DashboardEvent,
   REALTIME_URL,
   type DevicePresencePayload,
+  type PresenceSnapshotPayload,
 } from '@/lib/realtime';
 
 /**
@@ -31,32 +32,88 @@ const REFRESH_COALESCE_MS = 3_000;
 const RECONNECT_MIN_MS = 1_000;
 const RECONNECT_MAX_MS = 30_000;
 
-interface RealtimeContextValue {
-  /** Whether the signalling socket is currently open. Presentational only — see below. */
+/**
+ * What the dashboard knows about one workstation right now.
+ *
+ * `live` is the answer to "is this device active", and it is derived from a heartbeat having
+ * arrived — not from a socket existing. A half-open connection outlives an unplugged cable or a
+ * suspended laptop by minutes, so connection state alone would keep a dead machine green.
+ */
+export interface DeviceLiveness {
   connected: boolean;
-  /**
-   * Device ids currently holding an agent socket.
-   *
-   * NOT an online indicator. A device is shown as online from `lastSeen`, which only an
-   * authenticated HTTP request updates. This says something narrower: whether a force-sync sent
-   * right now would be delivered immediately.
-   */
-  connectedDevices: ReadonlySet<string>;
+  live: boolean;
+  userPresent: boolean;
+  lastSeen: string;
 }
+
+interface RealtimeContextValue {
+  /** Whether this browser's own signalling socket is open. */
+  connected: boolean;
+  /** Live state per device row id, as of the most recent heartbeat from each. */
+  devices: ReadonlyMap<string, DeviceLiveness>;
+  /** How long a device may stay silent before this client stops calling it live. */
+  maxSilenceMs: number;
+}
+
+/**
+ * Fallback until the server's snapshot arrives — the schema's 30s heartbeat with the same 2.5x
+ * grace the server applies. Only used for the fraction of a second before the socket is up.
+ */
+const DEFAULT_MAX_SILENCE_MS = 30_000 * 2.5;
 
 const RealtimeContext = createContext<RealtimeContextValue>({
   connected: false,
-  connectedDevices: new Set(),
+  devices: new Map(),
+  maxSilenceMs: DEFAULT_MAX_SILENCE_MS,
 });
 
 export function useRealtime(): RealtimeContextValue {
   return useContext(RealtimeContext);
 }
 
+/**
+ * Live state for one device, or null when nothing has been heard about it.
+ *
+ * Expires client-side: a device whose last heartbeat is older than the silence window stops
+ * counting as live even though no event said so. That matters because the event announcing a
+ * departure is exactly the one that cannot arrive when a workstation vanishes — a laptop that
+ * loses power sends no disconnect, so a UI waiting to be told would show it active indefinitely.
+ */
+export function useDeviceLiveness(deviceId: string): DeviceLiveness | null {
+  const { devices, maxSilenceMs } = useRealtime();
+  const now = useNow();
+
+  const state = devices.get(deviceId);
+  if (!state) return null;
+
+  const silentFor = now - new Date(state.lastSeen).getTime();
+  return { ...state, live: state.live && silentFor <= maxSilenceMs };
+}
+
+/**
+ * A clock that ticks once a second, so "3s ago" counts up and liveness expires without an event.
+ *
+ * One interval per component that asks. These render a handful of rows, so this stays cheap; a
+ * table of thousands would want a single shared ticker instead.
+ */
+function useNow(): number {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), CLOCK_TICK_MS);
+    return () => clearInterval(timer);
+  }, []);
+
+  return now;
+}
+
+const CLOCK_TICK_MS = 1_000;
+
 export function RealtimeProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [connected, setConnected] = useState(false);
-  const [connectedDevices, setConnectedDevices] = useState<ReadonlySet<string>>(new Set());
+  const [devices, setDevices] = useState<ReadonlyMap<string, DeviceLiveness>>(new Map());
+  const [maxSilenceMs, setMaxSilenceMs] = useState(DEFAULT_MAX_SILENCE_MS);
 
   // Held in a ref, not state: changing it must not re-render, and the cleanup below has to be
   // able to clear a timer scheduled by an event that has already been handled.
@@ -117,7 +174,10 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       socket.on('disconnect', () => {
         if (cancelled) return;
         setConnected(false);
-        setConnectedDevices(new Set());
+        // Cleared rather than frozen. Holding the last known table would leave every device
+        // showing as it was at the moment this browser lost touch, with nothing to correct it —
+        // stale green dots are worse than an honest "not known".
+        setDevices(new Map());
         retry();
       });
 
@@ -130,12 +190,24 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       socket.on(DashboardEvent.TelemetryIngested, scheduleRefresh);
       socket.on(DashboardEvent.PolicyUpdated, scheduleRefresh);
 
+      socket.on(DashboardEvent.PresenceSnapshot, (payload: PresenceSnapshotPayload) => {
+        if (cancelled) return;
+        setMaxSilenceMs(payload.maxSilenceMs);
+        setDevices(new Map(payload.devices.map((device) => [device.deviceId, device])));
+      });
+
       socket.on(DashboardEvent.DevicePresence, (payload: DevicePresencePayload) => {
         if (cancelled) return;
-        setConnectedDevices((current) => {
-          const next = new Set(current);
-          if (payload.connected) next.add(payload.deviceId);
-          else next.delete(payload.deviceId);
+        setDevices((current) => {
+          const next = new Map(current);
+          if (payload.connected) {
+            next.set(payload.deviceId, payload);
+          } else {
+            // A clean disconnect is real information: the agent said goodbye. Dropping the entry
+            // makes the UI fall back to the server-rendered lastSeen, which is the honest source
+            // once there is no live channel to the device.
+            next.delete(payload.deviceId);
+          }
           return next;
         });
       });
@@ -171,7 +243,10 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     };
   }, [router]);
 
-  const value = useMemo(() => ({ connected, connectedDevices }), [connected, connectedDevices]);
+  const value = useMemo(
+    () => ({ connected, devices, maxSilenceMs }),
+    [connected, devices, maxSilenceMs]
+  );
 
   return <RealtimeContext.Provider value={value}>{children}</RealtimeContext.Provider>;
 }

@@ -125,6 +125,16 @@ public sealed record SyncPolicy
 public sealed record RealtimePolicy
 {
     public bool Enabled { get; init; } = true;
+
+    /// <summary>
+    /// How often to emit proof of life while connected.
+    ///
+    /// This is what the dashboard's "active now" is derived from. A socket staying open proves
+    /// very little — a half-open connection survives an unplugged cable or a suspended laptop for
+    /// minutes, because nothing needs to be sent for the OS to keep believing in it. A heartbeat
+    /// that arrives is positive evidence at a known instant.
+    /// </summary>
+    public int HeartbeatSeconds { get; init; } = 30;
 }
 
 public sealed record RetentionPolicy

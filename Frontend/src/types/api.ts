@@ -213,8 +213,11 @@ export interface Policy {
     minRetryBackoffSeconds: number;
     maxRetryBackoffSeconds: number;
   };
-  /** Whether agents and dashboards hold a Socket.IO signalling connection. */
-  realtime: { enabled: boolean };
+  /**
+   * Socket.IO signalling. `heartbeatSeconds` is how often a connected agent proves it is alive,
+   * which is what the dashboard's "Active now" is derived from.
+   */
+  realtime: { enabled: boolean; heartbeatSeconds: number };
   /** Rows a dashboard log window loads per page. */
   logPageSize: number;
   retention: { retentionDays: number; undeliveredRetentionDays: number };

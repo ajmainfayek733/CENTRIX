@@ -39,7 +39,9 @@ export interface AgentPolicyDto {
   };
   /// Whether the agent should hold a Socket.IO signalling connection. It syncs on its own
   /// interval regardless — this only decides whether it also listens for a nudge.
-  realtime: { enabled: boolean };
+  /// `heartbeatSeconds` is how often it emits proof of life while connected, which is what the
+  /// dashboard's "active now" is derived from.
+  realtime: { enabled: boolean; heartbeatSeconds: number };
   /// Rows a dashboard log window loads per page. Served in the same document as everything else
   /// so the settings screen has one place to read and write policy; agents simply ignore it.
   logPageSize: number;
@@ -98,7 +100,10 @@ export function toAgentPolicy(
       minRetryBackoffSeconds: policy.syncMinRetryBackoffSeconds,
       maxRetryBackoffSeconds: policy.syncMaxRetryBackoffSeconds,
     },
-    realtime: { enabled: policy.realtimeEnabled },
+    realtime: {
+      enabled: policy.realtimeEnabled,
+      heartbeatSeconds: policy.presenceHeartbeatSeconds,
+    },
     logPageSize: policy.logPageSize,
     retention: {
       retentionDays: policy.retentionDays,

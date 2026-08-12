@@ -39,6 +39,7 @@ export interface PolicyFormValues {
   syncMaxBatchSize: number;
   logPageSize: number;
   realtimeEnabled: boolean;
+  presenceHeartbeatSeconds: number;
 }
 
 export async function updatePolicy(organizationId: string, values: PolicyFormValues) {

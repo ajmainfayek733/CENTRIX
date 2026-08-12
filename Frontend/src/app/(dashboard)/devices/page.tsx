@@ -1,15 +1,13 @@
 import { apiGet } from '@/lib/api-client';
-import { formatRelative } from '@/lib/format';
 import { getSessionUser } from '@/lib/session';
-import { Card, TableWrap, Th, Td, StatusDot, Badge, EmptyState } from '@/components/ui';
+import { Card, TableWrap, Th, Td, Badge, EmptyState } from '@/components/ui';
+import { LiveDeviceStatus, LiveStatusDot } from '@/components/LiveDeviceStatus';
 import type { DeviceRow, EmployeeSummary } from '@/types/api';
 import { DeviceActions } from './DeviceActions';
 import { DeviceAssignment } from './DeviceAssignment';
 
 export const metadata = { title: 'Devices · Employee Monitor' };
 export const dynamic = 'force-dynamic';
-
-const ONLINE_WINDOW_MS = 5 * 60 * 1000;
 
 export default async function DevicesPage() {
   const [devices, employees, user] = await Promise.all([
@@ -87,16 +85,15 @@ function DeviceTable({
         </thead>
         <tbody>
           {devices.map((device) => {
-            const isOnline =
-              device.isActive &&
-              !!device.lastSeen &&
-              Date.now() - new Date(device.lastSeen).getTime() < ONLINE_WINDOW_MS;
-
             return (
               <tr key={device.id}>
                 <Td>
                   <span className="flex items-center gap-2 font-medium">
-                    <StatusDot online={isOnline} />
+                    <LiveStatusDot
+                      deviceId={device.id}
+                      lastSeen={device.lastSeen}
+                      isActive={device.isActive}
+                    />
                     {device.deviceName}
                   </span>
                   <span className="block pl-4 font-mono text-[11px] text-text-secondary">
@@ -128,7 +125,11 @@ function DeviceTable({
                   {device.agentVersion ?? '—'}
                 </Td>
                 <Td align="right" muted>
-                  {device.isActive ? formatRelative(device.lastSeen) : <Badge tone="danger">Deactivated</Badge>}
+                  <LiveDeviceStatus
+                    deviceId={device.id}
+                    lastSeen={device.lastSeen}
+                    isActive={device.isActive}
+                  />
                 </Td>
                 {isAdmin && (
                   <Td align="right">

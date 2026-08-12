@@ -11,8 +11,10 @@ export const DASHBOARD_NAMESPACE = '/dashboard';
 export const DashboardEvent = {
   /** A telemetry batch landed. A hint to refetch — never the data itself. */
   TelemetryIngested: 'telemetry:ingested',
-  /** An agent's signalling socket connected or dropped. Soft signal; `lastSeen` is authoritative. */
+  /** An agent connected, heartbeated, or dropped. Carries the device's current liveness. */
   DevicePresence: 'device:presence',
+  /** The full presence table, sent once on connect so a fresh tab is not blind. */
+  PresenceSnapshot: 'device:presence-snapshot',
   /** Policy was edited, possibly by another admin. */
   PolicyUpdated: 'policy:updated',
 } as const;
@@ -30,8 +32,26 @@ export interface TelemetryIngestedPayload {
 }
 
 export interface DevicePresencePayload {
+  /** Device row id, matching `devices.id` — not the MachineGuid. */
   deviceId: string;
+  /** Whether a command sent right now would reach the agent's socket. */
   connected: boolean;
+  /** Whether the agent heartbeated recently enough to count as live. */
+  live: boolean;
+  /** Whether a user is signed in at the workstation, as of the last heartbeat. */
+  userPresent: boolean;
+  /** ISO timestamp the agent was last heard from. */
+  lastSeen: string;
+}
+
+export interface PresenceSnapshotPayload {
+  devices: DevicePresencePayload[];
+  /**
+   * How long to wait before treating a silent device as gone. Supplied by the server rather than
+   * hardcoded here, so changing the heartbeat interval in admin config does not need a frontend
+   * release for the two to stay consistent.
+   */
+  maxSilenceMs: number;
 }
 
 export interface CommandAck {

@@ -12,9 +12,14 @@
 import { randomUUID } from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
+import { io as ioClient } from 'socket.io-client';
 import app, { server } from '../src/server';
+import { issueRealtimeTicket } from '../src/realtime/ticket';
+import { forgetDeviceLiveness } from '../src/modules/ingest/deviceLiveness';
 import { prisma } from '../src/config/db';
 import { env } from '../src/config/env';
+import { currentOrganizationId } from '../src/config/tenant';
+import { generateDeviceApiKey, hashDeviceApiKey } from '../src/utils/token';
 import { organizationService } from '../src/modules/organization/organizationService';
 import { employeeService } from '../src/modules/employee/employeeService';
 
@@ -22,6 +27,23 @@ const BASE = `http://127.0.0.1:${env.PORT}`;
 
 let passed = 0;
 let failed = 0;
+
+/**
+ * Awaits an event, or gives up.
+ *
+ * Every realtime assertion needs this shape, and a bare promise would hang the whole suite when
+ * the thing under test is broken — which is precisely when the suite has to report rather than
+ * stall. Resolves to null on timeout so the assertion fails with a readable value.
+ */
+function waitFor<T>(subscribe: (resolve: (value: T | null) => void) => void, timeoutMs = 5_000): Promise<T | null> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), timeoutMs);
+    subscribe((value) => {
+      clearTimeout(timer);
+      resolve(value);
+    });
+  });
+}
 
 function check(name: string, condition: boolean, detail?: unknown) {
   if (condition) {
@@ -45,6 +67,12 @@ async function main() {
   const machineGuid = `smoke-${runId}`;
   let apiKey = '';
   let deviceRowId = '';
+
+  // Lives in the *resolved* organization rather than this test's own, because that is the one a
+  // dashboard socket joins. Torn down separately for the same reason — it is outside the org
+  // whose cascade delete cleans up everything else.
+  let presenceDeviceRowId = '';
+  let presenceEmployeeId = '';
 
   try {
     // -- Enrollment ----------------------------------------------------------
@@ -708,6 +736,148 @@ async function main() {
       { statuses: [...new Set(spoofed)] }
     );
 
+    // -- Realtime presence ---------------------------------------------------
+    // The end-to-end path behind "Active now": agent socket -> heartbeat -> devices.lastSeen ->
+    // dashboard event. Asserted over a real Socket.IO connection rather than by calling the
+    // registry directly, because the handshake and the fan-out are most of what can break.
+    console.log('\nRealtime presence');
+
+    // The dashboard namespace resolves its organization with currentOrganizationId() — the
+    // deployment is single-tenant, so there is no user→organization link to read. This test
+    // creates its own throwaway organization, which is therefore NOT the one a dashboard joins,
+    // so the presence assertions need an agent inside the resolved organization instead.
+    //
+    // Built directly through Prisma rather than by enrolling over HTTP: the resolved organization
+    // is whatever the developer's database already had, and it may have no enrollment token.
+    const presenceOrgId = await currentOrganizationId();
+    const presenceEmployee = await prisma.employee.upsert({
+      where: { email: `smoke-presence+${runId}@local.invalid` },
+      create: {
+        organizationId: presenceOrgId,
+        email: `smoke-presence+${runId}@local.invalid`,
+        name: 'Smoke Presence',
+        status: 'placeholder',
+      },
+      update: {},
+    });
+
+    presenceEmployeeId = presenceEmployee.id;
+
+    const presenceApiKey = generateDeviceApiKey();
+    presenceDeviceRowId = (
+      await prisma.device.create({
+        data: {
+          organizationId: presenceOrgId,
+          employeeId: presenceEmployee.id,
+          deviceId: `smoke-presence-${runId}`,
+          deviceName: 'SMOKE-PRESENCE-PC',
+          apiKeyHash: hashDeviceApiKey(presenceApiKey),
+        },
+        select: { id: true },
+      })
+    ).id;
+
+    const agentSocket = ioClient(`${BASE}/agents`, {
+      auth: { apiKey: presenceApiKey },
+      transports: ['websocket'],
+      reconnection: false,
+    });
+
+    const agentConnected = await waitFor<boolean>((resolve) => {
+      agentSocket.on('connect', () => resolve(true));
+      agentSocket.on('connect_error', () => resolve(false));
+    });
+    check('an agent can open a socket with its device API key', agentConnected === true);
+
+    const rejected = ioClient(`${BASE}/agents`, {
+      auth: { apiKey: 'not-a-real-key' },
+      transports: ['websocket'],
+      reconnection: false,
+    });
+    const rejectedConnected = await waitFor<boolean>((resolve) => {
+      rejected.on('connect', () => resolve(true));
+      rejected.on('connect_error', () => resolve(false));
+    });
+    check('a socket presenting a bad key is refused', rejectedConnected === false);
+    rejected.close();
+
+    // A dashboard connects with a short-lived ticket, never the session token.
+    const { ticket } = issueRealtimeTicket({ userId: 'smoke-admin', role: 'super_admin' });
+    const dashboardSocket = ioClient(`${BASE}/dashboard`, {
+      auth: { ticket },
+      transports: ['websocket'],
+      reconnection: false,
+    });
+
+    const snapshot = await waitFor<any>((resolve) => {
+      dashboardSocket.on('device:presence-snapshot', resolve);
+      dashboardSocket.on('connect_error', () => resolve(null));
+    });
+    check('a dashboard authenticates with a realtime ticket and receives a presence snapshot',
+      snapshot !== null && Array.isArray(snapshot?.devices),
+      snapshot
+    );
+    check('the snapshot carries the silence window so the client need not hardcode it',
+      typeof snapshot?.maxSilenceMs === 'number' && snapshot.maxSilenceMs > 0,
+      snapshot?.maxSilenceMs
+    );
+    check('the connected agent is present in the snapshot',
+      snapshot?.devices?.some((d: any) => d.deviceId === presenceDeviceRowId),
+      snapshot?.devices
+    );
+
+    const forgedTicket = ioClient(`${BASE}/dashboard`, {
+      auth: { ticket: 'smoke-admin.super_admin.99999999999.forged' },
+      transports: ['websocket'],
+      reconnection: false,
+    });
+    const forgedConnected = await waitFor<boolean>((resolve) => {
+      forgedTicket.on('connect', () => resolve(true));
+      forgedTicket.on('connect_error', () => resolve(false));
+    });
+    check('a forged realtime ticket is refused', forgedConnected === false);
+    forgedTicket.close();
+
+    // Clear lastSeen so the assertion below cannot pass on a value an earlier HTTP call wrote.
+    await prisma.device.update({ where: { id: presenceDeviceRowId }, data: { lastSeen: null } });
+    forgetDeviceLiveness(presenceDeviceRowId);
+
+    const presenceEvent = await waitFor<any>((resolve) => {
+      dashboardSocket.on('device:presence', resolve);
+      agentSocket.emit('agent:heartbeat', { userPresent: true });
+    });
+
+    check('a heartbeat reaches the dashboard as a presence event',
+      presenceEvent?.deviceId === presenceDeviceRowId,
+      presenceEvent
+    );
+    check('the presence event reports the device as live', presenceEvent?.live === true, presenceEvent);
+    check('the presence event carries whether a user is at the workstation',
+      presenceEvent?.userPresent === true,
+      presenceEvent
+    );
+
+    const afterHeartbeat = await prisma.device.findUnique({
+      where: { id: presenceDeviceRowId },
+      select: { lastSeen: true },
+    });
+    check('a socket heartbeat updates devices.lastSeen', afterHeartbeat?.lastSeen !== null, afterHeartbeat);
+
+    // Disconnecting must announce the departure, so a dashboard does not hold a green dot for a
+    // machine that has gone.
+    const departure = await waitFor<any>((resolve) => {
+      dashboardSocket.on('device:presence', (payload: any) => {
+        if (payload?.connected === false) resolve(payload);
+      });
+      agentSocket.close();
+    });
+    check('a disconnect is announced as a presence change',
+      departure?.deviceId === presenceDeviceRowId && departure?.connected === false,
+      departure
+    );
+
+    dashboardSocket.close();
+
     // -- Deactivation kill switch -------------------------------------------
     console.log('\nAdmin kill switch');
 
@@ -719,6 +889,14 @@ async function main() {
     // The screenshot bytes live outside the database, so they need their own cleanup.
     if (deviceRowId) {
       await fs.rm(path.join(env.SCREENSHOT_STORAGE_DIR, deviceRowId), { recursive: true, force: true }).catch(() => undefined);
+    }
+    // The presence fixtures live in the resolved organization, which this test must not delete —
+    // it is the developer's real one. Removed individually instead.
+    if (presenceDeviceRowId) {
+      await prisma.device.delete({ where: { id: presenceDeviceRowId } }).catch(() => undefined);
+    }
+    if (presenceEmployeeId) {
+      await prisma.employee.delete({ where: { id: presenceEmployeeId } }).catch(() => undefined);
     }
     await prisma.organization.delete({ where: { id: org.id } }).catch(() => undefined);
     await prisma.$disconnect();

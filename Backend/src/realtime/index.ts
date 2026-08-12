@@ -6,6 +6,7 @@ import { prisma } from '../config/db';
 import { env } from '../config/env';
 import { hashDeviceApiKey } from '../utils/token';
 import { currentOrganizationId } from '../config/tenant';
+import { touchDeviceLastSeen } from '../modules/ingest/deviceLiveness';
 import { devicePresence } from './presence';
 import { verifyRealtimeTicket } from './ticket';
 import {
@@ -16,11 +17,13 @@ import {
   DashboardClientEvent,
   DashboardEvent,
   room,
+  type AgentHeartbeatPayload,
   type AgentHelloPayload,
   type CommandAck,
   type DevicePresencePayload,
   type ForceSyncRequest,
   type PolicyUpdatedPayload,
+  type PresenceSnapshotPayload,
   type SyncForcePayload,
   type TelemetryIngestedPayload,
 } from './events';
@@ -141,8 +144,12 @@ function registerAgentNamespace(namespace: Namespace) {
     socket.join(room.device(deviceRowId));
     socket.join(room.organization(organizationId));
 
-    if (devicePresence.add(deviceRowId, socket.id)) {
-      broadcastPresence(organizationId, { deviceId: deviceRowId, connected: true });
+    // Tracks whether a user is at the workstation, from the most recent heartbeat. Held on the
+    // socket rather than in the registry because it is agent-reported state, not presence.
+    let userPresent = false;
+
+    if (devicePresence.add(deviceRowId, socket.id, organizationId)) {
+      void announcePresence(organizationId, deviceRowId, { connected: true, userPresent });
     }
 
     socket.on(AgentClientEvent.Hello, (payload: AgentHelloPayload) => {
@@ -152,16 +159,77 @@ function registerAgentNamespace(namespace: Namespace) {
       );
     });
 
+    // Proof of life. This is what makes "active now" trustworthy — see presence.ts for why a
+    // connection alone is not enough. It also writes lastSeen through the same throttled path the
+    // HTTP middleware uses, so a workstation that is connected but not currently syncing still
+    // reads as recently seen instead of decaying to "offline" between batches.
+    socket.on(AgentClientEvent.Heartbeat, (payload: AgentHeartbeatPayload) => {
+      userPresent = payload?.userPresent ?? false;
+      devicePresence.heartbeat(deviceRowId);
+      void announcePresence(organizationId, deviceRowId, { connected: true, userPresent });
+    });
+
     socket.on('disconnect', (reason) => {
       // Presence is per-device, not per-socket: a reconnect that races its own disconnect must
       // not report the device as gone, which is why this only fires on the last socket.
       if (devicePresence.remove(deviceRowId, socket.id)) {
-        broadcastPresence(organizationId, { deviceId: deviceRowId, connected: false });
+        void announcePresence(organizationId, deviceRowId, { connected: false, userPresent: false });
       }
       console.log(`realtime: agent ${deviceName} disconnected (${reason})`);
     });
   });
 }
+
+/**
+ * Records that a device was heard from and tells the dashboards.
+ *
+ * The lastSeen write is throttled inside touchDeviceLastSeen, but the broadcast is not: the
+ * dashboard should tick on every heartbeat even when the database write was collapsed, because
+ * the point of this path is that the screen is current. A broadcast is a few bytes to sockets
+ * already open; a row update is not.
+ */
+async function announcePresence(
+  organizationId: string,
+  deviceRowId: string,
+  state: { connected: boolean; userPresent: boolean }
+): Promise<void> {
+  try {
+    const maxSilenceMs = await maxSilenceForOrganization(organizationId);
+    const lastSeen = state.connected ? await touchDeviceLastSeen(deviceRowId) : new Date();
+
+    broadcastPresence(organizationId, {
+      deviceId: deviceRowId,
+      connected: state.connected,
+      live: state.connected && devicePresence.isLive(deviceRowId, maxSilenceMs),
+      userPresent: state.userPresent,
+      lastSeen: lastSeen.toISOString(),
+    });
+  } catch (error) {
+    console.error('realtime: failed to announce presence:', error);
+  }
+}
+
+/**
+ * How long a device may stay silent before it stops counting as live.
+ *
+ * The configured heartbeat interval plus a grace multiplier: a single dropped or delayed frame —
+ * a garbage-collection pause, a busy uplink — must not flip a healthy workstation to offline and
+ * back. Two missed beats is the threshold.
+ */
+const HEARTBEAT_GRACE_MULTIPLIER = 2.5;
+
+async function maxSilenceForOrganization(organizationId: string): Promise<number> {
+  const policy = await prisma.policy.findUnique({
+    where: { organizationId },
+    select: { presenceHeartbeatSeconds: true },
+  });
+
+  const seconds = policy?.presenceHeartbeatSeconds ?? DEFAULT_HEARTBEAT_SECONDS;
+  return seconds * HEARTBEAT_GRACE_MULTIPLIER * 1000;
+}
+
+/** Fallback when an organization has no policy row. Matches the schema default. */
+const DEFAULT_HEARTBEAT_SECONDS = 30;
 
 // ---------------------------------------------------------------------------
 // Dashboard namespace
@@ -224,6 +292,30 @@ function registerDashboardNamespace(namespace: Namespace) {
     const { organizationId, role } = socket.data as DashboardSocketData;
 
     socket.join(room.organization(organizationId));
+
+    // Seed this dashboard with the current presence table. Devices that connected before this
+    // browser did will not heartbeat again for up to a full interval, and until then the screen
+    // an operator looks at first would show them all as offline.
+    void (async () => {
+      try {
+        const maxSilenceMs = await maxSilenceForOrganization(organizationId);
+        const payload: PresenceSnapshotPayload = {
+          devices: devicePresence.snapshot(organizationId, maxSilenceMs).map((entry) => ({
+            deviceId: entry.deviceId,
+            connected: true,
+            live: entry.live,
+            // Not tracked per device across reconnects; the next heartbeat corrects it within
+            // one interval. Claiming a user is present on no evidence would be worse.
+            userPresent: false,
+            lastSeen: entry.lastHeartbeatAt,
+          })),
+          maxSilenceMs,
+        };
+        socket.emit(DashboardEvent.PresenceSnapshot, payload);
+      } catch (error) {
+        console.error('realtime: failed to send presence snapshot:', error);
+      }
+    })();
 
     socket.on(
       DashboardClientEvent.ForceSync,

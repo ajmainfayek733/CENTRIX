@@ -346,3 +346,31 @@ query as history grows, and thousands of DOM nodes for rows nobody scrolls to.
 - Totals are never derived from loaded rows. They come from the daily rollup, so a "productivity %"
   describes the period rather than the first fifty rows. Counts in card titles say
   "showing N", not "N entries", because only one page is loaded.
+
+### 12.3 Live activeness in the admin dashboard
+
+`useDeviceLiveness(deviceId)` gives a component the current state of one workstation, updated by
+heartbeat rather than by refresh. `LiveDeviceStatus` and `LiveStatusDot` render it on the Devices
+screen; `LiveOnlineTile` renders the fleet count on the Overview.
+
+Two sources, in order:
+
+1. **Live presence from the socket** — seconds old by construction. Preferred whenever it exists.
+2. **The server-rendered `lastSeen`** — the fallback for a device with no live channel: switched
+   off, out of the office, or an agent whose network blocks websocket upgrades.
+
+Three details that are easy to get wrong and are deliberate here:
+
+- **Liveness expires client-side.** A device whose last heartbeat is older than the silence window
+  stops counting as live even though no event said so. The event announcing a departure is exactly
+  the one that cannot arrive when a machine vanishes — a laptop losing power sends no disconnect —
+  so a UI that waits to be told would show it active indefinitely. A one-second ticker re-evaluates.
+- **The presence table is cleared when this browser's socket drops**, not frozen. Holding the last
+  known state would leave every device showing as it was at the moment contact was lost, with
+  nothing to correct it. Stale green dots are worse than an honest fallback.
+- **The online tile falls back to the server count rather than showing zero** when the socket is
+  down. "No live channel" is not "nobody is working", and an operator seeing 0 would reasonably
+  conclude the fleet was down.
+
+`Policy.presenceHeartbeatSeconds` is on the settings screen. The silence window is derived from it
+server-side and pushed to the client in the snapshot, so the two cannot drift.

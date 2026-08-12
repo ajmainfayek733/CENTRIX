@@ -525,3 +525,46 @@ screen. A caller may request fewer, never more.
 
 Turning `realtimeEnabled` off falls the fleet back to poll-only without a redeploy. The HTTP paths
 are the system of record either way, so it is a safe switch to flip under load.
+
+### 12.6 Live presence — how "Active now" is decided
+
+The dashboard's activeness indicator is driven by a heartbeat, not by connection state.
+
+A connected agent emits `agent:heartbeat` every `Policy.presenceHeartbeatSeconds` (default 30).
+The server records it, writes `devices.lastSeen` through the shared throttle
+(`modules/ingest/deviceLiveness.ts` — the one place that column is written, so the HTTP and socket
+paths cannot disagree about what "recently seen" means), and fans a `device:presence` event out to
+the organization's dashboards.
+
+**Why a heartbeat rather than the socket itself.** A half-open TCP connection outlives an
+unplugged cable, a suspended laptop or a dropped VPN by minutes — nothing needs to be sent for the
+OS to keep believing in it. A dashboard that showed "online" because a socket object existed would
+be confidently wrong for exactly as long as that takes. A heartbeat that *arrives* is positive
+evidence at a known instant. So `devicePresence.isLive()` is a function of `lastHeartbeatAt`, and a
+device holding a socket it has gone silent on reads as **not** live — precisely the half-open case.
+
+A device is live while its last heartbeat is within `presenceHeartbeatSeconds × 2.5`. The grace
+multiplier means one dropped or delayed frame — a GC pause, a busy uplink — does not flip a healthy
+workstation to offline and back.
+
+Note this does **not** contradict §12.1. Those are two different questions:
+
+| Question | Answered by | Why |
+|---|---|---|
+| Is the *backend* available? (agent's decision to sync) | `GET /api/v1/heartbeat` | Must prove the server can reach its database, which no socket state implies. |
+| Is this *device* active? (dashboard's display) | agent heartbeat over the socket | Positive, timestamped evidence from the machine itself, seconds old rather than minutes. |
+
+**Scoping.** `devicePresence.snapshot()` requires an organization id and has no unscoped variant —
+a caller that forgets it fails to compile rather than quietly returning every connected device to
+one tenant's dashboard. Presence entries carry their owning organization for this reason.
+
+**Snapshot on connect.** A dashboard receives `device:presence-snapshot` immediately, carrying the
+current table and the silence window. Without it, devices that connected before the browser did
+would show as offline until each happened to heartbeat — up to a full interval of wrong information
+on the first screen an operator looks at. The window is sent rather than hardcoded in the client so
+changing the interval in admin config does not need a frontend release.
+
+**Known limitation.** The dashboard namespace resolves its organization with
+`currentOrganizationId()`, which returns the oldest organization row, because dashboard users have
+no organization column. Correct for this single-tenant deployment; it is the first thing that must
+change if a second organization is ever provisioned. The smoke test works around it explicitly.

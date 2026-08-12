@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { apiGet } from '@/lib/api-client';
 import { formatDuration, formatPercent, formatRelative } from '@/lib/format';
 import { Card, StatTile, ProductivityBar, TableWrap, Th, Td, StatusDot, EmptyState } from '@/components/ui';
+import { LiveOnlineTile } from '@/components/LiveOnlineTile';
 import type { Overview, Roster } from '@/types/api';
 
 export const metadata = { title: 'Overview Â· Employee Monitor' };
@@ -32,12 +33,7 @@ export default async function OverviewPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile
-          label="Online now"
-          value={overview.onlineNow}
-          hint="Agents seen in the last 5 minutes"
-          tone={overview.onlineNow > 0 ? 'brand' : 'default'}
-        />
+        <LiveOnlineTile fallback={overview.onlineNow} />
         <StatTile
           label="Checked in today"
           value={overview.attendanceToday.checkedIn}

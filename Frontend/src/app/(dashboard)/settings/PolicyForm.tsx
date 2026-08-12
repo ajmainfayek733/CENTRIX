@@ -30,6 +30,7 @@ function toFormValues(policy: Policy): PolicyFormValues {
     syncMaxBatchSize: policy.sync.maxBatchSize,
     logPageSize: policy.logPageSize,
     realtimeEnabled: policy.realtime.enabled,
+    presenceHeartbeatSeconds: policy.realtime.heartbeatSeconds,
   };
 }
 
@@ -257,6 +258,16 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
             hint="Off falls back to polling — data still arrives, just not instantly"
             checked={values.realtimeEnabled}
             onChange={(v) => set('realtimeEnabled', v)}
+          />
+          <NumberField
+            label="Presence heartbeat"
+            unit="seconds"
+            hint="How often an agent proves it is alive. Drives 'Active now'; a device goes grey after two and a half missed beats."
+            value={values.presenceHeartbeatSeconds}
+            min={5}
+            max={300}
+            disabled={!values.realtimeEnabled}
+            onChange={(v) => set('presenceHeartbeatSeconds', v)}
           />
         </Section>
       </div>

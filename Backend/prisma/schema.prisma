@@ -680,6 +680,15 @@ model Policy {
   /// system of record either way, so this is a safe switch to flip under load.
   realtimeEnabled Boolean @default(true)
 
+  /// How often a connected agent emits proof of life over its socket.
+  ///
+  /// This is what makes "active now" on the dashboard mean something: an open socket survives an
+  /// unplugged cable or a suspended laptop for minutes, so liveness is derived from a heartbeat
+  /// having arrived, not from a connection existing. 30s is a full order of magnitude below the
+  /// old five-minute online window while costing one tiny frame per device — 100 devices is
+  /// roughly three frames a second across the whole fleet.
+  presenceHeartbeatSeconds Int @default(30)
+
   // -- Dashboard read path ------------------------------------------------
   /// Rows per page in the dashboard's log tables. The UI never asks for "everything"; it asks
   /// for a page of this size and fetches the next one when the operator scrolls to the end.
