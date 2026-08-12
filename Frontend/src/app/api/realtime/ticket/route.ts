@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { apiSend } from '@/lib/api-client';
+import { apiSend, ApiUnavailableError } from '@/lib/api-client';
 
 /**
  * Mints a Socket.IO handshake ticket for the current session.
@@ -17,9 +17,26 @@ export async function POST() {
       'POST'
     );
     return NextResponse.json(data);
-  } catch {
-    // No detail in the response: an unauthenticated caller learns only that it failed. The
-    // client treats any failure as "no live updates" and falls back to its normal fetches.
+  } catch (error) {
+    // 503, not 401, when the service is simply unreachable. The two are not interchangeable to
+    // the caller: 401 means "this session cannot have live updates", which is a reason to stop
+    // asking, while 503 means "try again shortly". Answering 401 for an outage would have the
+    // provider give up on a connection that was going to work a moment later.
+    if (error instanceof ApiUnavailableError) {
+      console.error('realtime ticket: monitoring service unreachable:', error);
+      return NextResponse.json(
+        { error: 'The monitoring service is unavailable' },
+        { status: 503, headers: { 'retry-after': String(RETRY_AFTER_SECONDS) } }
+      );
+    }
+
+    // No detail for a genuine auth failure: an unauthenticated caller learns only that it failed.
     return NextResponse.json({ error: 'Unable to issue a realtime ticket' }, { status: 401 });
   }
 }
+
+/**
+ * Hint for how long to wait before retrying. Matches the provider's own minimum backoff, so a
+ * client honouring the header and one using its own schedule behave the same.
+ */
+const RETRY_AFTER_SECONDS = 1;

@@ -374,3 +374,59 @@ Three details that are easy to get wrong and are deliberate here:
 
 `Policy.presenceHeartbeatSeconds` is on the settings screen. The silence window is derived from it
 server-side and pushed to the client in the snapshot, so the two cannot drift.
+
+---
+
+## 13. Behaviour when the monitoring service is unavailable
+
+The dashboard is a pure client of the Express API, so an API restart is a routine event it has to
+survive without misleading anyone.
+
+### 13.1 "Unreachable" and "unauthorised" are different errors
+
+`lib/api-client.ts` throws two distinct types, and nothing may collapse them:
+
+| Type | Raised for | Correct response |
+|---|---|---|
+| `ApiError` | 4xx | A verdict on the request. 401 means the session is over — redirect to `/login`. |
+| `ApiUnavailableError` | transport failure, or any 5xx | Says nothing about the session. Show the outage; keep the user signed in. |
+
+This is the bug that motivated the section. `getSessionUser()` used to catch *everything* and
+return `null`, which the layout reads as "logged out" and answers with a redirect. So an API
+restart signed out every open dashboard in the building and sent them to a page that could not
+authenticate them either — an infrastructure outage presented as a credentials problem, with the
+real cause nowhere on screen. Unavailability now propagates.
+
+The same conflation existed on the login route, where it was worse: a 5xx from the API was
+returned as `401 Invalid email or password`, telling people their password was wrong during an
+outage. It now answers **503** with a message saying the credentials were not checked.
+
+### 13.2 What the user sees
+
+- **Dashboard layout** catches `ApiUnavailableError` and renders the shell — header, theme, and a
+  `ServiceUnavailable` panel — rather than redirecting. The session survives the outage.
+- **`(dashboard)/error.tsx`** catches anything a page throws, so one failing endpoint degrades one
+  screen instead of blanking the app. It distinguishes an outage from a bug *by message*, because
+  React strips server errors before they reach the client and `instanceof` cannot survive the
+  boundary; anything unrecognised is treated as a bug, which is the safer way round.
+- **`app/error.tsx`** is the last resort for the login screen and for failures in the dashboard
+  layout itself, which sits above the boundary below it.
+- **`ConnectionBanner`** appears after the realtime channel has been down for 10s. A frozen
+  dashboard is the dangerous failure here: it looks exactly like a quiet afternoon, and someone
+  will read it as "nobody is working". The grace period stops it flickering on every blip.
+- **`LogScroller`** reports a 503 distinctly and keeps `hasMore` true, so scrolling retries.
+
+Every message states that **agents keep recording locally and lose nothing**. That is the first
+question anyone asks when this screen appears, and leaving it unanswered invites a panicked call.
+
+### 13.3 Verified against a dead API
+
+Run the built app against a port with nothing on it:
+
+```bash
+cd Frontend
+$env:MONITORING_API_URL='http://127.0.0.1:5999'; npx next start -p 3099
+```
+
+Signing in reports the service as unavailable rather than rejecting the credentials, and a
+dashboard route renders the degraded shell instead of bouncing to `/login`.

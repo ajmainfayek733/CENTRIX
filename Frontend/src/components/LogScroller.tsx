@@ -44,6 +44,12 @@ interface LogScrollerProps<T> {
  */
 const PREFETCH_MARGIN = '200px';
 
+/** The proxy answers with this when the monitoring service itself is unreachable. */
+const SERVICE_UNAVAILABLE = 503;
+
+/** A failure with a message fit to show the operator, as opposed to an unexpected throw. */
+class LoadError extends Error {}
+
 export function LogScroller<T>({
   initial,
   feed,
@@ -90,7 +96,13 @@ export function LogScroller<T>({
       }
 
       const response = await fetch(`/api/logs/${feed}?${query}`);
-      if (!response.ok) throw new Error('request failed');
+
+      // 503 is the monitoring service being unreachable, which is worth saying plainly — the
+      // page itself is fine and retrying shortly will work. Anything else is reported generically.
+      if (response.status === SERVICE_UNAVAILABLE) {
+        throw new LoadError('The monitoring service is unavailable. Entries already loaded are still accurate.');
+      }
+      if (!response.ok) throw new LoadError('Could not load more entries.');
 
       const page = (await response.json()) as LogPage<T>;
 
@@ -104,10 +116,10 @@ export function LogScroller<T>({
 
       setCursor(page.nextCursor);
       setHasMore(page.hasMore);
-    } catch {
+    } catch (failure) {
       // Left recoverable on purpose: `hasMore` stays true, so scrolling again retries rather
       // than the window silently deciding the feed ended.
-      setError('Could not load more entries.');
+      setError(failure instanceof LoadError ? failure.message : 'Could not load more entries.');
     } finally {
       inFlight.current = false;
       setLoading(false);

@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { apiGet } from '@/lib/api-client';
+import { apiGet, ApiUnavailableError } from '@/lib/api-client';
 
 /**
  * Paging proxy for the dashboard's log tables.
@@ -53,7 +53,16 @@ export async function GET(request: NextRequest, context: { params: Promise<{ fee
   try {
     const data = await apiGet<unknown>(`${basePath}${query ? `?${query}` : ''}`);
     return NextResponse.json(data);
-  } catch {
+  } catch (error) {
+    // 503 for an outage so the scroll window's retry is worth taking, and its message can be
+    // honest about why. A blanket 502 told the user nothing and made a restart look like a bug in
+    // the page they were reading.
+    if (error instanceof ApiUnavailableError) {
+      console.error(`logs/${feed}: monitoring service unreachable:`, error);
+      return NextResponse.json({ error: 'The monitoring service is unavailable' }, { status: 503 });
+    }
+
+    console.error(`logs/${feed}: request failed:`, error);
     return NextResponse.json({ error: 'Unable to load this page of results' }, { status: 502 });
   }
 }

@@ -21,12 +21,35 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Email and password are required' }, { status: 400 });
   }
 
-  const upstream = await fetch(`${API_URL}/v1/dashboard/auth/login`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email: body.email, password: body.password }),
-    cache: 'no-store',
-  });
+  let upstream: Response;
+
+  try {
+    upstream = await fetch(`${API_URL}/v1/dashboard/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: body.email, password: body.password }),
+      cache: 'no-store',
+    });
+  } catch (error) {
+    // Unreachable is not "wrong password". Sending someone back to retype correct credentials
+    // during an outage is the single most confusing thing this screen could do, and it is exactly
+    // what an unguarded fetch produced: a 500 the form rendered as a failed sign-in.
+    console.error('login: monitoring service unreachable:', error);
+    return NextResponse.json(
+      { error: 'The monitoring service is unavailable. Your credentials have not been checked — try again shortly.' },
+      { status: 503 }
+    );
+  }
+
+  // A 5xx says the service could not answer, not that the credentials were rejected. Only a 4xx
+  // is an actual verdict on what was submitted.
+  if (upstream.status >= 500) {
+    console.error(`login: monitoring service returned ${upstream.status}`);
+    return NextResponse.json(
+      { error: 'The monitoring service is unavailable. Your credentials have not been checked — try again shortly.' },
+      { status: 503 }
+    );
+  }
 
   if (!upstream.ok) {
     // Deliberately generic. Distinguishing "no such user" from "wrong password" would let an
