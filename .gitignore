@@ -71,3 +71,6 @@ installer/**/*.wixobj
 
 # Local tool cache
 .dotnet/
+
+# Claude Code: personal, per-machine settings (permissions, enabled MCP servers)
+.claude/settings.local.json
