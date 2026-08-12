@@ -65,7 +65,7 @@ export default async function EmployeeDetailPage({
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="Active" value={formatDuration(totals.activeSeconds)} />
         <StatTile label="Idle" value={formatDuration(totals.idleSeconds)} />
-        <StatTile label="Productive" value={formatPercent(totals.productivityPercent)} tone="accent" />
+        <StatTile label="Productive" value={formatPercent(totals.productivityPercent)} tone="brand" />
         <StatTile
           label="Blacklisted"
           value={formatDuration(totals.blacklistedSeconds)}
@@ -140,7 +140,7 @@ export default async function EmployeeDetailPage({
                     <Td>{new Date(row.workDate).toLocaleDateString()}</Td>
                     <Td numeric>{formatTime(row.loginTime)}</Td>
                     <Td numeric>
-                      {row.logoutTime ? formatTime(row.logoutTime) : <Badge tone="accent">Still signed in</Badge>}
+                      {row.logoutTime ? formatTime(row.logoutTime) : <Badge tone="brand">Still signed in</Badge>}
                     </Td>
                     <Td muted>{row.endReason ?? '—'}</Td>
                   </tr>

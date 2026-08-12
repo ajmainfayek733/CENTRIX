@@ -180,7 +180,12 @@ middleware only prevents a manager from seeing a settings page that would 403 an
 - `reports/` — filterable views; export buttons stay disabled/hidden until the
   backend endpoint exists (Phase 2, same as before).
 - `ui/` — shadcn components, installed via the shadcn CLI, not hand-copied — keeps
-  them updatable.
+  them updatable. See §11 for the CLI/token setup.
+  - `ui/index.tsx` is a pre-shadcn, hand-rolled barrel (`Card`, `Badge`, `StatTile`,
+    `Th`/`Td`, …). It still works and is still imported from `@/components/ui`, but it
+    is **legacy**: prefer a CLI-installed component for anything new. Note the name
+    collision — the barrel's `Card` and a future `@/components/ui/card` from the
+    registry are different components. Import paths, not names, disambiguate them.
 
 **Rule carried over unchanged**: no component fetches `monitoring-server` directly
 with a raw `fetch`/`axios` call. Server components use `lib/api-client.ts`; client
@@ -243,3 +248,49 @@ renders `undefined` in a report. Treat contract changes as a two-repo commit.
   component; every client-side data need goes through a local route handler.
 - Report data is never served from Next.js's fetch cache — every load reflects the
   current state in Postgres.
+
+---
+
+## 11. Theming and shadcn/ui
+
+`Frontend/components.json` configures the shadcn CLI (v4, `base-nova` style, Base UI
+primitives, lucide icons, Tailwind v4 so `tailwind.config` is intentionally empty).
+Install components with the CLI from **`Frontend/`**, never from the repo root:
+
+```bash
+cd Frontend
+npx shadcn@latest add <component>
+```
+
+The repo-root `.mcp.json` starts the shadcn MCP server with the same working
+directory, so its add-commands resolve against this `components.json` rather than
+against a rootless project.
+
+### Two token layers in `src/app/globals.css`
+
+1. **The palette** — the real colours, defined once per theme. Source of truth.
+2. **The shadcn contract** — the names shadcn components hardcode (`--card`,
+   `--primary`, `--muted`, `--ring`, `--chart-*`, `--sidebar-*`), defined as `var()`
+   aliases onto the palette.
+
+Aliases are declared only in `:root` and never restated in `.dark`: they resolve at
+use site, so overriding a palette token switches both layers at once. This depends on
+`dark` sitting on `<html>` — the same element as `:root` — which is what the inline
+theme script in `layout.tsx` does.
+
+**Rules when editing the theme:**
+
+- Change colours in the palette block only. Editing an alias decouples it from the
+  palette and it will stop following dark mode.
+- The product green is `--brand`/`--brand-contrast` (utilities `bg-brand`,
+  `text-brand-contrast`, and the `brand` tone on `Badge`/`StatTile`). It is **not**
+  `--accent`: shadcn reserves `--accent` for its subtle hover/highlight surface, and
+  sharing the name turns every shadcn hover state solid green. `--primary` is aliased
+  to `--brand`, so shadcn's default button is the product green.
+- Font variables belong on `<html>` in `layout.tsx`, not `<body>`. `globals.css`
+  resolves `font-sans` on the html element, and `@theme inline` inlines its values
+  into utilities instead of exposing `--font-sans` as a readable custom property — so
+  `font-family: var(--font-sans)` resolves to nothing and the page silently falls back
+  to Times New Roman.
+- Running `shadcn init` again will overwrite the palette with the preset's greyscale
+  defaults. Use `add`, not `init`.

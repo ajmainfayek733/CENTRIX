@@ -1,4 +1,8 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
 
 /*
  * Dual theme. Light is the default on :root; dark is applied by a `dark` class on <html>,
@@ -7,35 +11,86 @@
  * A class rather than only a prefers-color-scheme media query, because the theme toggle has
  * to be able to override the OS preference in both directions — a media query alone can
  * express "follow the system" but not "I want light on a dark machine".
+ *
+ * Two token layers live below:
+ *   1. The palette — the real colours, one definition per theme. This is the source of truth.
+ *   2. The shadcn/ui contract — the names shadcn components hardcode (--card, --primary,
+ *      --muted, …), defined as var() aliases onto the palette. Aliases are never restated in
+ *      .dark: they resolve at use site, so overriding a palette token switches both layers.
+ *      This relies on `dark` sitting on <html>, the same element as :root — see layout.tsx.
  */
 
 :root {
+  /* ---- Palette: source of truth (zinc greys + brand green) ---- */
   --background: #fafafa;
   --surface: #ffffff;
   --surface-muted: #f4f4f5;
   --border: #e4e4e7;
   --text-primary: #18181b;
   --text-secondary: #71717a;
-  --accent: #16a34a;
-  --accent-contrast: #ffffff;
+  /* The product's green. Named --brand, not --accent: shadcn reserves --accent for its
+     subtle hover/highlight surface, and letting the two share a name turned every shadcn
+     hover state solid green. */
+  --brand: #16a34a;
+  --brand-contrast: #ffffff;
   --warning: #d97706;
   --danger: #dc2626;
   --info: #2563eb;
+  /* Fifth categorical hue, used only to complete the chart ramp. */
+  --violet: #7c3aed;
+
+  /* ---- shadcn/ui contract: aliases onto the palette ---- */
+  --foreground: var(--text-primary);
+  --card: var(--surface);
+  --card-foreground: var(--text-primary);
+  --popover: var(--surface);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--brand);
+  --primary-foreground: var(--brand-contrast);
+  --secondary: var(--surface-muted);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--surface-muted);
+  --muted-foreground: var(--text-secondary);
+  --accent: var(--surface-muted);
+  --accent-foreground: var(--text-primary);
+  --destructive: var(--danger);
+  --destructive-foreground: var(--brand-contrast);
+  --input: var(--border);
+  --ring: var(--brand);
+
+  --chart-1: var(--brand);
+  --chart-2: var(--info);
+  --chart-3: var(--warning);
+  --chart-4: var(--danger);
+  --chart-5: var(--violet);
+
+  --sidebar: var(--surface);
+  --sidebar-foreground: var(--text-primary);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: var(--brand-contrast);
+  --sidebar-accent: var(--surface-muted);
+  --sidebar-accent-foreground: var(--text-primary);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--brand);
+
+  --radius: 0.625rem;
 }
 
 .dark {
+  /* Palette only — the contract aliases above follow automatically. */
   --background: #09090b;
   --surface: #18181b;
   --surface-muted: #27272a;
   --border: #27272a;
   --text-primary: #fafafa;
   --text-secondary: #a1a1aa;
-  /* Lightened from the light-theme accent: #16a34a on a near-black surface fails contrast. */
-  --accent: #22c55e;
-  --accent-contrast: #052e16;
+  /* Lightened from the light-theme brand: #16a34a on a near-black surface fails contrast. */
+  --brand: #22c55e;
+  --brand-contrast: #052e16;
   --warning: #f59e0b;
   --danger: #ef4444;
   --info: #60a5fa;
+  --violet: #a78bfa;
 }
 
 @theme inline {
@@ -45,20 +100,62 @@
   --color-border: var(--border);
   --color-text-primary: var(--text-primary);
   --color-text-secondary: var(--text-secondary);
-  --color-accent: var(--accent);
-  --color-accent-contrast: var(--accent-contrast);
+  --color-brand: var(--brand);
+  --color-brand-contrast: var(--brand-contrast);
   --color-warning: var(--warning);
   --color-danger: var(--danger);
   --color-info: var(--info);
 
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-heading: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* The font stack itself comes from `html { @apply font-sans }` in the base layer below —
+   `@theme inline` inlines its values into utilities instead of exposing --font-sans as a
+   readable custom property, so referencing var(--font-sans) here would resolve to nothing. */
 body {
-  background: var(--background);
-  color: var(--text-primary);
-  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -66,4 +163,16 @@ body {
    digits make a table of durations impossible to scan. */
 .tnum {
   font-variant-numeric: tabular-nums;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
 }

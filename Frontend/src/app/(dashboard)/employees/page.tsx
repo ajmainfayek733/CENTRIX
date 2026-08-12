@@ -6,7 +6,7 @@ import { Card, TableWrap, Th, Td, StatusDot, EmptyState, ProductivityBar } from 
 import type { Organization, Roster } from '@/types/api';
 import { EmployeeImport } from './EmployeeImport';
 
-export const metadata = { title: 'Employees · Employee Monitor' };
+export const metadata = { title: 'Employees Â· Employee Monitor' };
 export const dynamic = 'force-dynamic';
 
 export default async function EmployeesPage({
@@ -29,7 +29,7 @@ export default async function EmployeesPage({
   const isAdmin = user?.role === 'super_admin';
 
   // Only admins can import, and the endpoint needs an organization id. Single-site deployment,
-  // so the first organization is the one being administered — same assumption as Settings.
+  // so the first organization is the one being administered â€” same assumption as Settings.
   const organizations = isAdmin ? await apiGet<Organization[]>('/v1/dashboard/organizations') : [];
   const organizationId = organizations[0]?.id;
 
@@ -39,7 +39,7 @@ export default async function EmployeesPage({
         <div>
           <h1 className="text-lg font-semibold">Employees</h1>
           <p className="mt-0.5 text-sm text-text-secondary">
-            {roster.employees.length} tracked · {new Date(roster.period.start).toLocaleDateString()} to{' '}
+            {roster.employees.length} tracked Â· {new Date(roster.period.start).toLocaleDateString()} to{' '}
             {new Date(roster.period.end).toLocaleDateString()}
           </p>
         </div>
@@ -48,7 +48,7 @@ export default async function EmployeesPage({
 
       <Card>
         {roster.employees.length === 0 ? (
-          <EmptyState message="No employees yet. Use “Import roster” to add them, then assign each enrolled device to a person on the Devices screen." />
+          <EmptyState message="No employees yet. Use â€œImport rosterâ€ to add them, then assign each enrolled device to a person on the Devices screen." />
         ) : (
           <TableWrap>
             <table className="w-full min-w-[760px] border-collapse">
@@ -70,7 +70,7 @@ export default async function EmployeesPage({
                     <Td>
                       <Link
                         href={`/employees/${employee.id}`}
-                        className="flex items-center gap-2 font-medium group-hover:text-accent"
+                        className="flex items-center gap-2 font-medium group-hover:text-brand"
                       >
                         <StatusDot online={employee.isOnline} />
                         <span>
@@ -79,7 +79,7 @@ export default async function EmployeesPage({
                         </span>
                       </Link>
                     </Td>
-                    <Td muted>{employee.department ?? '—'}</Td>
+                    <Td muted>{employee.department ?? 'â€”'}</Td>
                     <Td align="right" numeric muted>
                       {employee.deviceCount}
                     </Td>

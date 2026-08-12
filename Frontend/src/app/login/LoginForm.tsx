@@ -48,7 +48,7 @@ export function LoginForm() {
   }
 
   const inputClass =
-    'w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none transition-colors placeholder:text-text-secondary/60 focus:border-accent';
+    'w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none transition-colors placeholder:text-text-secondary/60 focus:border-brand';
 
   return (
     <form onSubmit={onSubmit} className="space-y-4 rounded-lg border border-border bg-surface p-6">
@@ -91,9 +91,9 @@ export function LoginForm() {
       <button
         type="submit"
         disabled={pending}
-        className="w-full rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-contrast transition-opacity hover:opacity-90 disabled:opacity-50"
+        className="w-full rounded-md bg-brand px-4 py-2 text-sm font-semibold text-brand-contrast transition-opacity hover:opacity-90 disabled:opacity-50"
       >
-        {pending ? 'Signing in…' : 'Sign in'}
+        {pending ? 'Signing inâ€¦' : 'Sign in'}
       </button>
     </form>
   );

@@ -15,7 +15,7 @@ export interface AssignableEmployee {
  *
  * Devices mint their own credential and park on the org's "Unassigned Devices" placeholder, so
  * this is the only step in enrollment that needs a human. Until it happens the telemetry is
- * stored but attributed to the placeholder, which means it never reaches per-employee reports —
+ * stored but attributed to the placeholder, which means it never reaches per-employee reports â€”
  * so an unassigned device is not a cosmetic gap, it is data that cannot be read.
  */
 export function DeviceAssignment({
@@ -62,15 +62,15 @@ export function DeviceAssignment({
         disabled={pending}
         onChange={(e) => onChange(e.target.value)}
         aria-label="Assign this device to an employee"
-        className="w-full min-w-40 rounded-md border border-border bg-surface px-2 py-1 text-xs outline-none focus:border-accent disabled:opacity-50"
+        className="w-full min-w-40 rounded-md border border-border bg-surface px-2 py-1 text-xs outline-none focus:border-brand disabled:opacity-50"
       >
         <option value="" disabled>
-          {pending ? 'Assigning…' : 'Unassigned — pick an employee'}
+          {pending ? 'Assigningâ€¦' : 'Unassigned â€” pick an employee'}
         </option>
         {employees.map((employee) => (
           <option key={employee.id} value={employee.id}>
             {employee.name}
-            {employee.department ? ` · ${employee.department}` : ''}
+            {employee.department ? ` Â· ${employee.department}` : ''}
           </option>
         ))}
       </select>

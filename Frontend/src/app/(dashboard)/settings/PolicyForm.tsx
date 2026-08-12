@@ -70,9 +70,9 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
             type="button"
             onClick={save}
             disabled={pending}
-            className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-contrast transition-opacity hover:opacity-90 disabled:opacity-50"
+            className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-brand-contrast transition-opacity hover:opacity-90 disabled:opacity-50"
           >
-            {pending ? 'Saving…' : 'Save changes'}
+            {pending ? 'Savingâ€¦' : 'Save changes'}
           </button>
         </div>
       }
@@ -105,7 +105,7 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
           />
           <Toggle
             label="USB devices"
-            hint="Connection and removal only — never contents"
+            hint="Connection and removal only â€” never contents"
             checked={values.usbEnabled}
             onChange={(v) => set('usbEnabled', v)}
           />
@@ -243,7 +243,7 @@ function Toggle({
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="mt-0.5 size-4 accent-[var(--accent)]"
+        className="mt-0.5 size-4 accent-[var(--brand)]"
       />
       <span className="min-w-0">
         <span className="block text-sm font-medium">{label}</span>
@@ -285,7 +285,7 @@ function NumberField({
             // An empty input parses to NaN, which would post garbage to the API.
             if (Number.isFinite(next)) onChange(next);
           }}
-          className="tnum w-24 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-accent"
+          className="tnum w-24 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-brand"
         />
         <span className="text-xs text-text-secondary">{unit}</span>
       </span>
@@ -309,7 +309,7 @@ function TimeField({
         type="time"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="tnum rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-accent"
+        className="tnum rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-brand"
       />
     </label>
   );

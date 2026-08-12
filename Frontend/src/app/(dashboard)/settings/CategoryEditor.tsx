@@ -38,7 +38,7 @@ export function CategoryEditor({
           pattern: trimmed,
           target,
           tag,
-          // "Blacklisted" is not just a label — it is what makes the agent warn the employee,
+          // "Blacklisted" is not just a label â€” it is what makes the agent warn the employee,
           // so selecting it here sets the flag the alert engine actually reads.
           isBlacklisted: tag === 'Blacklisted',
         });
@@ -61,10 +61,10 @@ export function CategoryEditor({
   }
 
   const inputClass =
-    'rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-accent';
+    'rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-brand';
 
   return (
-    <Card title={`Productivity rules · ${categories.length}`}>
+    <Card title={`Productivity rules Â· ${categories.length}`}>
       <div className="mb-5 flex flex-wrap items-end gap-2">
         <label className="block">
           <span className="mb-1 block text-xs text-text-secondary">Matches</span>
@@ -112,7 +112,7 @@ export function CategoryEditor({
           type="button"
           onClick={add}
           disabled={pending || pattern.trim().length === 0}
-          className="rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-accent-contrast transition-opacity hover:opacity-90 disabled:opacity-50"
+          className="rounded-md bg-brand px-3 py-1.5 text-sm font-semibold text-brand-contrast transition-opacity hover:opacity-90 disabled:opacity-50"
         >
           Add rule
         </button>

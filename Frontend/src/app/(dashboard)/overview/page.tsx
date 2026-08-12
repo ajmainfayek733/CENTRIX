@@ -4,10 +4,10 @@ import { formatDuration, formatPercent, formatRelative } from '@/lib/format';
 import { Card, StatTile, ProductivityBar, TableWrap, Th, Td, StatusDot, EmptyState } from '@/components/ui';
 import type { Overview, Roster } from '@/types/api';
 
-export const metadata = { title: 'Overview · Employee Monitor' };
+export const metadata = { title: 'Overview Â· Employee Monitor' };
 
 // Live operational data. Never served from Next's fetch cache, or a manager sees a stale
-// "who is online now" — see Docs/Frontend/NextJS.md section 3.
+// "who is online now" â€” see Docs/Frontend/NextJS.md section 3.
 export const dynamic = 'force-dynamic';
 
 export default async function OverviewPage() {
@@ -27,7 +27,7 @@ export default async function OverviewPage() {
       <div>
         <h1 className="text-lg font-semibold">Overview</h1>
         <p className="mt-0.5 text-sm text-text-secondary">
-          Last 7 days · {overview.employeesTracked} of {overview.headcount} employees reporting
+          Last 7 days Â· {overview.employeesTracked} of {overview.headcount} employees reporting
         </p>
       </div>
 
@@ -36,7 +36,7 @@ export default async function OverviewPage() {
           label="Online now"
           value={overview.onlineNow}
           hint="Agents seen in the last 5 minutes"
-          tone={overview.onlineNow > 0 ? 'accent' : 'default'}
+          tone={overview.onlineNow > 0 ? 'brand' : 'default'}
         />
         <StatTile
           label="Checked in today"
@@ -67,7 +67,7 @@ export default async function OverviewPage() {
 
         <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-5">
           {[
-            { label: 'Productive', value: totals.productiveSeconds, dot: 'bg-accent' },
+            { label: 'Productive', value: totals.productiveSeconds, dot: 'bg-brand' },
             { label: 'Neutral', value: totals.neutralSeconds, dot: 'bg-text-secondary/40' },
             { label: 'Unproductive', value: totals.unproductiveSeconds, dot: 'bg-warning' },
             { label: 'Blacklisted', value: totals.blacklistedSeconds, dot: 'bg-danger' },
@@ -88,7 +88,7 @@ export default async function OverviewPage() {
         title="Most active"
         action={
           <Link href="/employees" className="text-xs text-text-secondary hover:text-text-primary">
-            View all →
+            View all â†’
           </Link>
         }
       >
@@ -113,13 +113,13 @@ export default async function OverviewPage() {
                     <Td>
                       <Link
                         href={`/employees/${employee.id}`}
-                        className="flex items-center gap-2 font-medium group-hover:text-accent"
+                        className="flex items-center gap-2 font-medium group-hover:text-brand"
                       >
                         <StatusDot online={employee.isOnline} />
                         {employee.name}
                       </Link>
                     </Td>
-                    <Td muted>{employee.department ?? '—'}</Td>
+                    <Td muted>{employee.department ?? 'â€”'}</Td>
                     <Td align="right" numeric>
                       {formatDuration(employee.activeSeconds)}
                     </Td>

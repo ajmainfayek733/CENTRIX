@@ -33,7 +33,11 @@ const themeScript = `
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    /*
+     * The font variables go on <html>, not <body>: globals.css resolves the `font-sans`
+     * utility on the html element, and a variable defined only on body is out of scope there.
+     */
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>

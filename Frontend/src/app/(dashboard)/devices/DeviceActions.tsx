@@ -5,7 +5,7 @@ import { setDeviceActive } from './actions';
 
 /**
  * The admin kill switch from spec section 9. Deactivating makes the backend return 403 to that
- * device, which the agent treats as "stop uploading" while continuing to collect locally — so
+ * device, which the agent treats as "stop uploading" while continuing to collect locally â€” so
  * reactivating does not leave a hole in the record.
  */
 export function DeviceActions({ deviceId, isActive }: { deviceId: string; isActive: boolean }) {
@@ -33,10 +33,10 @@ export function DeviceActions({ deviceId, isActive }: { deviceId: string; isActi
         className={`rounded-md border px-2.5 py-1 text-xs transition-colors disabled:opacity-50 ${
           isActive
             ? 'border-border text-text-secondary hover:border-danger hover:text-danger'
-            : 'border-accent text-accent hover:bg-accent/10'
+            : 'border-brand text-brand hover:bg-brand/10'
         }`}
       >
-        {pending ? '…' : isActive ? 'Deactivate' : 'Reactivate'}
+        {pending ? 'â€¦' : isActive ? 'Deactivate' : 'Reactivate'}
       </button>
     </div>
   );

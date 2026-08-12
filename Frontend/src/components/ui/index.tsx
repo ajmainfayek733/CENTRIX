@@ -44,11 +44,11 @@ export function StatTile({
   label: string;
   value: string | number;
   hint?: string;
-  tone?: 'default' | 'accent' | 'warning' | 'danger';
+  tone?: 'default' | 'brand' | 'warning' | 'danger';
 }) {
   const toneClass = {
     default: 'text-text-primary',
-    accent: 'text-accent',
+    brand: 'text-brand',
     warning: 'text-warning',
     danger: 'text-danger',
   }[tone];
@@ -67,11 +67,11 @@ export function Badge({
   tone = 'neutral',
 }: {
   children: ReactNode;
-  tone?: 'neutral' | 'accent' | 'warning' | 'danger' | 'info';
+  tone?: 'neutral' | 'brand' | 'warning' | 'danger' | 'info';
 }) {
   const toneClass = {
     neutral: 'bg-surface-muted text-text-secondary',
-    accent: 'bg-accent/12 text-accent',
+    brand: 'bg-brand/12 text-brand',
     warning: 'bg-warning/12 text-warning',
     danger: 'bg-danger/12 text-danger',
     info: 'bg-info/12 text-info',
@@ -86,11 +86,11 @@ export function Badge({
 
 export function TagBadge({ tag }: { tag: ProductivityTag }) {
   const tone = {
-    Productive: 'accent',
+    Productive: 'brand',
     Unproductive: 'warning',
     Blacklisted: 'danger',
     Neutral: 'neutral',
-  }[tag] as 'accent' | 'warning' | 'danger' | 'neutral';
+  }[tag] as 'brand' | 'warning' | 'danger' | 'neutral';
 
   return <Badge tone={tone}>{tag}</Badge>;
 }
@@ -110,7 +110,7 @@ export function SeverityBadge({ severity }: { severity: AlertSeverity }) {
 export function StatusDot({ online }: { online: boolean }) {
   return (
     <span
-      className={`inline-block size-2 shrink-0 rounded-full ${online ? 'bg-accent' : 'bg-text-secondary/40'}`}
+      className={`inline-block size-2 shrink-0 rounded-full ${online ? 'bg-brand' : 'bg-text-secondary/40'}`}
       aria-hidden
     />
   );
@@ -164,7 +164,7 @@ export function EmptyState({ message }: { message: string }) {
 }
 
 /**
- * Proportional productivity bar. Purely decorative reinforcement of the numbers beside it —
+ * Proportional productivity bar. Purely decorative reinforcement of the numbers beside it â€”
  * the segments carry a title attribute but the figures are always shown as text too, so the
  * information is never colour-only.
  */
@@ -183,7 +183,7 @@ export function ProductivityBar({
   if (total <= 0) return <div className="h-1.5 rounded-full bg-surface-muted" />;
 
   const segments = [
-    { value: productive, className: 'bg-accent', label: 'Productive' },
+    { value: productive, className: 'bg-brand', label: 'Productive' },
     { value: neutral, className: 'bg-text-secondary/40', label: 'Neutral' },
     { value: unproductive, className: 'bg-warning', label: 'Unproductive' },
     { value: blacklisted, className: 'bg-danger', label: 'Blacklisted' },

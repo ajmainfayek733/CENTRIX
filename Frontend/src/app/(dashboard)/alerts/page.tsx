@@ -4,7 +4,7 @@ import { formatDateTime, formatDuration, formatBytes } from '@/lib/format';
 import { Card, TableWrap, Th, Td, SeverityBadge, Badge, EmptyState } from '@/components/ui';
 import type { AlertRow, UsbEventRow } from '@/types/api';
 
-export const metadata = { title: 'Alerts · Employee Monitor' };
+export const metadata = { title: 'Alerts Â· Employee Monitor' };
 export const dynamic = 'force-dynamic';
 
 /** Turns the typed context columns back into one readable line per alert type. */
@@ -13,7 +13,7 @@ function describeContext(alert: AlertRow): string {
   if (alert.contextAppName) return alert.contextAppName;
   if (alert.contextUsbFriendlyName) return alert.contextUsbFriendlyName;
   if (alert.idleSeconds !== null) return `Idle ${formatDuration(alert.idleSeconds)}`;
-  return '—';
+  return 'â€”';
 }
 
 export default async function AlertsPage() {
@@ -31,7 +31,7 @@ export default async function AlertsPage() {
         </p>
       </div>
 
-      <Card title={`Open alerts · ${alerts.alerts.length}`}>
+      <Card title={`Open alerts Â· ${alerts.alerts.length}`}>
         {alerts.alerts.length === 0 ? (
           <EmptyState message="No open alerts. Idle escalations and blacklist hits appear here as they happen." />
         ) : (
@@ -55,7 +55,7 @@ export default async function AlertsPage() {
                     <Td>
                       <Link
                         href={`/employees/${alert.device.employee.id}`}
-                        className="font-medium hover:text-accent"
+                        className="font-medium hover:text-brand"
                       >
                         {alert.device.employee.name}
                       </Link>
@@ -65,7 +65,7 @@ export default async function AlertsPage() {
                       {alert.title}
                       {alert.escalationLevel > 1 && (
                         <span className="ml-1.5">
-                          <Badge tone="warning">escalated ×{alert.escalationLevel}</Badge>
+                          <Badge tone="warning">escalated Ã—{alert.escalationLevel}</Badge>
                         </span>
                       )}
                     </Td>
@@ -83,7 +83,7 @@ export default async function AlertsPage() {
         )}
       </Card>
 
-      <Card title={`USB devices · last 7 days`}>
+      <Card title={`USB devices Â· last 7 days`}>
         {usb.events.length === 0 ? (
           <EmptyState message="No removable devices connected in this period." />
         ) : (
@@ -108,7 +108,7 @@ export default async function AlertsPage() {
                     <Td>
                       <Link
                         href={`/employees/${event.device.employee.id}`}
-                        className="font-medium hover:text-accent"
+                        className="font-medium hover:text-brand"
                       >
                         {event.device.employee.name}
                       </Link>
@@ -122,12 +122,12 @@ export default async function AlertsPage() {
                       {event.friendlyName ?? 'Unknown device'}
                       <span className="block text-xs text-text-secondary">
                         {event.deviceType}
-                        {event.driveLetter ? ` · ${event.driveLetter}` : ''}
+                        {event.driveLetter ? ` Â· ${event.driveLetter}` : ''}
                         {event.volumeLabel ? ` ${event.volumeLabel}` : ''}
                       </span>
                     </Td>
                     <Td muted>
-                      <span className="font-mono text-xs">{event.serialNumber ?? '—'}</span>
+                      <span className="font-mono text-xs">{event.serialNumber ?? 'â€”'}</span>
                     </Td>
                     <Td align="right" numeric muted>
                       {formatBytes(event.capacityBytes)}

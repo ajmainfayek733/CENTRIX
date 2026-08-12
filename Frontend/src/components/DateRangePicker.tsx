@@ -31,7 +31,7 @@ export function DateRangePicker({ startDate, endDate }: { startDate?: string; en
   }
 
   const inputClass =
-    'rounded-md border border-border bg-surface px-2 py-1.5 text-xs outline-none focus:border-accent';
+    'rounded-md border border-border bg-surface px-2 py-1.5 text-xs outline-none focus:border-brand';
 
   return (
     <div className="flex flex-wrap items-center gap-2">
