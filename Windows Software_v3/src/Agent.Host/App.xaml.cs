@@ -146,6 +146,7 @@ public partial class App : System.Windows.Application
 
         _host?.Services.GetService<InputCounter>()?.Dispose();
         _host?.Services.GetService<SessionEventMonitor>()?.Dispose();
+        _host?.Services.GetService<BrowserUrlExtractor>()?.Dispose();
 
         if (_host is not null)
         {

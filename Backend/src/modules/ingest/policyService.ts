@@ -16,7 +16,15 @@ export interface AgentPolicyDto {
   attendance: { enabled: boolean };
   activity: { enabled: boolean; idleThresholdSeconds: number };
   appSession: { enabled: boolean; pollSeconds: number };
-  browserMonitor: { enabled: boolean; uiaTimeoutMs: number; maxRetryAttempts: number };
+  /// `urlRefreshSeconds` is the agent's main CPU dial: how long it may go without re-reading a
+  /// focused browser's address bar while the window and title are unchanged. Lower is more precise
+  /// about time-per-site and costs more CPU on every workstation.
+  browserMonitor: {
+    enabled: boolean;
+    uiaTimeoutMs: number;
+    maxRetryAttempts: number;
+    urlRefreshSeconds: number;
+  };
   screenshot: { enabled: boolean; intervalSeconds: number; jpegQuality: number };
   usb: { enabled: boolean; reconciliationIntervalSeconds: number; alertOnInsertion: boolean };
   alert: {
@@ -74,6 +82,7 @@ export function toAgentPolicy(
       enabled: policy.browserMonitorEnabled,
       uiaTimeoutMs: policy.browserUiaTimeoutMs,
       maxRetryAttempts: policy.browserMaxRetryAttempts,
+      urlRefreshSeconds: policy.browserUrlRefreshSeconds,
     },
     screenshot: {
       enabled: policy.screenshotEnabled,

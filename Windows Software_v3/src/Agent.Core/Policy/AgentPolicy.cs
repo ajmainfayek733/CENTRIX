@@ -62,6 +62,19 @@ public sealed record BrowserMonitorPolicy
     public bool Enabled { get; init; } = true;
     public int UiaTimeoutMs { get; init; } = 500;
     public int MaxRetryAttempts { get; init; } = 3;
+
+    /// <summary>
+    /// How long the agent may go without re-reading a focused browser's address bar while its
+    /// window and title are unchanged.
+    ///
+    /// This is the agent's main CPU dial. Reading the address bar is a cross-process UI Automation
+    /// call, and the poll interval is far too fast to run one on: a browser cannot navigate without
+    /// changing its window title, so a changed title triggers an immediate read and this interval
+    /// only has to catch the rare navigation between two pages with the same title. Ten seconds
+    /// bounds that error at ten seconds of one site's time while removing roughly 90% of the reads
+    /// a per-tick probe would make.
+    /// </summary>
+    public int UrlRefreshSeconds { get; init; } = 10;
 }
 
 public sealed record ScreenshotPolicy

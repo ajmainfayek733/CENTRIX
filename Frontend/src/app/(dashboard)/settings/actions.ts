@@ -18,6 +18,12 @@ export interface PolicyFormValues {
   idleThresholdSeconds: number;
   appSessionEnabled: boolean;
   browserMonitorEnabled: boolean;
+  /**
+   * How long an agent may go without re-reading a focused browser's address bar while the window
+   * and title are unchanged. The agent's main CPU dial - lower is more precise about time per
+   * site and costs more CPU on every monitored workstation.
+   */
+  browserUrlRefreshSeconds: number;
   screenshotEnabled: boolean;
   screenshotIntervalSeconds: number;
   /** JPEG quality of a capture, 10-100. Trades file size and storage against legibility. */

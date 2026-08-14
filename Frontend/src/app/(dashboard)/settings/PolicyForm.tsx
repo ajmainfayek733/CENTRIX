@@ -26,6 +26,7 @@ function toFormValues(policy: Policy): PolicyFormValues {
     idleThresholdSeconds: policy.activity.idleThresholdSeconds,
     appSessionEnabled: policy.appSession.enabled,
     browserMonitorEnabled: policy.browserMonitor.enabled,
+    browserUrlRefreshSeconds: policy.browserMonitor.urlRefreshSeconds,
     screenshotEnabled: policy.screenshot.enabled,
     screenshotIntervalSeconds: policy.screenshot.intervalSeconds,
     screenshotJpegQuality: policy.screenshot.jpegQuality,
@@ -67,6 +68,7 @@ const LIMITS = {
   syncMaxBatchSize: { min: 1, max: 500 },
   syncBatchIntervalSeconds: { min: 10, max: 3600 },
   presenceHeartbeatSeconds: { min: 5, max: 300 },
+  browserUrlRefreshSeconds: { min: 1, max: 300 },
   idleLadderMinutes: { min: 1 },
 } as const;
 
@@ -198,6 +200,24 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
               min={LIMITS.idleThresholdMinutes.min}
               max={LIMITS.idleThresholdMinutes.max}
               onChange={(v) => set('idleThresholdSeconds', v * SECONDS_PER_MINUTE)}
+            />
+          </Section>
+
+          {/*
+            Grouped with the toggle that governs it, like the screenshot settings above, and for
+            the same reason: on its own it reads as an obscure timing knob, when it is in fact the
+            single biggest influence the dashboard has on what the agent costs a workstation.
+          */}
+          <Section title="Website tracking">
+            <NumberField
+              label="Address bar re-read"
+              unit="seconds"
+              hint="How long a browser may sit on one page before the agent re-reads its address. A page change is picked up immediately; this only bounds navigation between two pages with the same title. Lowering it costs CPU on every machine."
+              value={values.browserUrlRefreshSeconds}
+              min={LIMITS.browserUrlRefreshSeconds.min}
+              max={LIMITS.browserUrlRefreshSeconds.max}
+              disabled={!values.browserMonitorEnabled}
+              onChange={(v) => set('browserUrlRefreshSeconds', v)}
             />
           </Section>
 

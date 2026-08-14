@@ -643,6 +643,17 @@ model Policy {
   browserUiaTimeoutMs     Int     @default(500)
   browserMaxRetryAttempts Int     @default(3)
 
+  /// How long an agent may go without re-reading a focused browser's address bar while its
+  /// window and title are unchanged.
+  ///
+  /// The agent's main CPU dial. Reading the address bar is a cross-process UI Automation call
+  /// into the browser, which is far too expensive to run on the one-second app-sampling tick. A
+  /// browser cannot navigate without changing its window title, so a title change triggers an
+  /// immediate read and this interval only has to catch navigation between two pages that share
+  /// a title. Lower is more precise about time-per-site and costs proportionally more CPU on
+  /// every monitored workstation.
+  browserUrlRefreshSeconds Int    @default(10)
+
   // -- Screenshots --------------------------------------------------------
   /// Features.md: enabled by default for testing, flipped off before publish.
   screenshotEnabled         Boolean @default(true)

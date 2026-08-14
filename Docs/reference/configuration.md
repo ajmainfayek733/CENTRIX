@@ -139,9 +139,10 @@ loss - the HTTP paths are the system of record either way. A safe switch to flip
 | Field | Default | Notes |
 |---|---|---|
 | `idleThresholdSeconds` | `300` | 5 minutes |
-| `appSessionPollSeconds` | `1` | |
+| `appSessionPollSeconds` | `1` | Bounds how quickly a change of application is noticed, **not** how time is measured - durations are wall-clock differences, and idle boundaries are back-dated to the last real input. Raising it does not save meaningful CPU (a tick is a handful of Win32 calls) and does lose every application focused for less than one interval. |
 | `browserUiaTimeoutMs` | `500` | UI Automation read timeout |
-| `browserMaxRetryAttempts` | `3` | |
+| `browserMaxRetryAttempts` | `3` | Extra address-bar reads allowed on consecutive ticks after a window changes, for browsers still painting. Beyond the budget the browser is left alone for 5 minutes, then retried. |
+| `browserUrlRefreshSeconds` | `10` | **The agent's main CPU dial.** How long a focused browser may sit on one page before its address bar is re-read. A page change is picked up immediately - a browser cannot navigate without changing its window title - so this only bounds navigation between two pages that share a title. Range 1-300; at 1 it is a cross-process UI Automation call every tick on every machine with a browser open, which is the behaviour it exists to prevent. |
 | `screenshotIntervalSeconds` | `600` | |
 | `screenshotJpegQuality` | `70` | |
 | `usbReconciliationIntervalSeconds` | `5` | |

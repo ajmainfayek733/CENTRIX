@@ -31,6 +31,15 @@ public sealed record ForegroundSnapshot
 /// <summary>
 /// Reads the foreground application. Features.md "Activity Logs" wants app name, process name,
 /// executable path and window title, and the duration each stays in focus.
+///
+/// This runs on every monitoring tick - once a second by default - so the cost of a single
+/// capture is the agent's steady-state CPU floor. Two things keep it near zero:
+///
+///   1. The unconditional work is four Win32 calls (foreground handle, owning process id, title
+///      length, title text). None of them leave the kernel's window station data.
+///   2. Everything expensive is cached behind process identity: the executable path is read once
+///      per process instance, and the friendly name once per executable, because neither can
+///      change while a process is alive.
 /// </summary>
 public sealed class ForegroundWindowTracker(ILogger<ForegroundWindowTracker> logger)
 {
@@ -51,11 +60,36 @@ public sealed class ForegroundWindowTracker(ILogger<ForegroundWindowTracker> log
     };
 
     /// <summary>
-    /// Executable path lookups hit the process table and are comparatively slow, so results
-    /// are cached per pid. Bounded because a long-running session can churn through many.
+    /// Resolved executables, keyed by process id and validated against the process start time.
+    ///
+    /// Keying on the id alone is not safe. Windows reuses process ids, so an entry left behind by
+    /// an exited process would silently attribute the new owner's foreground time to the old
+    /// application - a wrong answer that looks entirely plausible in a report. Storing the start
+    /// time turns that into a cheap miss: the ids match, the instants do not, and the entry is
+    /// replaced.
     /// </summary>
-    private readonly Dictionary<uint, (string? Path, string? Description)> _processCache = new();
+    private readonly Dictionary<uint, ProcessIdentity> _processCache = [];
+
+    /// <summary>
+    /// Friendly names by executable path. Separate from the process cache because reading a file
+    /// version resource touches the disk: keyed by path it happens once per application for the
+    /// life of the session, rather than once per process instance. Chrome alone would otherwise
+    /// pay it for every renderer that reaches the foreground.
+    /// </summary>
+    private readonly Dictionary<string, string?> _descriptionCache = new(StringComparer.OrdinalIgnoreCase);
+
     private const int ProcessCacheLimit = 256;
+    private const int DescriptionCacheLimit = 512;
+
+    /// <summary>An executable resolved from a live process, with the identity that validates it.</summary>
+    private readonly record struct ProcessIdentity(long StartedAtTicks, string? Path, string? Name);
+
+    // The previous capture, memoised so that staying in one window - which is what a working day
+    // mostly consists of - costs nothing beyond reading the handle, its owner and its title.
+    private IntPtr _lastWindow = IntPtr.Zero;
+    private uint _lastPid;
+    private ProcessIdentity _lastIdentity;
+    private string? _lastDescription;
 
     public static Agent.Core.Contracts.BrowserKind ClassifyBrowser(string? processName) =>
         processName is not null && KnownBrowsers.TryGetValue(processName, out var kind)
@@ -74,54 +108,99 @@ public sealed class ForegroundWindowTracker(ILogger<ForegroundWindowTracker> log
         if (pid == 0) return null;
 
         var title = NativeMethods.GetWindowTitle(hWnd);
-        var (executablePath, description) = ResolveProcess(pid);
 
-        var processName = executablePath is not null
-            ? Path.GetFileNameWithoutExtension(executablePath)
-            : null;
+        // Same window, same owner as the previous tick: the executable behind it cannot have
+        // changed. A process would have to exit and a new one both inherit its id and adopt its
+        // window handle within one tick for this to be wrong. Only the title is re-read, because
+        // that is the one thing that does change while a window stays focused.
+        ProcessIdentity identity;
+        string? description;
+
+        if (hWnd == _lastWindow && pid == _lastPid)
+        {
+            identity = _lastIdentity;
+            description = _lastDescription;
+        }
+        else
+        {
+            identity = ResolveProcess(pid);
+            description = identity.Path is not null ? ResolveDescription(identity.Path) : null;
+
+            _lastWindow = hWnd;
+            _lastPid = pid;
+            _lastIdentity = identity;
+            _lastDescription = description;
+        }
 
         return new ForegroundSnapshot
         {
-            AppName = description ?? processName,
-            ProcessName = processName,
-            ExecutablePath = executablePath,
+            AppName = description ?? identity.Name,
+            ProcessName = identity.Name,
+            ExecutablePath = identity.Path,
             WindowTitle = title,
             WindowHandle = hWnd,
-            IsBrowser = processName is not null && KnownBrowsers.ContainsKey(processName)
+            IsBrowser = identity.Name is not null && KnownBrowsers.ContainsKey(identity.Name)
         };
     }
 
-    private (string? Path, string? Description) ResolveProcess(uint pid)
+    /// <summary>
+    /// Resolves the executable behind a process id, reading it from the kernel only when the
+    /// cached entry belongs to a different process instance.
+    /// </summary>
+    private ProcessIdentity ResolveProcess(uint pid)
     {
-        if (_processCache.TryGetValue(pid, out var cached)) return cached;
+        var (path, startedAt) = NativeMethods.QueryProcessIdentity(pid);
 
-        (string? Path, string? Description) result;
+        // No handle and no start time: a protected process, or one that exited between the
+        // window read and this call. A stale cache entry cannot be validated against nothing, so
+        // it is not used - reporting "unknown" beats reporting the wrong application.
+        if (startedAt == 0)
+        {
+            _logger.LogTrace("Could not identify pid {Pid}; reporting the window without an application", pid);
+            return new ProcessIdentity(0, null, null);
+        }
+
+        if (_processCache.TryGetValue(pid, out var cached) && cached.StartedAtTicks == startedAt)
+        {
+            return cached;
+        }
+
+        var identity = new ProcessIdentity(
+            startedAt,
+            path,
+            path is not null ? Path.GetFileNameWithoutExtension(path) : null);
+
+        // Crude but adequate: clear the whole cache at the limit rather than tracking LRU. The
+        // entries are cheap to rebuild and every one of them is re-validated on use anyway.
+        if (_processCache.Count >= ProcessCacheLimit) _processCache.Clear();
+        _processCache[pid] = identity;
+
+        return identity;
+    }
+
+    /// <summary>
+    /// The application's display name from its version resource, falling back to the file name.
+    /// A missing or unreadable resource is normal for portable and self-built executables.
+    /// </summary>
+    private string? ResolveDescription(string path)
+    {
+        if (_descriptionCache.TryGetValue(path, out var cached)) return cached;
+
+        string? description = null;
         try
         {
-            using var process = Process.GetProcessById((int)pid);
-
-            // MainModule throws for protected and cross-bitness processes - a standard-user
-            // agent cannot read an elevated process's modules. That is expected, not an error:
-            // we fall back to the process name and keep going.
-            var path = process.MainModule?.FileName;
-            var description = path is not null
-                ? FileVersionInfo.GetVersionInfo(path).FileDescription
-                : null;
-
-            result = (path, string.IsNullOrWhiteSpace(description) ? null : description);
+            var raw = FileVersionInfo.GetVersionInfo(path).FileDescription;
+            description = string.IsNullOrWhiteSpace(raw) ? null : raw;
         }
-        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or ArgumentException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {
-            _logger.LogTrace(ex, "Could not resolve module path for pid {Pid}", pid);
-            result = (null, null);
+            // The executable sits on a disconnected network share, or was deleted while running.
+            _logger.LogTrace(ex, "Could not read the version resource of {Path}", path);
         }
 
-        // Crude but adequate: clear the whole cache at the limit rather than tracking LRU.
-        // Pids are only reused after a wrap, and a stale entry would attribute time to the
-        // wrong application.
-        if (_processCache.Count >= ProcessCacheLimit) _processCache.Clear();
-        _processCache[pid] = result;
+        if (_descriptionCache.Count >= DescriptionCacheLimit) _descriptionCache.Clear();
+        _descriptionCache[path] = description;
 
-        return result;
+        return description;
     }
 }

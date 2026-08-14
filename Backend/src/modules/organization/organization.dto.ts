@@ -25,6 +25,12 @@ export const updatePolicySchema = z
     browserUiaTimeoutMs: seconds.min(100).max(10_000),
     browserMaxRetryAttempts: z.number().int().min(0).max(10),
 
+    // Bounded on both ends for the same reason: this is what a browser costs the workstation.
+    // One second is a UI Automation call per tick on every machine with a browser open, which is
+    // the behaviour this setting exists to prevent; beyond five minutes, time-per-site stops
+    // being a measurement and becomes a sample.
+    browserUrlRefreshSeconds: seconds.min(1).max(300),
+
     screenshotEnabled: z.boolean(),
     screenshotIntervalSeconds: seconds.min(60).max(86_400),
     screenshotJpegQuality: z.number().int().min(10).max(100),

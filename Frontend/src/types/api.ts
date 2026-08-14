@@ -210,7 +210,12 @@ export interface Policy {
   attendance: { enabled: boolean };
   activity: { enabled: boolean; idleThresholdSeconds: number };
   appSession: { enabled: boolean; pollSeconds: number };
-  browserMonitor: { enabled: boolean; uiaTimeoutMs: number; maxRetryAttempts: number };
+  browserMonitor: {
+    enabled: boolean;
+    uiaTimeoutMs: number;
+    maxRetryAttempts: number;
+    urlRefreshSeconds: number;
+  };
   screenshot: { enabled: boolean; intervalSeconds: number; jpegQuality: number };
   usb: { enabled: boolean; reconciliationIntervalSeconds: number; alertOnInsertion: boolean };
   alert: {

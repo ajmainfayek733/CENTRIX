@@ -71,7 +71,7 @@ the palette (replaced wholesale by `ThemeManager` at runtime) and **slot 1** is 
 | `ConnectLoopAsync(ct)` | Retries `HostIpcClient.ConnectAsync` every 10 s while disconnected. The host is usually started by the service but can outlive a service restart, so reconnection is continuous rather than a one-shot attempt at startup. |
 | `ShowMainWindow()` | Lazily constructs `MainWindow` and shows it. |
 | `OnDispatcherUnhandledException` | Logs and sets `Handled = true`. A crash in the UI thread must not take monitoring down - the window is a disclosure surface, and collection runs on background workers that are unaffected. |
-| `OnExit` | Cancels the reconnect loop, allows the window to really close, disposes the tray, disposes `InputCounter` (unhooks) and `SessionEventMonitor` (unsubscribes), stops the host with a **5 s bound** so a wedged worker cannot hang logoff, then disposes the IPC client and mutex. |
+| `OnExit` | Cancels the reconnect loop, allows the window to really close, disposes the tray, disposes `InputCounter` (unhooks), `SessionEventMonitor` (unsubscribes) and `BrowserUrlExtractor` (completes the reader queue), stops the host with a **5 s bound** so a wedged worker cannot hang logoff, then disposes the IPC client and mutex. |
 
 **`AssemblyInfo.cs`** carries only the standard WPF `[assembly: ThemeInfo(...)]`.
 
@@ -126,8 +126,17 @@ Reads the foreground application: app name, process name, executable path and wi
 | `KnownBrowsers` (private static) | `chrome`, `msedge`, `firefox`, `brave`, `opera`, `vivaldi` -> `BrowserKind`, matched case-insensitively on the extensionless process name. |
 | `ClassifyBrowser(processName)` (static) | Maps to a `BrowserKind`, or `Other`. |
 | `Capture()` | Returns a snapshot, or `null`. `null` means the desktop has focus **or the secure desktop is up** (UAC prompt, Ctrl+Alt+Del) - either way there is no application to attribute time to. |
-| `ResolveProcess(pid)` (private) | Resolves the executable path and `FileDescription`. `MainModule` throws for protected and cross-bitness processes - a standard-user agent cannot read an elevated process's modules - which is expected, not an error: it falls back to the process name and keeps going. |
-| `_processCache` / `ProcessCacheLimit` (256) | Path lookups hit the process table and are comparatively slow, so results are cached per pid. At the limit the **whole cache is cleared** rather than evicting LRU - crude but adequate, and pids are only reused after a wrap, where a stale entry would attribute time to the wrong application. |
+| `ResolveProcess(pid)` (private) | Resolves the executable path and the process start time through `NativeMethods.QueryProcessIdentity`. A process that refuses a handle (protected processes, or one that exited between the window read and this call) yields **no identity at all** rather than a cached one - reporting "unknown" beats reporting the wrong application. |
+| `ResolveDescription(path)` (private) | The `FileDescription` from the version resource, cached **by path**. Reading a version resource touches the disk, and keyed by path it happens once per application for the session rather than once per process instance - Chrome would otherwise pay it for every renderer that reaches the foreground. |
+
+**This runs on every tick, so its cost is the agent's steady-state CPU floor.** Three things keep
+it near zero:
+
+| Layer | Effect |
+|---|---|
+| Per-tick memo (`_lastWindow` + `_lastPid`) | Staying in one window - what a working day mostly consists of - costs four Win32 calls and nothing else. Only the title is re-read, because that is the one thing that changes while a window stays focused. A process would have to exit *and* a new one both inherit its id and adopt its window handle within one tick for this to be wrong. |
+| `_processCache` keyed by pid, **validated against the process start time** | Keying on the id alone is not safe: Windows reuses process ids, so an entry left by an exited process would silently attribute the new owner's foreground time to the old application - a wrong answer that looks entirely plausible in a report. The start time turns that into a cheap miss. At `ProcessCacheLimit` (256) the whole cache is cleared rather than evicting LRU, which is adequate because every entry is re-validated on use anyway. |
+| `QueryFullProcessImageName` instead of `Process.MainModule` | `MainModule` **enumerates every loaded module** of the target process to return the first one - for a browser, hundreds of DLLs of work for a value the kernel already holds. It also fails outright across integrity levels, which is why elevated applications previously logged with no path at all. |
 
 ### `Collectors/InputCounter.cs`
 
@@ -162,20 +171,33 @@ UIA rather than reading browser history files or installing an extension: histor
 while the browser runs and lag behind by design, and an extension would need per-browser packaging
 and could be removed by the user. UIA sees what is actually on screen right now.
 
-The tradeoff is that UIA calls cross a process boundary and can block if the browser is busy, so
-every lookup runs under a policy-supplied timeout and a failure degrades to "no URL this tick"
-rather than stalling the collector.
+**This is the most expensive thing the agent does.** Every UIA call is a blocking cross-process
+request into the browser, and a full descendant search of a browser window can visit thousands of
+elements. Three mechanisms bound it:
+
+| Mechanism | Effect |
+|---|---|
+| **One reader thread for the whole process** | A browser that stops answering blocks that one thread and nothing else. Further requests are refused outright (`_readInFlight`) rather than queued, so a wedged browser cannot accumulate work or grow a thread per tick. |
+| **The address bar element is cached per window** (`_addressBars`) | Chromium and Firefox keep one omnibox element for the life of a window, across every navigation and tab switch in it. After the first search, reading the current URL is a single property fetch instead of a tree walk. |
+| **The search runs under a `CacheRequest`** | Each candidate's name and value arrive in the same round trip that found it. Reading them through `Current` would turn one cross-process call into three per element. |
+
+The **caller** decides *when* to ask - see `ShouldProbeBrowser` in the orchestrator. This class only
+guarantees that asking is as cheap as it can be and can never stall the monitoring loop.
 
 **`BrowserVisit`** (sealed record): `Browser`, `RawUrl`, `Domain`, `Protocol`, `PageTitle?`,
 `ProfileName?`.
 
 | Member | Description |
 |---|---|
-| `TryExtract(snapshot, timeoutMs, maxRetryAttempts)` | Returns a visit or `null`. Runs `ReadAddressBar` on a worker with a **hard timeout** - UI Automation has no cancellation of its own, so a hung browser would otherwise block this thread indefinitely and stop *all* activity tracking, not just browser tracking. Catches `ElementNotAvailableException`, `AggregateException` and `InvalidOperationException` (the window closed or navigated mid-read - normal during browsing). |
-| `_failureCounts` | Consecutive failures per process name. Chromium windows still painting return nothing for the first tick or two; a browser that never yields a URL (an unsupported fork, a hardened build) stops being retried once it exceeds `maxRetryAttempts`. Cleared on success. |
-| `ReadAddressBar(windowHandle)` (private static) | Finds descendant `Edit` controls with a `ValuePattern`. Prefers one whose name contains `Address`, `Search with` or `Search or enter` (Chromium marks the omnibox this way, and a page can contain other edits); otherwise falls back to the first non-empty edit value. |
+| `TryExtractAsync(snapshot, timeoutMs, maxRetryAttempts, ct)` | Returns a visit or `null`. **Never throws and never blocks longer than `timeoutMs`.** A timeout leaves the reader working in the background; the next call is refused until it finishes, which is the intended back-pressure. Cancellation is not counted as a browser failure - it means shutdown. |
+| `_readInFlight` | The one-slot admission gate. Also the memory barrier that lets the caller and the reader share `_addressBars` without a lock: the caller only reads the cache while holding the slot, which is exactly when the reader is idle. |
+| `_probeState` / `FailureCooldown` (5 min) | Consecutive failures per process name. Chromium windows still painting return nothing for the first probe or two - that is a retry. A browser that never yields a URL at all (an unsupported fork, a hardened build, an address bar hidden by policy) is a different case: once the attempt budget is spent it is left alone for the cooldown and then given another chance, so the suppression **heals itself** if the cause was temporary. A URL that will not parse clears the count rather than counting against it - the address bar answered. |
+| `RunReader()` (private) | The MTA reader loop. An STA reader would have to pump messages to avoid deadlocking against the browser's own UI thread. If it ever exits, `_readerStopped` degrades extraction to "no URL" permanently and logs an error rather than hanging callers. |
+| `ReadUrl(request)` (private) | Cached element first; falls back to a search when there is no entry or the cached element has gone (`ElementNotAvailableException`, `COMException`). |
+| `FindAddressBar(windowHandle)` (private static) | Finds descendant `Edit` controls with a `ValuePattern`. Prefers one whose name contains `Address`, `Search with` or `Search or enter` (Chromium marks the omnibox this way, and a page can contain other edits); otherwise falls back to the first non-empty edit value. Returns the pattern as well as the value, so it can be cached. |
 | `TryNormalizeUrl(raw, out uri)` (private static) | Browsers hide the scheme, so `github.com/anthropics` needs `https://` prepended before it will parse. A bare search phrase is rejected by requiring a dot in the authority - this keeps `how do I center a div` out while letting `github.com/anthropics` through. **Only `http` and `https` are accepted**: a `file://` path or `chrome://settings` is local navigation, not web browsing, and logging file paths would capture document names the spec's purpose-limitation rule does not cover. |
-| `DerivePageTitle(windowTitle, browser)` (private static) | Strips the per-browser suffix (` - Google Chrome`, ` - Mozilla Firefox`, etc.) so the stored page title is just the page. Edge is matched with and without its zero-width-space variant. |
+| `DerivePageTitle(windowTitle, browser)` (private static) | Strips the per-browser suffix (` - Google Chrome`, ` - Mozilla Firefox`, etc.) so the stored page title is just the page. |
+| `Dispose()` | Completes and disposes the request queue. The reader is **not joined** - it may be blocked inside a browser that is not answering, and logoff must not wait for it. It holds nothing that needs releasing and the process is about to exit. |
 
 ### `Collectors/ScreenshotCapturer.cs`
 
@@ -239,50 +261,88 @@ visits and the idle state all depend on the same "what is happening right now" r
 them independently would let them disagree - an activity session recorded as `Application` while
 the idle monitor already considers the user away.
 
+#### How time is measured
+
+Every report about an employee is built on this, so the rules are explicit:
+
+| Rule | Why |
+|---|---|
+| **Durations are wall-clock differences between recorded instants.** Nothing is derived from the tick rate. | A slow or delayed tick changes *when a change is noticed*, never *how much time is reported*. Counting `PollSeconds` per tick - the previous behaviour - assumed each tick took exactly its interval, when the real period is interval + work, so the totals drifted downwards and worst for the busiest machines. |
+| **A transition into or out of idle is dated from the last real input**, not from the tick that noticed it. | Otherwise every idle period hands the whole idle threshold - five minutes by default - to whichever application was in focus when the user walked away, and starts the idle period five minutes late. Ten idle periods a day is nearly an hour of phantom working time. |
+| **Time the agent did not observe is not invented.** | A laptop closed at lunch and opened at two would otherwise report ninety minutes of the last application in focus. |
+| **The attendance totals are accumulated from the closed segments**, not counted separately. | The totals and the activity log can never disagree. Time from a segment too short to earn a row is still counted, so a day of rapid window switching does not report as less than a day. |
+| **Durations are rounded, not truncated.** | Truncating every segment biases the day downwards by up to a second per switch - on the order of a minute across a busy day - and always in the same direction. |
+
+**And how it stays cheap:** the poll interval buys boundary precision, not data, so it stays at one
+second while the expensive collector - the browser address bar - is probed only when the window it
+belongs to looks like it may have navigated. See `ShouldProbeBrowser`.
+
 **State**
 
 | Field | Purpose |
 |---|---|
 | `_userSid`, `_sessionId`, `_loginTime` | Identify this logon session. `_sessionId` is a fresh GUID per host start and is the foreign key every event carries. |
+| `_stateGate` (`SemaphoreSlim`) | Serialises everything touching the open segments and the running totals. **Two threads reach that state**: the monitoring loop, and the Windows session callbacks for lock, sleep and shutdown, which arrive whenever Windows decides to send them. Without it, a suspend landing mid-tick could close a segment the tick is still writing and double-count it. |
 | `_current` (`ActivitySegment`) | In-progress foreground activity session: `ActivitySessionId`, `Snapshot`, `Type`, `StartedAt`. |
 | `_currentVisit` (`BrowserSegment`) | In-progress browser visit: `BrowserActivityId`, `ActivitySessionId`, `Visit`, `WindowTitle`, `StartedAt`. |
+| `_lastTickAt` | The last observed instant, which is what makes a discontinuity detectable. |
 | `_lastMetricFlush`, `_lastScreenshot`, `_lastAttendanceFlush` | Interval bookkeeping. |
-| `_totalActiveSeconds`, `_totalIdleSeconds` | Running attendance totals. |
+| `_activeTime`, `_idleTime` (`TimeSpan`) | Observed working and non-working time, accumulated from closed segments. |
+| `_observationBroken` (interlocked `int`) | Set by the resume and suspend callbacks to tell the next tick the clock ran on without us. An `int` rather than a timestamp because it is written from a Windows callback thread and an `int` is written atomically where a `DateTimeOffset` is not. |
+| `_probedWindow`, `_probedTitle`, `_probedAt`, `_probeAttempts` | Browser probe gating. |
 | `MetricFlushInterval` (1 min) | How often the activity metric window is closed and sent. |
 | `AttendanceFlushInterval` (2 min) | How often the open attendance row is refreshed - frequent enough that a power loss loses at most this much of the day, cheap enough not to matter since it is an upsert on one row. |
+| `GapIntervalMultiple` (4) / `MinimumGapThreshold` (10 s) | When a late tick stops being a busy machine and starts being a discontinuity. Four intervals rather than two because a workstation under load can genuinely stall a one-second loop; the ten-second floor because four intervals of a one-second poll would treat any brief hiccup as a sleep. |
 
 **Lifecycle**
 
 `ExecuteAsync` subscribes to the session events, wires on-demand screenshots, and **opens the
 attendance record immediately** (a session that is never opened cannot be closed). It then loops at
 `AppSession.PollSeconds` (clamped 1-60 s), catching per-tick exceptions so one bad tick - a window
-that vanished mid-read, a UIA hiccup - does not stop monitoring for the rest of the session. On
-exit it closes the current segment with `SessionEnd` and flushes a final attendance row: closing
-cleanly is the difference between an accurate logout time and a `Recovered` one on the next start.
+that vanished mid-read, a UIA hiccup - does not stop monitoring for the rest of the session.
 
-**`TickAsync`**
+The tick's work is **subtracted from the wait** rather than added to it. Delaying a full interval
+after each tick makes the real period interval + work, which drifts further from what an
+administrator configured the busier the machine gets.
 
-1. Read idle time and resolve the current state.
-2. Accumulate active or idle seconds.
-3. Start a new segment when the state changes, or when the focused app/title changes.
+Cancellation **breaks out of the loop rather than propagating**. An exception escaping the delay
+would skip the shutdown path below and lose the end of every session - the exact failure that shows
+up later as an attendance row closed as `Recovered`.
+
+`ShutdownAsync` then closes the current segment with `SessionEnd`, flushes the final metric window
+(otherwise the last partial minute of keystrokes is lost) and writes the closing attendance row.
+
+**`TickAsync`** - the whole body runs under `_stateGate`.
+
+1. Stamp `_lastTickAt`; if the previous tick was more than the gap threshold ago, or a session
+   callback flagged a break, close the observation gap.
+2. Read idle time, derive `lastInputAt`, and resolve the current state.
+3. On a state or app/title change, resolve the transition instant, close the old segment there and
+   start the new one **at the same instant** - so the timeline has no gap and no overlap.
 4. If `Application`: track the browser and evaluate application alerts. Otherwise close any open
-   browser visit.
+   browser visit and reset the probe gate.
 5. Evaluate idle alerts.
 6. Flush metrics and attendance on their intervals; capture a screenshot if due.
 
 | Method | Description |
 |---|---|
 | `ResolveState(policy, idleTime, idleThreshold)` | Precedence is **lock beats idle**: a locked screen is locked whether or not the idle timer elapsed, and reporting it as `Idle` would lose why the user stopped. Then `!Activity.Enabled` -> `Desktop`; `idleTime >= threshold` -> `Idle`; a captured snapshot -> `Application`; `null` snapshot -> `Desktop`. |
-| `DetermineEndReason(previous, next)` | Maps the incoming state to an `ActivityEndReason` - `Idle` -> `UserInactivity`, `Locked` -> `ScreenLock`, `Sleeping` -> `Sleep`, `Disconnected` -> `Disconnect`, otherwise `AppSwitch`. |
-| `CloseCurrentSegmentAsync(reason, ct)` | Computes the duration, **discards sub-second segments** (noise from rapid alt-tabbing that would flood the store), closes any browser visit, tags via `PolicyEvaluator.MatchApplication`, and submits `SubmitActivitySessionMessage`. |
-| `TrackBrowserAsync(policy, snapshot, now, ct)` | Closes the visit if browser monitoring is off or the app is not a browser. Otherwise extracts the URL; an unchanged `RawUrl` is the same visit, a changed one closes the old segment and opens a new one linked to the containing activity session, then evaluates domain alerts. |
-| `CloseBrowserVisitAsync(now, ct)` | Same sub-second rule, tags via `PolicyEvaluator.MatchDomain`, submits `SubmitBrowserActivityMessage`. A `Guid.Empty` activity-session link is normalized to `null`. |
+| `ResolveTransitionInstant(now, lastInputAt, next)` | **When the transition happened, as opposed to when the tick noticed it.** An ordinary app switch is within one interval, so `now` is good enough. Crossing the idle boundary is not: the state changed at the last keypress or click, which is the idle threshold ago on the way in and a fraction of a second ago on the way out. Clamped to the open segment's start (an application that took focus while the user was already away would otherwise get a negative duration) and to `now` (which a clock adjustment between the two reads could otherwise exceed). |
+| `DetermineEndReason(next)` | Maps the incoming state to an `ActivityEndReason` - `Idle` -> `UserInactivity`, `Locked` -> `ScreenLock`, `Sleeping` -> `Sleep`, `Disconnected` -> `Disconnect`, otherwise `AppSwitch`. |
+| `CloseObservationGapAsync(lastObservedAt, now, ct)` | Ends the open segment at the last instant actually observed and **leaves the gap attributed to nobody**. Also resets the browser probe (nothing on screen can be trusted to be what was there before) and drains the input counters, because a metric window spanning the gap would report a minute of keystrokes as if they happened in one window. |
+| `CloseCurrentSegmentAsync(reason, endedAt, ct)` | Closes any browser visit at the same instant (a visit cannot outlive the session containing it), **counts the time before the length test** and then **discards sub-second segments** - noise from rapid alt-tabbing that would flood the store - before tagging via `PolicyEvaluator.MatchApplication` and submitting `SubmitActivitySessionMessage`. |
+| `Accumulate(type, duration)` | `Application`/`Desktop` is working time, everything else is away time. One clock split in two; nothing is counted twice. |
+| `TrackBrowserAsync(policy, snapshot, now, ct)` | Closes the visit and resets the probe gate if browser monitoring is off or the app is not a browser. Otherwise probes **if `ShouldProbeBrowser` says so**; an unchanged `RawUrl` is the same visit, a changed one closes the old segment and opens a new one linked to the containing activity session, then evaluates domain alerts. |
+| `ShouldProbeBrowser(policy, snapshot, now)` | **The single decision separating a UIA search every second from one per navigation.** A browser cannot navigate without changing its window title - the title *is* the page title - so a changed title or a different window triggers an immediate read. A miss is retried on the next tick within `MaxRetryAttempts`, because a window that has just changed often answers a tick or two later while it is still painting. Otherwise it waits for `BrowserMonitor.UrlRefreshSeconds`, which exists only to catch navigation between two pages that share a title. |
+| `ResetBrowserProbe()` | Forgets what was last probed. Leaving a browser and returning to the same window and title is otherwise indistinguishable from never having left it, and the visit would not reopen until the refresh interval elapsed. |
+| `CloseBrowserVisitAsync(endedAt, ct)` | Same rounding and sub-second rules, tags via `PolicyEvaluator.MatchDomain`, submits `SubmitBrowserActivityMessage`. A `Guid.Empty` activity-session link is normalized to `null`. |
 | `FlushMetricsAsync(now, ct)` | Drains the input counters and submits the window. **A window with no input at all is skipped** - the idle activity session already records that the user was away. |
-| `FlushAttendanceAsync(logoutTime, reason, ct)` | Writes the attendance row. Called periodically with `null`s to refresh the running totals, and with a concrete time and reason when the session actually ends. `WorkDate` is the **local** date, because attendance is reported against the employee's own working day. |
-| `CaptureScreenshotAsync(ct)` | Captures off the UI thread and submits the path and metadata. |
-| `OnSessionSuspended(reason)` | **Fire-and-forget** on purpose: this runs on a `SystemEvents` callback Windows expects to return promptly - on shutdown it has only seconds before the process is killed. Closes the segment with the mapped reason and flushes the final attendance row. |
-| `OnSessionResumed()` | Resets the metric window start, so time asleep is not counted as a measurement window. |
-| `Dispose()` | Unsubscribes from the session events. |
+| `FlushAttendanceAsync(logoutTime, reason, now, ct)` | Writes the attendance row. The **open segment counts towards the totals without being closed**, so a refresh mid-way through a two-hour stretch of work reports that work rather than waiting for the user to switch applications. `WorkDate` is the **local** date, because attendance is reported against the employee's own working day. |
+| `MaybeCaptureScreenshotAsync(policy, type, now, ct)` | Captures on schedule, but **only while someone is there to be captured**. A locked or idle machine shows a lock screen or an untouched desktop: the capture costs a full-screen bitmap and a JPEG encode, and stores an image answering no question the activity log has not already answered. The timer is deliberately **not** reset while skipping, so the first capture after the user returns happens immediately. |
+| `CaptureScreenshotAsync(ct)` | Captures off the UI thread and submits the path and metadata. Guarded by `_screenshotGate` with a zero timeout: a manual request from the dashboard landing during a scheduled capture is skipped, because the image already being taken is the one that was asked for. |
+| `OnSessionSuspended(reason)` | **Fire-and-forget** on purpose: this runs on a `SystemEvents` callback Windows expects to return promptly - on shutdown it has only seconds before the process is killed. Takes `_stateGate` with a **3-second bound** (waiting without a limit inside a shutdown callback risks the process being killed mid-wait, which costs the whole session's logout time rather than one segment's end reason), closes the segment, flushes the final attendance row, and flags the observation as broken. |
+| `OnSessionResumed()` | Flags the observation as broken. **Only a flag is set here** - this is a Windows callback thread, and the tick owns every timestamp in the class. |
+| `Dispose()` | Unsubscribes from the session events and disposes both gates. |
 
 ### `Services/AlertEngine.cs`
 

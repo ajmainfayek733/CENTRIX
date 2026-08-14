@@ -120,6 +120,11 @@ One per Windows logon session. Upserted server-side on `SessionId`: the agent re
 `WorkDate` is a local calendar date (`yyyy-MM-dd`) sent by the agent because only the workstation
 knows its own timezone - a late shift would otherwise land on the wrong date.
 
+`TotalActiveSeconds` and `TotalIdleSeconds` are the **sum of the activity sessions the agent has
+already sent**, plus whatever the open segment has run for at the moment of the flush. They are not
+counted independently, so the attendance row and the activity log cannot disagree. See
+[agent-host.md](agent-host.md#how-time-is-measured).
+
 #### `ActivityMetricEvent`
 
 Input counts over a closed time window. `ClientEventId`, `SessionId`, `KeyCount`, `MouseCount`,
@@ -276,7 +281,7 @@ network.
 | `Attendance` | `AttendancePolicy` | `Enabled = true` |
 | `Activity` | `ActivityPolicy` | `Enabled = true`, `IdleThresholdSeconds = 300` |
 | `AppSession` | `AppSessionPolicy` | `Enabled = true`, `PollSeconds = 1` |
-| `BrowserMonitor` | `BrowserMonitorPolicy` | `Enabled = true`, `UiaTimeoutMs = 500`, `MaxRetryAttempts = 3` |
+| `BrowserMonitor` | `BrowserMonitorPolicy` | `Enabled = true`, `UiaTimeoutMs = 500`, `MaxRetryAttempts = 3`, `UrlRefreshSeconds = 10` |
 | `Screenshot` | `ScreenshotPolicy` | `Enabled = true` (testing; off before publish), `IntervalSeconds = 600`, `JpegQuality = 70` |
 | `Usb` | `UsbPolicy` | `Enabled = true`, `ReconciliationIntervalSeconds = 5`, `AlertOnInsertion = false` |
 | `Alert` | `AlertPolicy` | `Enabled = true`, `BlacklistEnabled = true`, `NotifyOutsideWorkingHours = false` |
