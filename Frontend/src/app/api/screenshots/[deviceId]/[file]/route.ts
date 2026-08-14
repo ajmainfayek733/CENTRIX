@@ -6,7 +6,7 @@ import { SCREENSHOT_IMAGE_EXTENSION } from '@/lib/screenshots';
  * Image proxy for the screenshot gallery.
  *
  * WHY THIS EXISTS AT ALL: the API serves screenshots only to an authenticated caller, and the
- * session token is in an httpOnly cookie by design (Docs/Frontend/NextJS.md section 3). A browser
+ * session token is in an httpOnly cookie by design (Docs/frontend/session-and-auth.md). A browser
  * `<img src>` cannot carry an Authorization header, and the alternatives are both worse - putting
  * the token somewhere JavaScript can read it, or making the image endpoint public and protecting
  * it with an unguessable path, which is not protection at all for the most invasive data in the

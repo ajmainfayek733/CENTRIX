@@ -33,7 +33,7 @@ app.use(
 );
 app.use(morgan(env.NODE_ENV === "production" ? "combined" : "dev"));
 
-// CRITICAL MOUNT ORDER (per Express.md section 6):
+// CRITICAL MOUNT ORDER (per Docs/backend/README.md, "Request lifecycle"):
 // Better Auth handler reads raw request body directly and MUST be registered BEFORE express.json()
 app.all("/api/auth/{*any}", toNodeHandler(auth));
 
@@ -73,7 +73,7 @@ app.get("/health", async (_req, res) => {
 });
 
 // Write path for the Windows Agent - exactly the surface documented in
-// docs/backend-api-specification.md section 4 (events/{channel}, policy, screenshots, consent).
+// Docs/reference/agent-api.md (events/{channel}, policy, screenshots, consent).
 app.use("/api/v1", ingestRoutes);
 
 // Read/admin path for the human dashboard (managers, admins, auditors). Out of scope of the

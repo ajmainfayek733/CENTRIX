@@ -5,8 +5,9 @@ import { env } from '../config/env';
  * Short-lived tickets that authenticate a dashboard's Socket.IO handshake.
  *
  * WHY NOT JUST SEND THE SESSION TOKEN: the dashboard keeps its Better Auth session in an
- * httpOnly cookie precisely so that a script on the page cannot read it (Docs/Frontend/NextJS.md
- * section 3). A Socket.IO handshake runs in the browser, so handing it the session token would mean
+ * httpOnly cookie precisely so that a script on the page cannot read it
+ * (Docs/frontend/session-and-auth.md).
+ * A Socket.IO handshake runs in the browser, so handing it the session token would mean
  * putting that token somewhere JavaScript can reach - undoing the one protection the httpOnly
  * cookie provides, in exchange for a live-updates feature.
  *

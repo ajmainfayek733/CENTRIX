@@ -2,7 +2,7 @@
  * Mirrors the backend's response DTOs field for field.
  *
  * A drifted type here does not fail the build - it silently renders `undefined` in a report.
- * Treat any contract change as a two-repo commit, as Docs/Frontend/NextJS.md section 8 says.
+ * Treat any contract change as a two-repo commit, as Docs/frontend/spec.md section 8 says.
  */
 
 export type ProductivityTag = 'Productive' | 'Unproductive' | 'Blacklisted' | 'Neutral';

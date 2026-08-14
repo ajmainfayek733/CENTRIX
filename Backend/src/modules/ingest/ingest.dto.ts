@@ -8,7 +8,7 @@ import { env } from '../../config/env';
  * typed schema and the fields land in their own columns, so a malformed field is a 400 at
  * the door rather than an unqueryable blob in the database.
  *
- * Field names mirror "Windows Software_v3/docs/Features.md" and the Agent's C# DTOs in
+ * Field names mirror "Docs/agent/features.md" and the Agent's C# DTOs in
  * Agent.Core/Contracts. A change here is a two-repo commit.
  */
 

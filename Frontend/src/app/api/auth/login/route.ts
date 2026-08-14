@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { API_URL, SESSION_COOKIE } from '@/lib/api-client';
 
 /**
- * Login proxy (Docs/Frontend/NextJS.md section 3).
+ * Login proxy (Docs/frontend/session-and-auth.md).
  *
  * The browser never sees the session token: this handler exchanges credentials with the
  * Express API server-side and stores the token it returns as an httpOnly cookie. That closes

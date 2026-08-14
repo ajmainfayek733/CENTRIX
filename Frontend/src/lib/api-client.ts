@@ -6,7 +6,7 @@ import { cookies } from 'next/headers';
  * This file must never be imported by a client component. The session token lives in an
  * httpOnly cookie and is attached here, on the server - a client component that built its own
  * Authorization header would need the token in browser-readable storage, which is exactly the
- * XSS exposure the httpOnly cookie exists to close (Docs/Frontend/NextJS.md section 3).
+ * XSS exposure the httpOnly cookie exists to close (Docs/frontend/session-and-auth.md).
  */
 
 export const SESSION_COOKIE = 'session';

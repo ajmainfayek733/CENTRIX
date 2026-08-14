@@ -9,7 +9,7 @@ export const auth = betterAuth({
 
   // The dashboard is a separate Next.js origin that keeps the session token in its own
   // httpOnly cookie and forwards it as `Authorization: Bearer <token>` from server
-  // components and route handlers (see Docs/Frontend/NextJS.md section 3). Without this
+  // components and route handlers (see Docs/frontend/session-and-auth.md). Without this
   // plugin Better Auth only reads its own cookie, and every proxied request would 401.
   plugins: [bearer()],
 

@@ -69,13 +69,17 @@ These are architectural, not configuration:
 
 ## Documentation
 
+All documentation now lives in the repository's central `Docs/` tree.
+
 | Document | Contents |
 |---|---|
-| [docs/Features.md](docs/Features.md) | Feature requirements this agent implements |
-| [docs/CodeReference.md](docs/CodeReference.md) | Architecture, process model, data flow, invariants - start here |
-| [docs/Agent.Core.md](docs/Agent.Core.md) | Every type in the shared library |
-| [docs/Agent.Service.md](docs/Agent.Service.md) | Every type in the service |
-| [docs/Agent.Host.md](docs/Agent.Host.md) | Every type in the user-session host |
+| [../Docs/agent/architecture.md](../Docs/agent/architecture.md) | Architecture, process model, data flow, invariants - **start here** |
+| [../Docs/agent/agent-core.md](../Docs/agent/agent-core.md) | Every type in the shared library |
+| [../Docs/agent/agent-service.md](../Docs/agent/agent-service.md) | Every type in the service |
+| [../Docs/agent/agent-host.md](../Docs/agent/agent-host.md) | Every type in the user-session host |
+| [../Docs/agent/features.md](../Docs/agent/features.md) | Feature requirements this agent implements |
+| [../Docs/operations/agent-deployment.md](../Docs/operations/agent-deployment.md) | Installing, updating and removing it |
+| [../Docs/README.md](../Docs/README.md) | Documentation index for the whole system |
 
 Both executables publish self-contained (`win-x64`, single file, untrimmed - trimming breaks
 `System.Management`'s reflective WMI types).
@@ -114,7 +118,7 @@ Sign in with the seeded account (`admin@example.com` / `ChangeMe123!` unless ove
 The enrollment token is **org-wide** - the same token goes into every install, and each agent
 trades it once for its own per-device API key. There is no per-machine provisioning step. For a
 fleet rollout (roster import, device assignment, token rotation) see
-[Backend/docs/Deployment.md](../Backend/docs/Deployment.md).
+[../Docs/operations/agent-deployment.md](../Docs/operations/agent-deployment.md).
 
 From an **elevated** PowerShell:
 

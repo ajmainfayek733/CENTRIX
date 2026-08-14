@@ -6,7 +6,7 @@ import { apiGet, ApiUnavailableError } from '@/lib/api-client';
  *
  * The scroll windows are client components - they fetch the next page in response to a scroll,
  * which server components cannot do. They also must not hold the session token (see
- * Docs/Frontend/NextJS.md section 3), so they call this same-origin handler and it attaches the
+ * Docs/frontend/session-and-auth.md), so they call this same-origin handler and it attaches the
  * credential server-side.
  *
  * The feed is resolved through an explicit map rather than by interpolating the path segment

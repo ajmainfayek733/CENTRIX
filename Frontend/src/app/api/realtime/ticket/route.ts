@@ -5,7 +5,7 @@ import { apiSend, ApiUnavailableError } from '@/lib/api-client';
  * Mints a Socket.IO handshake ticket for the current session.
  *
  * This route exists so the browser never touches the session token. The token lives in an
- * httpOnly cookie that only the server can read (Docs/Frontend/NextJS.md section 3); this handler reads
+ * httpOnly cookie that only the server can read (Docs/frontend/session-and-auth.md); this handler reads
  * it, exchanges it at the API for a short-lived ticket that can do nothing but open a socket, and
  * returns only that. Handing the session token to the client instead would have undone the whole
  * point of the httpOnly cookie for the sake of live updates.
