@@ -49,7 +49,7 @@ export default async function EmployeeDetailPage({
     throw error;
   }
 
-  const { employee, totals, timeline, topApps, topDomains, attendance } = detail;
+  const { employee, totals, timeline, topApps, topDomains, attendance, attendanceDays } = detail;
   const { startDate, endDate } = range;
 
   /*
@@ -140,7 +140,75 @@ export default async function EmployeeDetailPage({
         </Card>
       </div>
 
+      {/*
+        The attendance report proper: one row per work date. Session duration spans first login to
+        last logout, so it can exceed active + idle - time when the workstation was off was observed
+        by nobody and is credited to nobody, which is the difference between measuring presence and
+        assuming it.
+      */}
       <Card title="Attendance">
+        {attendanceDays.length === 0 ? (
+          <EmptyState message="No sign-in recorded in this period." />
+        ) : (
+          <TableWrap>
+            {/*
+              Column gutters, which the other tables on this screen get away without: this one puts
+              a right-aligned number (Idle) straight before a left-aligned badge (Status), and with
+              no padding between cells the two read as one column. The last cell keeps its flush
+              right edge.
+            */}
+            <table className="w-full min-w-[680px] border-collapse [&_td]:pr-6 [&_th]:pr-6 [&_td:last-child]:pr-0 [&_th:last-child]:pr-0">
+              <thead>
+                <tr>
+                  <Th>Date</Th>
+                  <Th>First login</Th>
+                  <Th>Last logout</Th>
+                  <Th align="right">Session</Th>
+                  <Th align="right">Active</Th>
+                  <Th align="right">Idle</Th>
+                  <Th>Status</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {attendanceDays.map((day) => (
+                  <tr key={day.workDate}>
+                    <Td>{new Date(day.workDate).toLocaleDateString()}</Td>
+                    <Td numeric>{formatTime(day.firstLogin)}</Td>
+                    <Td numeric>{day.status === 'present' ? '-' : formatTime(day.lastLogout)}</Td>
+                    <Td align="right" numeric>
+                      {formatDuration(day.sessionSeconds)}
+                    </Td>
+                    <Td align="right" numeric>
+                      {formatDuration(day.activeSeconds)}
+                    </Td>
+                    <Td align="right" numeric>
+                      {formatDuration(day.idleSeconds)}
+                    </Td>
+                    <Td>
+                      {day.status === 'present' ? (
+                        <Badge tone="brand">Present</Badge>
+                      ) : day.status === 'unknown' ? (
+                        // An open session on a workstation that stopped reporting. Saying "present"
+                        // here would show a crashed machine as somebody at their desk.
+                        <Badge tone="warning">No logout recorded</Badge>
+                      ) : (
+                        <Badge>Signed out</Badge>
+                      )}
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableWrap>
+        )}
+      </Card>
+
+      {/*
+        The sessions the days above are folded from. Kept because "when did they actually step
+        away" is a different question from "when did they arrive and leave", and the end reason -
+        lock, sleep, shutdown - is only meaningful per session.
+      */}
+      <Card title="Attendance sessions">
         {attendance.length === 0 ? (
           <EmptyState message="No sign-in recorded in this period." />
         ) : (
@@ -148,11 +216,6 @@ export default async function EmployeeDetailPage({
             <table className="w-full min-w-[440px] border-collapse">
               <thead>
                 <tr>
-                  {/*
-                    One row per stretch of presence, not per day: a lock, a suspend or a logoff ends
-                    a session and coming back starts a new one, so a normal day is several rows. The
-                    day's first sign-in and last sign-out are the first and last rows for that date.
-                  */}
                   <Th>Date</Th>
                   <Th>Signed in</Th>
                   <Th>Signed out</Th>

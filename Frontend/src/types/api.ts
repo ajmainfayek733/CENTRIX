@@ -87,12 +87,38 @@ export interface LogPageOf<T> {
   hasMore: boolean;
 }
 
+/**
+ * One stretch of presence - not one day and not one Windows logon. A lock, a suspend or a logoff
+ * ends a session and coming back starts another, so a normal day is several of these.
+ */
 export interface AttendanceRow {
   sessionId: string;
   loginTime: string;
   logoutTime: string | null;
   endReason: string | null;
   workDate: string;
+  deviceId: string;
+}
+
+/**
+ * The attendance report proper: one row per work date, folded from the sessions above.
+ *
+ * `sessionSeconds` spans first login to last logout, so it can exceed `activeSeconds +
+ * idleSeconds` - time when the workstation was off is observed by nobody and credited to nobody.
+ *
+ * `status` is `unknown` when a session is still open on a device that has stopped reporting: the
+ * logout was never observed, and showing that as `present` would leave a crashed machine looking
+ * like somebody at their desk.
+ */
+export interface AttendanceDay {
+  workDate: string;
+  firstLogin: string;
+  lastLogout: string | null;
+  sessionSeconds: number;
+  activeSeconds: number;
+  idleSeconds: number;
+  sessionCount: number;
+  status: 'present' | 'ended' | 'unknown';
 }
 
 export interface EmployeeDetail {
@@ -113,6 +139,7 @@ export interface EmployeeDetail {
   topApps: Array<{ appName: string | null; productivityTag: ProductivityTag; seconds: number }>;
   topDomains: Array<{ domain: string; productivityTag: ProductivityTag; seconds: number }>;
   attendance: AttendanceRow[];
+  attendanceDays: AttendanceDay[];
 }
 
 /**

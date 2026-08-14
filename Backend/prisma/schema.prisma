@@ -337,9 +337,16 @@ model DailyActivityRollup {
 // ---------------------------------------------------------------------------
 // Attendance - Features.md "Attendace report".
 //
-// One row per OS logon session. `logoutTime` is written repeatedly (last-write-wins) as
-// the agent observes lock/sleep/shutdown, so an unexpected power loss still leaves the
-// last known good timestamp rather than a null.
+// One row per uninterrupted stretch of presence - not per OS logon session. A lock, a
+// suspend or a logoff ends one and coming back starts another, so a working day is
+// several rows and its first login and last logout are the earliest and latest across
+// them.
+//
+// An open row is rewritten in place (last-write-wins) every couple of minutes as its
+// running totals grow, so an unexpected power loss still leaves the last known good
+// state. Once `logoutTime` is set the row is closed and ingest drops further writes:
+// the periodic refresh sends a null logout time to mean "still open", and letting one
+// land on a closed row blanks a logout that has already been reported.
 // ---------------------------------------------------------------------------
 
 model AttendanceSession {

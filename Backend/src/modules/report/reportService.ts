@@ -74,6 +74,45 @@ function productivityPercent(t: Totals): number {
   return Math.round((t.productiveSeconds / t.activeSeconds) * 1000) / 10;
 }
 
+/** The later of two instants, either of which may be missing. */
+function latest(left: Date | null, right: Date | null): Date | null {
+  if (left === null) return right;
+  if (right === null) return left;
+  return left > right ? left : right;
+}
+
+/** `yyyy-MM-dd` key for a `@db.Date` column, which Prisma hands back as UTC midnight. */
+function workDateKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+/**
+ * Whether an attendance session that is still open belongs to a workstation still reporting.
+ *
+ * An open row means "the agent had not observed a logout when it last wrote". That is only the
+ * same thing as "the employee is at their desk" while the device is still checking in - a machine
+ * that lost power mid-session leaves the row open too, and the agent stamps a `Recovered` logout on
+ * it at its next start. Without this test the dashboard would show yesterday's crash as somebody
+ * still working.
+ */
+function isLive(lastSeen: Date | null | undefined, now: number): boolean {
+  return lastSeen != null && now - lastSeen.getTime() <= ONLINE_WINDOW_MS;
+}
+
+/** One row per work date: when the employee arrived, when they left, and what the day held. */
+interface AttendanceDay {
+  workDate: string;
+  firstLogin: Date;
+  lastLogout: Date | null;
+  /** First login to last logout - or to now while the day is still running. */
+  sessionSeconds: number;
+  activeSeconds: number;
+  idleSeconds: number;
+  /** How many stretches of presence made up the day (a lock or a suspend ends one). */
+  sessionCount: number;
+  status: 'present' | 'ended' | 'unknown';
+}
+
 export class ReportService {
   /** Backs the authenticated screenshot viewer route. */
   async getScreenshotPath(deviceId: string, clientEventId: string) {
@@ -123,6 +162,120 @@ export class ReportService {
     }
 
     return totals;
+  }
+
+  /**
+   * Active and idle seconds per work date, plus the day's last observed activity.
+   *
+   * Same rollup table as `totalsByEmployee` and for the same reason - one indexed row per employee
+   * per day rather than a scan of the log tables. Kept separate because the day-grained answer is
+   * what the attendance card needs and the range-grained one is what the header needs; summing the
+   * former to get the latter would work, but reading each at its own grain keeps both queries to a
+   * single GROUP BY.
+   */
+  private async dailyTotals(start: Date, end: Date, employeeId: string) {
+    const grouped = await prisma.dailyActivityRollup.groupBy({
+      by: ['workDate'],
+      where: { employeeId, workDate: { gte: startOfUtcDay(start), lte: startOfUtcDay(end) } },
+      _sum: { activeSeconds: true, idleSeconds: true },
+      _max: { lastActivityAt: true },
+    });
+
+    return new Map(
+      grouped.map((row) => [
+        workDateKey(row.workDate),
+        {
+          activeSeconds: row._sum.activeSeconds ?? 0,
+          idleSeconds: row._sum.idleSeconds ?? 0,
+          lastActivityAt: row._max.lastActivityAt ?? null,
+        },
+      ])
+    );
+  }
+
+  /**
+   * Folds the attendance sessions of a range into one row per work date - the shape the attendance
+   * report is actually asked for: when the employee arrived, when they left, and how the time in
+   * between divides into work and idleness.
+   *
+   * A day is several sessions, because a lock, a suspend or a logoff ends one and coming back
+   * starts another. So **first login is the earliest and last logout the latest across them**, and
+   * a day is only over once every one of its sessions has closed.
+   *
+   * The seconds come from the daily rollup rather than from the attendance rows: the rollup counts
+   * the activity log, which includes the locked and suspended stretches *between* sessions, and an
+   * attendance row deliberately counts only the presence inside itself. Adding the rows up would
+   * report a day with a lunch break as shorter than it was.
+   */
+  private summarizeAttendance(
+    sessions: { loginTime: Date; logoutTime: Date | null; workDate: Date; deviceId: string }[],
+    dailyTotals: Map<string, { activeSeconds: number; idleSeconds: number; lastActivityAt: Date | null }>,
+    lastSeenByDevice: Map<string, Date | null>,
+    now: number
+  ): AttendanceDay[] {
+    const byDate = new Map<string, AttendanceDay & { openAndLive: boolean; hasOpen: boolean }>();
+
+    for (const session of sessions) {
+      const key = workDateKey(session.workDate);
+      const totals = dailyTotals.get(key);
+
+      const day = byDate.get(key) ?? {
+        workDate: key,
+        firstLogin: session.loginTime,
+        lastLogout: null,
+        sessionSeconds: 0,
+        activeSeconds: totals?.activeSeconds ?? 0,
+        idleSeconds: totals?.idleSeconds ?? 0,
+        sessionCount: 0,
+        status: 'ended' as const,
+        openAndLive: false,
+        hasOpen: false,
+      };
+
+      day.sessionCount += 1;
+      if (session.loginTime < day.firstLogin) day.firstLogin = session.loginTime;
+
+      if (session.logoutTime === null) {
+        day.hasOpen = true;
+        day.openAndLive ||= isLive(lastSeenByDevice.get(session.deviceId), now);
+      } else if (day.lastLogout === null || session.logoutTime > day.lastLogout) {
+        day.lastLogout = session.logoutTime;
+      }
+
+      byDate.set(key, day);
+    }
+
+    return [...byDate.values()]
+      .map(({ openAndLive, hasOpen, ...day }) => {
+        // Three ways a day can end, and they are not interchangeable. Still at the desk: measure to
+        // now. Every session closed: measure to the last logout. An open session on a workstation
+        // that has gone quiet: the logout was never observed, so fall back to the last activity the
+        // rollup saw rather than inventing one - and say so, instead of showing the employee as
+        // present days later.
+        const status: AttendanceDay['status'] = openAndLive ? 'present' : hasOpen ? 'unknown' : 'ended';
+        const lastActivityAt = dailyTotals.get(day.workDate)?.lastActivityAt ?? null;
+
+        // On an `ended` day the last logout is authoritative and activity recorded after it is the
+        // machine sitting locked, not presence. On an `unknown` day there is no logout for the
+        // session that never closed, so the day ran at least as late as the last thing the rollup
+        // saw - taking the logout alone would report a day as ending before work it has already
+        // counted.
+        const endedAt =
+          status === 'present'
+            ? new Date(now)
+            : status === 'unknown'
+              ? latest(day.lastLogout, lastActivityAt) ?? day.firstLogin
+              : (day.lastLogout ?? lastActivityAt ?? day.firstLogin);
+
+        const elapsedMs = endedAt.getTime() - day.firstLogin.getTime();
+
+        return {
+          ...day,
+          status,
+          sessionSeconds: Math.max(0, Math.round(elapsedMs / 1000)),
+        };
+      })
+      .sort((a, b) => b.workDate.localeCompare(a.workDate));
   }
 
   /** Overview screen (spec section 5): team-wide active time, productivity, who's online, attendance. */
@@ -256,17 +409,19 @@ export class ReportService {
         topApps: [],
         topDomains: [],
         attendance: [],
+        attendanceDays: [],
       };
     }
 
     const deviceScope = { deviceId: { in: deviceIds } };
     const inRange = { ...deviceScope, startTime: { gte: start, lte: end } };
 
-    const [totalsByEmployee, timeline, appGroups, domainGroups, attendance] = await Promise.all([
+    const [totalsByEmployee, dailyTotals, timeline, appGroups, domainGroups, attendance] = await Promise.all([
       // Totals come from the rollup, not from the timeline page. Deriving them from whatever
       // rows happened to be on screen is how a "productivity %" silently becomes "productivity %
       // of the first fifty rows".
       this.totalsByEmployee(start, end, [employeeId]),
+      this.dailyTotals(start, end, employeeId),
       this.getActivityLog(employeeId, { startDate, endDate }),
       prisma.activitySession.groupBy({
         by: ['appName', 'productivityTag'],
@@ -285,11 +440,21 @@ export class ReportService {
       prisma.attendanceSession.findMany({
         where: { ...deviceScope, loginTime: { gte: start, lte: end } },
         orderBy: { loginTime: 'asc' },
-        select: { sessionId: true, loginTime: true, logoutTime: true, endReason: true, workDate: true },
+        select: {
+          sessionId: true,
+          loginTime: true,
+          logoutTime: true,
+          endReason: true,
+          workDate: true,
+          // Which workstation the session ran on, so an open row can be tested against that
+          // device's liveness rather than reported as presence on its own.
+          deviceId: true,
+        },
       }),
     ]);
 
     const totals = totalsByEmployee.get(employeeId) ?? emptyTotals();
+    const lastSeenByDevice = new Map(employee.devices.map((d) => [d.id, d.lastSeen]));
 
     return {
       employee,
@@ -307,6 +472,7 @@ export class ReportService {
         seconds: g._sum.durationSeconds ?? 0,
       })),
       attendance,
+      attendanceDays: this.summarizeAttendance(attendance, dailyTotals, lastSeenByDevice, Date.now()),
     };
   }
 

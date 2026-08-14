@@ -83,7 +83,7 @@ disagreeing about what "a page" means.
 |---|---|---|
 | `GET /overview` | Rollup | Team totals, productivity, who is online, attendance |
 | `GET /roster` | Rollup | All staff with active/idle/productivity at a glance |
-| `GET /employees/:id` | Rollup + one page | Totals, active/idle split, top apps and domains, first timeline page |
+| `GET /employees/:id` | Rollup + one page | Totals, active/idle split, top apps and domains, first timeline page, attendance by day and by session |
 | `GET /employees/:id/activity` | Raw, keyset | Timeline pages behind the scroll window |
 | `GET /alerts` | Raw, keyset | `includeResolved` filter |
 | `GET /usb-events` | Raw, keyset | Audit trail |
@@ -97,6 +97,40 @@ Browser visits are attached to the app session that contained them, so the UI ca
 "Chrome - 2h" row into the sites that made it up - fetched for the rows on *this page* only.
 
 Top-app and top-domain lists are a fixed leaderboard, not a page.
+
+## 3.1 Attendance, by day and by session
+
+`GET /employees/:id` returns attendance twice, because two different questions are asked of it.
+
+`attendance` is the raw sessions - one per uninterrupted stretch of presence, since a lock, a
+suspend or a logoff ends one and coming back starts another. It answers "when did they step away,
+and what ended each stretch".
+
+`attendanceDays` folds those into **one row per work date**, which is the attendance report proper:
+
+| Field | Where it comes from |
+|---|---|
+| `firstLogin` / `lastLogout` | Earliest and latest across that date's sessions. `lastLogout` is null while a session is still open. |
+| `sessionSeconds` | First login to last logout - or to *now* while the day is still running. |
+| `activeSeconds` / `idleSeconds` | The **daily rollup**, not the attendance rows. |
+| `sessionCount` | How many stretches of presence made up the day. |
+| `status` | `present`, `ended`, or `unknown`. |
+
+Two things here are deliberate and easy to get wrong.
+
+**The seconds come from the rollup, not from summing the attendance rows.** The rollup counts the
+activity log, which includes the locked and suspended stretches *between* sessions; an attendance
+row deliberately counts only the presence inside itself. Adding the rows up reports a day with a
+lunch break as shorter than it was. It also follows that `sessionSeconds` can exceed
+`activeSeconds + idleSeconds` - time when the workstation was off was observed by nobody and is
+credited to nobody.
+
+**`status` is not just "is `lastLogout` null".** An open row means the agent had not observed a
+logout when it last wrote, which is also what a machine that lost power leaves behind. `present`
+therefore requires the owning device to have been seen inside the "online now" window; an open
+session on a device that has gone quiet is `unknown`, and its day is measured to the last activity
+the rollup saw rather than to a logout that was never observed. Without that test the dashboard
+shows yesterday's crash as somebody still at their desk.
 
 ## 4. "Online now"
 
