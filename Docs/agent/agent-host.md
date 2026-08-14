@@ -241,16 +241,43 @@ let the attendance record close correctly instead of leaving a session open unti
 and what tell the activity log to stop counting an application as "in use" when the screen is
 locked. `IDisposable`.
 
+Lock, unlock and power transitions come from `SystemEvents`, a thin managed wrapper over the same
+session notifications and `WM_POWERBROADCAST` this would otherwise register for by hand.
+
+**The end of a session is read off a window procedure instead**, because the managed surface cannot
+express it. Windows announces a logoff or shutdown with `WM_QUERYENDSESSION` and reports the outcome
+with `WM_ENDSESSION`, whose `wParam` is FALSE when the end was **called off**. `SystemEvents` raises
+the announcement (`SessionEnding`) and the confirmation (`SessionEnded`) but has no event for the
+cancellation, so an agent built on it can only guess - and a guess here is an attendance session left
+closed while the employee carries on working. `lParam` also distinguishes a genuine logoff from the
+Restart Manager closing the agent to service it, which `SystemEvents` reports as a shutdown; the two
+mean opposite things.
+
 | Member | Description |
 |---|---|
 | `SessionSuspended` | `event Action<SessionEndReason>` - the desktop became unavailable. |
 | `SessionResumed` | `event Action` - the desktop became available again. |
+| `SessionEndConfirmed` | `event Action<bool>` - what became of an announced logoff or shutdown. `false` means it was cancelled and the employee never left. |
 | `IsLocked` | Current lock state, read by the orchestrator. |
-| `Start()` | Subscribes to `SessionSwitch`, `PowerModeChanged` and `SessionEnding`. Idempotent. |
+| `Start()` | Subscribes to `SessionSwitch` and `PowerModeChanged`, and creates the session-end listener window. Falls back to `SystemEvents.SessionEnding` only if that window cannot be created - **never both**, or a logoff would be reported twice with two reasons and the winner would be undefined. Idempotent. |
+| `TryStartSessionEndListener()` | Creates a hidden **top-level** `HwndSource` on the UI thread. Top-level because `WM_QUERYENDSESSION` is broadcast to top-level windows and a `HWND_MESSAGE` window would never receive it; on the UI thread because a window only receives messages while its creating thread pumps them, and a window created on a worker would be silently deaf. Zero-sized, never shown, `WS_EX_TOOLWINDOW` so it stays out of the taskbar and alt-tab list. |
+| `OnWindowMessage` | The hook. **Neither message is marked handled**: Win32 documents `DefWindowProc` as returning TRUE for `WM_QUERYENDSESSION`, which is the answer this agent must always give. Monitoring software does not get to veto an employee's shutdown, and refusing one also hangs the machine behind a "this app is preventing shutdown" screen with the agent named on it. |
+| `OnQueryEndSession(flags)` | `ENDSESSION_CLOSEAPP` -> **not a session end**: the Restart Manager is replacing a file the agent holds, the employee has not gone anywhere, and the ordinary host-exit path already closes the session at the last instant observed. Otherwise `ENDSESSION_LOGOFF` -> `Logout`, and anything else -> `Shutdown` (Win32 is explicit that shutdown and restart cannot be told apart). Tested **bitwise** - the parameter is a mask. The attendance session is closed here rather than at `WM_ENDSESSION` as Win32 suggests: that advice is written for applications saving documents, this costs one pipe write, and the process may be killed as soon as every application has answered. |
+| `OnEndSession(ending)` | Raises `SessionEndConfirmed`, but only if this monitor announced the end - a Restart Manager close is skipped on the way in and must be skipped on the way out too. |
 | `OnSessionSwitch` | `SessionLock` -> `Lock`; `ConsoleDisconnect`/`RemoteDisconnect` -> `Disconnect` (RDP and fast user switching: the session still exists but nobody is looking at it, so it must not count as active time); `SessionLogoff` -> `Logout`; unlock/connect/logon -> `SessionResumed`. |
 | `OnPowerModeChanged` | `Suspend` -> `Sleep`; `Resume` -> `SessionResumed`. |
-| `OnSessionEnding` | `SystemShutdown` -> `Shutdown`, otherwise `Logout`. Windows gives a process only a few seconds here before killing it, so handlers must persist the final attendance state and return - anything slower will not complete. |
-| `Dispose()` | Unsubscribes. |
+| `OnSessionEnding` | The fallback path only. `SystemShutdown` -> `Shutdown`, otherwise `Logout`. Reports the announcement but never the outcome. |
+| `Dispose()` | Unsubscribes, then removes the hook and destroys the listener window **on the UI thread** - a window may only be torn down by the thread that created it. A dispatcher that has already stopped is logged and ignored: this runs at shutdown, and the window dies with the process anyway. |
+
+**One limit worth knowing**, because it decides how far the cancellation signal can be trusted. WPF
+answers `WM_QUERYENDSESSION` on its own window too, raises `Application.SessionEnding`, and -
+documented behaviour - calls `Shutdown()` whenever that event is not cancelled. Cancelling is the
+only way to stop it, and cancelling also tells Windows to abandon the shutdown, which monitoring
+software has no business doing. So the host is on its way out from the moment the query arrives, and
+`WM_ENDSESSION(FALSE)` is acted on only when it arrives before the dispatcher gets to that shutdown.
+When it does not, `HostSupervisorWorker` relaunches the host within `CheckInterval` (15 s) and a new
+attendance session opens there instead. Either way the record is right; this only decides whether
+the gap is milliseconds or seconds.
 
 ### `Interop/NativeMethods.cs`
 
@@ -261,6 +288,7 @@ session-bound, which is why this half of the agent exists as a separate executab
 |---|---|
 | Foreground window | `GetForegroundWindow`, `GetWindowThreadProcessId`, `GetWindowTextW`, `GetWindowTextLengthW`, and the `GetWindowTitle(hWnd)` helper (allocates `length + 1` for the terminating null, returns empty when there is no title) |
 | Idle detection | `LASTINPUTINFO`, `GetLastInputInfo`, and `GetIdleTime()` |
+| Session end | `WM_QUERYENDSESSION`, `WM_ENDSESSION`, `ENDSESSION_CLOSEAPP`, `ENDSESSION_CRITICAL`, `ENDSESSION_LOGOFF`, `WS_EX_TOOLWINDOW` - constants only; the messages are read off the listener window's procedure rather than through a P/Invoke |
 | Hooks | `WH_KEYBOARD_LL`, `WH_MOUSE_LL`, the `WM_*` message constants, `LowLevelHookProc`, `SetWindowsHookExW`, `UnhookWindowsHookEx`, `CallNextHookEx`, `GetModuleHandleW` |
 
 **`GetIdleTime()`** returns the time since the last keyboard or mouse input in the session.
@@ -332,7 +360,8 @@ belongs to looks like it may have navigated. See `ShouldProbeBrowser`.
 | `MetricFlushInterval` (1 min) | How often the activity metric window is closed and sent. |
 | `AttendanceFlushInterval` (2 min) | How often the open attendance row is refreshed - frequent enough that a power loss loses at most this much of the day, cheap enough not to matter since it is an upsert on one row. |
 | `GapIntervalMultiple` (4) / `MinimumGapThreshold` (10 s) | When a late tick stops being a busy machine and starts being a discontinuity. Four intervals rather than two because a workstation under load can genuinely stall a one-second loop; the ten-second floor because four intervals of a one-second poll would treat any brief hiccup as a sleep. |
-| `AnnouncedEndGrace` (30 s) | How long an announced end of the session is believed before the host concludes it was called off. A logoff, a shutdown and a suspend are all announced *before* they happen and the loop keeps ticking in between; those ticks see a closed session on an unlocked desktop, which looks exactly like a returning employee. Windows allows a process seconds, not tens of seconds, at that point, so a host still running this much later was never going anywhere. |
+| `AnnouncedEndGrace` (30 s) | How long an announced end of the session is believed when **nothing ever reports what came of it** - the last resort, not the mechanism. A logoff, a shutdown and a suspend are all announced *before* they happen and the loop keeps ticking in between; those ticks see a closed session on an unlocked desktop, which looks exactly like a returning employee. The outcome is normally observed instead (`WM_ENDSESSION`, or a resume/unlock), so this covers only what neither reports - a refused suspend, or a listener window that could not be created. Sized against Windows allowing a process seconds, not tens of seconds, at that point. |
+| `_resumeSignalled`, `_sessionEndCancelled` (interlocked `int`) | Proof that the employee is back, as opposed to the tick inferring it. Both are set from Windows callback threads and **both are cleared the moment a session closes**, so each answers exactly one question: has this arrived *since* the close? A signal left over from the previous cycle would answer for the wrong session and rotate on the tick between a shutdown being announced and the machine going down - precisely the spurious row this all exists to avoid. |
 
 **Lifecycle**
 
@@ -386,7 +415,7 @@ them the whole locked interval.
 | `CloseBrowserVisitAsync(endedAt, ct)` | Same rounding and sub-second rules, tags via `PolicyEvaluator.MatchDomain`, submits `SubmitBrowserActivityMessage`. A `Guid.Empty` activity-session link is normalized to `null`. |
 | `FlushMetricsAsync(now, ct)` | Drains the input counters and submits the window. **A window with no input at all is skipped** - the idle activity session already records that the user was away. |
 | `FlushAttendanceAsync(logoutTime, reason, now, ct)` | Writes the attendance row. The **open segment counts towards the totals without being closed**, so a refresh mid-way through a two-hour stretch of work reports that work rather than waiting for the user to switch applications. `WorkDate` is the **local** date, because attendance is reported against the employee's own working day. **A closed session is final**: both a periodic refresh and a second closing write are dropped here rather than at the call sites, because the store and the server both upsert on the session id - a null logout time would blank the row, and a later instant would silently annex the time the employee was away. |
-| `ShouldRotateAttendance(type, now, observedGap)` | Whether the employee is back at a workstation whose attendance session has already ended. The two families of end are told apart by what proves the return, because they fail in opposite directions. A **lock or disconnect** is a state Windows reports and later reverses, so the unlock (`type != Locked`) is proof on its own. A **logoff, shutdown or suspend** is an announcement about what is *about* to happen while the process keeps running, so it needs real evidence: an observed gap in the clock, or `AnnouncedEndGrace` elapsing. |
+| `ShouldRotateAttendance(type, now, observedGap)` | Whether the employee is back at a workstation whose attendance session has already ended. The two families of end are told apart by what proves the return, because they fail in opposite directions. A **lock or disconnect** is a state Windows reports and later reverses, so the unlock (`type != Locked`) is proof on its own. A **logoff, shutdown or suspend** is an announcement about what is *about* to happen while the process keeps running, so it needs real evidence, in descending order of precision: `WM_ENDSESSION` reporting the end was cancelled, a resume or unlock signalled since the close, an observed gap in the clock, or - failing all three - `AnnouncedEndGrace` elapsing. |
 | `RotateAttendanceSessionAsync(now, ct)` | Opens a fresh attendance session at the instant the desktop came back: closes the locked or suspended interval under the **outgoing** session id, takes a new id and login time, zeroes the per-session totals and the metric window, and writes the new open row. A new row rather than a reopened one - reopening would clear a logout that has already been reported, and would leave one row claiming to span a break nobody was there for. The day's first login and last logout are still the earliest and latest across the rows. Driven by the tick and not by the resume callback, because a machine woken by a wake timer is not an employee arriving, and it stays locked. |
 | `MaybeCaptureScreenshotAsync(policy, type, now, ct)` | Captures on schedule, but **only while someone is there to be captured**. A locked or idle machine shows a lock screen or an untouched desktop: the capture costs a full-screen bitmap and a JPEG encode, and stores an image answering no question the activity log has not already answered. The timer is deliberately **not** reset while skipping, so the first capture after the user returns happens immediately. |
 | `CaptureScreenshotAsync(ct)` | Captures off the UI thread and submits the path and metadata. Guarded by `_screenshotGate` with a zero timeout: a manual request from the dashboard landing during a scheduled capture is skipped, because the image already being taken is the one that was asked for. |

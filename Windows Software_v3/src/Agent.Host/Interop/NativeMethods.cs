@@ -190,6 +190,33 @@ internal static partial class NativeMethods
     /// </summary>
     private const uint CounterSkewCeiling = uint.MaxValue / 2;
 
+    // -- Session end -----------------------------------------------------------
+    //
+    // WM_QUERYENDSESSION asks whether the session may end; WM_ENDSESSION then reports what was
+    // decided, and its wParam is the whole point of watching for it: FALSE means the logoff or
+    // shutdown was called off. There is no managed equivalent - SystemEvents surfaces the query
+    // as SessionEnding and the confirmation as SessionEnded, but nothing at all for the
+    // cancellation - so this pair is read directly off the window procedure.
+
+    internal const int WM_QUERYENDSESSION = 0x0011;
+    internal const int WM_ENDSESSION = 0x0016;
+
+    /// <summary>
+    /// Not a session end at all: the Restart Manager is closing the application because a file it
+    /// holds must be replaced, or the system is being serviced. The employee has not gone
+    /// anywhere, and the agent is expected to be restarted.
+    /// </summary>
+    internal const uint ENDSESSION_CLOSEAPP = 0x00000001;
+
+    /// <summary>The end is forced - the application does not get to refuse it.</summary>
+    internal const uint ENDSESSION_CRITICAL = 0x40000000;
+
+    /// <summary>The user is logging off, as opposed to shutting the machine down or restarting it.</summary>
+    internal const uint ENDSESSION_LOGOFF = 0x80000000;
+
+    /// <summary>Keeps the message-only listener window out of the taskbar and the alt-tab list.</summary>
+    internal const int WS_EX_TOOLWINDOW = 0x00000080;
+
     // -- Low-level input hooks (counts only) ---------------------------------
 
     internal const int WH_KEYBOARD_LL = 13;

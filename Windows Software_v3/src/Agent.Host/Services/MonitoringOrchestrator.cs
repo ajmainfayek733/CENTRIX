@@ -119,6 +119,19 @@ public sealed class MonitoringOrchestrator(
     /// </summary>
     private int _observationBroken;
 
+    /// <summary>
+    /// Proof that the employee is back, as opposed to the tick inferring it. Both are set from
+    /// Windows callback threads and both are cleared the moment an attendance session closes, so
+    /// each answers exactly one question: has this arrived <em>since</em> the session ended?
+    ///
+    /// <see cref="_resumeSignalled"/> is an unlock, a reconnect or a power resume.
+    /// <see cref="_sessionEndCancelled"/> is WM_ENDSESSION reporting that an announced logoff or
+    /// shutdown was called off - the workstation is staying up and the session that was closed on
+    /// the announcement has to be reopened at once rather than after a grace period.
+    /// </summary>
+    private int _resumeSignalled;
+    private int _sessionEndCancelled;
+
     // -- Browser probe gating ------------------------------------------------
     private IntPtr _probedWindow = IntPtr.Zero;
     private string? _probedTitle;
@@ -171,17 +184,21 @@ public sealed class MonitoringOrchestrator(
     private static readonly TimeSpan MinimumGapThreshold = TimeSpan.FromSeconds(10);
 
     /// <summary>
-    /// How long an announced end of the session is believed before this host concludes it was
-    /// called off.
+    /// How long an announced end of the session is believed when nothing ever reports what came of
+    /// it. The last resort, not the mechanism.
     ///
     /// A logoff, a shutdown and a suspend are all announced before they happen, and this loop keeps
     /// ticking in the interval between. Those ticks see a closed attendance session on an unlocked
     /// desktop, which is exactly what a returning employee looks like - and rotating there would
     /// open a new session on every single shutdown, abandon it a second later, and have it
-    /// resurface as a "Recovered" row. Windows allows a process seconds, not tens of seconds, at
-    /// that point (WM_QUERYENDSESSION, PBT_APMSUSPEND), so a host still running this much later was
-    /// never going anywhere: the shutdown was cancelled or the suspend was refused, and the
-    /// employee is still at their desk.
+    /// resurface as a "Recovered" row.
+    ///
+    /// The outcome is normally observed rather than waited out: WM_ENDSESSION says whether a
+    /// logoff or shutdown actually happened, and a resume or unlock says a suspend ended. This
+    /// covers only what neither reports - a suspend that was refused, or a listener window that
+    /// could not be created - and the value is chosen against Win32 allowing a process seconds,
+    /// not tens of seconds, to answer WM_QUERYENDSESSION or PBT_APMSUSPEND. A host still running
+    /// this much later was never going anywhere.
     /// </summary>
     private static readonly TimeSpan AnnouncedEndGrace = TimeSpan.FromSeconds(30);
 
@@ -208,6 +225,7 @@ public sealed class MonitoringOrchestrator(
     {
         _sessionEvents.SessionSuspended += OnSessionSuspended;
         _sessionEvents.SessionResumed += OnSessionResumed;
+        _sessionEvents.SessionEndConfirmed += OnSessionEndConfirmed;
 
         _ipc.ScreenshotRequested += () => _ = CaptureScreenshotAsync(CancellationToken.None);
 
@@ -698,6 +716,14 @@ public sealed class MonitoringOrchestrator(
             _attendanceClosed = true;
             _attendanceClosedAt = now;
             _attendanceCloseReason = reason;
+
+            // Zeroed here rather than at the rotation, because these two answer "has anything since
+            // *this* close proved the employee is back". A signal left over from the previous cycle
+            // would answer for the wrong session and rotate immediately - which, on the tick
+            // between a shutdown being announced and the machine going down, is precisely the
+            // spurious row this all exists to avoid.
+            Interlocked.Exchange(ref _resumeSignalled, 0);
+            Interlocked.Exchange(ref _sessionEndCancelled, 0);
         }
 
         // The open segment counts towards the totals without being closed, so a refresh mid-way
@@ -744,9 +770,11 @@ public sealed class MonitoringOrchestrator(
     ///     closed for exactly as long as <see cref="SessionEventMonitor.IsLocked"/> says the desktop
     ///     is unavailable, and the unlock is proof enough on its own.
     ///   * A logoff, a shutdown or a suspend is an announcement about what is *about* to happen, and
-    ///     the process keeps running until it does. Returning needs real evidence: an observed gap
-    ///     in the clock (the machine went away and came back) or enough time passing to establish
-    ///     that it never went anywhere. See <see cref="AnnouncedEndGrace"/>.
+    ///     the process keeps running until it does. Returning needs real evidence, in descending
+    ///     order of precision: WM_ENDSESSION reporting the end was cancelled, a resume or unlock
+    ///     signalled since the close, an observed gap in the clock, or - failing all three - enough
+    ///     time passing to establish that the machine never went anywhere at all.
+    ///     See <see cref="AnnouncedEndGrace"/>.
     /// </summary>
     private bool ShouldRotateAttendance(ActivityType type, DateTimeOffset now, bool observedGap)
     {
@@ -759,7 +787,10 @@ public sealed class MonitoringOrchestrator(
         return _attendanceCloseReason switch
         {
             SessionEndReason.Lock or SessionEndReason.Disconnect => true,
-            _ => observedGap || now - _attendanceClosedAt >= AnnouncedEndGrace
+            _ => Volatile.Read(ref _sessionEndCancelled) == 1
+                 || Volatile.Read(ref _resumeSignalled) == 1
+                 || observedGap
+                 || now - _attendanceClosedAt >= AnnouncedEndGrace
         };
     }
 
@@ -938,10 +969,28 @@ public sealed class MonitoringOrchestrator(
 
     /// <summary>
     /// Marks the observation broken so the next tick does not bill the sleep to the last
-    /// application. Only a flag is set here: this is a Windows callback thread, and the tick
-    /// owns every timestamp in this class.
+    /// application, and records that the desktop came back. Only flags are set here: this is a
+    /// Windows callback thread, and the tick owns every timestamp in this class.
     /// </summary>
-    private void OnSessionResumed() => Interlocked.Exchange(ref _observationBroken, 1);
+    private void OnSessionResumed()
+    {
+        Interlocked.Exchange(ref _observationBroken, 1);
+        Interlocked.Exchange(ref _resumeSignalled, 1);
+    }
+
+    /// <summary>
+    /// What became of an announced logoff or shutdown.
+    ///
+    /// <paramref name="ending"/> false is the case worth having a window procedure for: the
+    /// attendance session was closed on the announcement, the announcement was wrong, and the
+    /// employee never left. The next tick reopens it - within a poll interval of the cancellation
+    /// rather than at the end of a grace period spent guessing.
+    /// </summary>
+    private void OnSessionEndConfirmed(bool ending)
+    {
+        if (ending) return;
+        Interlocked.Exchange(ref _sessionEndCancelled, 1);
+    }
 
     private async Task ShutdownAsync()
     {
@@ -982,6 +1031,7 @@ public sealed class MonitoringOrchestrator(
     {
         _sessionEvents.SessionSuspended -= OnSessionSuspended;
         _sessionEvents.SessionResumed -= OnSessionResumed;
+        _sessionEvents.SessionEndConfirmed -= OnSessionEndConfirmed;
         _stateGate.Dispose();
         _screenshotGate.Dispose();
         base.Dispose();
