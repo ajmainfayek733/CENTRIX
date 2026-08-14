@@ -1,3 +1,6 @@
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Security;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using Agent.Core;
@@ -72,6 +75,7 @@ internal static class InstallConfigurator
             }
 
             ApplyDataDirectoryLayout();
+            RegisterEventLogSources();
 
             new AgentConfiguration
             {
@@ -95,6 +99,46 @@ internal static class InstallConfigurator
             // a read-only ProgramData, a path made unavailable by policy - so the message matters
             // more than the stack, but the MSI log is the only place either will be seen.
             return Fail(ExitFailed, ex.ToString());
+        }
+    }
+
+    /// <summary>
+    /// Registers the Event Log sources for both processes.
+    ///
+    /// Done here because this is the only elevated moment in the agent's life. Creating a source
+    /// writes under HKLM and takes administrator privileges; the service could do it as SYSTEM on
+    /// first start, but the host runs as the logged-on employee and cannot.
+    ///
+    /// This does not prevent a crash - .NET degrades rather than failing, and "when an event source
+    /// can't be created... event logs are disabled". It prevents something quieter and worse: the
+    /// host silently losing its Event Log sink on every machine where the source was never
+    /// registered, which is exactly the channel an administrator goes looking in when the
+    /// user-session half misbehaves. The file sink keeps working either way.
+    ///
+    /// Creating them at install time also satisfies the documented latency rule: a source "should
+    /// not be created and immediately used", and here nothing uses them until the service starts.
+    ///
+    /// A failure is reported but does not fail the install. Losing one of two log sinks is worth
+    /// far less than a rolled-back deployment; the file sink under ProgramData still works, and it
+    /// is the one an administrator is asked for anyway.
+    /// </summary>
+    private static void RegisterEventLogSources()
+    {
+        foreach (var source in new[] { AgentPaths.ServiceEventLogSource, AgentPaths.HostEventLogSource })
+        {
+            try
+            {
+                if (EventLog.SourceExists(source)) continue;
+
+                EventLog.CreateEventSource(source, AgentPaths.EventLogName);
+                Console.Out.WriteLine($"Registered Event Log source '{source}'.");
+            }
+            catch (Exception ex) when (ex is SecurityException or InvalidOperationException or ArgumentException or Win32Exception)
+            {
+                Console.Error.WriteLine(
+                    $"WARNING: could not register Event Log source '{source}': {ex.Message}. " +
+                    "The agent will still log to files under ProgramData.");
+            }
         }
     }
 

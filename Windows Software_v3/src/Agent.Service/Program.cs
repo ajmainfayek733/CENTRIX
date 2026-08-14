@@ -39,7 +39,7 @@ AgentPaths.EnsureCreated();
 
 builder.Logging.AddEventLog(settings =>
 {
-    settings.SourceName = "EmployeeMonitorAgent";
+    settings.SourceName = AgentPaths.ServiceEventLogSource;
 });
 
 // The Event Log holds warnings and errors well, but it is a poor place to read a sequence of
@@ -62,7 +62,7 @@ catch (Exception ex)
     // evidence available.
     using var startupLogger = LoggerFactory.Create(b =>
     {
-        b.AddEventLog(s => s.SourceName = "EmployeeMonitorAgent");
+        b.AddEventLog(s => s.SourceName = AgentPaths.ServiceEventLogSource);
         b.AddProvider(FileLoggerBuilderExtensions.CreateStandalone(serviceLogOptions));
     });
     startupLogger.CreateLogger("Startup").LogCritical(ex, "Agent configuration is missing or invalid; service cannot start");

@@ -78,7 +78,7 @@ public partial class App : System.Windows.Application
     {
         var builder = Microsoft.Extensions.Hosting.Host.CreateApplicationBuilder();
 
-        builder.Logging.AddEventLog(settings => settings.SourceName = "EmployeeMonitorHost");
+        builder.Logging.AddEventLog(settings => settings.SourceName = AgentPaths.HostEventLogSource);
 
         // Per terminal-services session, not per process: fast user switching runs one host per
         // logged-on user simultaneously, and they must not append to the same handle. The

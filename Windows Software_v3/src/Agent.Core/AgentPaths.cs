@@ -35,6 +35,25 @@ public static class AgentPaths
     /// </summary>
     public const string IpcPipeName = @"Global\EmployeeMonitor.Agent";
 
+    /// <summary>
+    /// Event Log sources, one per process.
+    ///
+    /// Registered by the installer, not by the processes that use them. Creating a source writes
+    /// under HKLM and "takes administrator privileges" - the service could manage it as SYSTEM,
+    /// but the host runs as the logged-on employee and cannot, so a host on a machine where the
+    /// source was never registered would fail to open its Event Log sink. Microsoft's guidance is
+    /// to create sources "as part of an .msi installation", which is what the configure step does.
+    ///
+    /// Named here rather than written as literals at each sink, so that the name the installer
+    /// registers and the name the logger opens cannot drift apart.
+    /// </summary>
+    public const string ServiceEventLogSource = "EmployeeMonitorAgent";
+
+    public const string HostEventLogSource = "EmployeeMonitorHost";
+
+    /// <summary>The log both sources write into.</summary>
+    public const string EventLogName = "Application";
+
     public static void EnsureCreated()
     {
         Directory.CreateDirectory(RootDirectory);

@@ -221,6 +221,15 @@ Optional, policy-controlled periodic capture.
 | Member | Description |
 |---|---|
 | `Capture(jpegQuality)` | Captures `SystemInformation.VirtualScreen` - the bounding box of **every** monitor, so a multi-monitor desk yields one image rather than only the primary display - into a 24-bit bitmap via `Graphics.CopyFromScreen`, saves it to the spool directory as `{clientEventId}.jpg`, and returns the metadata. Returns `null` on zero screen area, and catches all exceptions: a capture can fail legitimately when the secure desktop is up (UAC prompt, lock screen) and `CopyFromScreen` is denied, in which case the interval is skipped rather than crashing. |
+
+> **Layered windows are not captured.** `BitBlt` omits windows layered on top of the target unless
+> the `CAPTUREBLT` raster flag is set. `CopyPixelOperation.CaptureBlt` exists for exactly that, but
+> it **cannot be used through `CopyFromScreen`**: that method throws `InvalidEnumArgumentException`
+> for any value that "is not a member of `CopyPixelOperation`", and `SourceCopy | CaptureBlt` is a
+> combination, not a member - passing it would fail every capture rather than improve one.
+> Capturing layered windows means calling `BitBlt` directly with `SRCCOPY | CAPTUREBLT` against a
+> screen DC, which is a deliberate change to make with a test pass behind it, since `CAPTUREBLT`
+> also forces layered windows to redraw and can flicker.
 | `Save(bitmap, path, quality)` (private static) | Clamps quality to 10-100 and encodes with the JPEG codec. If no JPEG encoder is registered - not a configuration we expect - it falls back to PNG so the feature keeps working rather than silently producing nothing. |
 
 Only the **path** crosses the IPC boundary; the service uploads the bytes.

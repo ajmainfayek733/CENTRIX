@@ -42,6 +42,18 @@ public sealed class ScreenshotCapturer(ILogger<ScreenshotCapturer> logger)
             using var bitmap = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format24bppRgb);
             using (var graphics = Graphics.FromImage(bitmap))
             {
+                // KNOWN LIMITATION: layered windows are not captured.
+                //
+                // The underlying BitBlt omits windows layered on top of the target unless the
+                // CAPTUREBLT raster flag is set, and CopyPixelOperation.CaptureBlt exists for
+                // exactly that. It cannot be used here: CopyFromScreen throws
+                // InvalidEnumArgumentException for any value that "is not a member of
+                // CopyPixelOperation", and SourceCopy | CaptureBlt is a combination, not a member.
+                // Passing it would fail every capture rather than improve one.
+                //
+                // Getting layered windows means calling BitBlt directly with SRCCOPY | CAPTUREBLT
+                // against a screen DC, which is a deliberate change to make with a test pass
+                // behind it - CAPTUREBLT also forces layered windows to redraw and can flicker.
                 graphics.CopyFromScreen(bounds.X, bounds.Y, 0, 0, bounds.Size, CopyPixelOperation.SourceCopy);
             }
 

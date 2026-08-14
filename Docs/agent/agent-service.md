@@ -80,6 +80,15 @@ is where the MSI log picks them up.
 | HTTPS unless `--allow-insecure-http` | Spec section 9. Failing at install time means a misconfigured rollout is caught on the machine being installed, rather than sending telemetry in the clear until someone notices |
 | Enrollment token required | Without it the agent cannot enroll, and the service refuses to start |
 
+It also **registers the Event Log sources** for both processes (`EmployeeMonitorAgent`,
+`EmployeeMonitorHost`, named in `AgentPaths` so the registered name and the opened name cannot
+drift). Creating a source writes under HKLM and takes administrator privileges: the service could
+do it as SYSTEM, but the host runs as the logged-on employee and cannot, and Microsoft's guidance is
+to create sources "as part of an .msi installation". This is not about preventing a crash - .NET
+degrades, and "when an event source can't be created... event logs are disabled" - it is about the
+host not silently losing the Event Log channel an administrator goes looking in. A failure here is
+warned about but does not fail the install; the file sink under ProgramData works regardless.
+
 Identities for the ACLs come from `WellKnownSidType`, never from names like `BUILTIN\Users`: those
 names are localized and do not exist on a German or Japanese install. The rules are re-applied on
 every run rather than only at creation, so an upgrade over an installation whose ACLs were loosened
@@ -113,10 +122,22 @@ a half-applied mix.
 Sealed class storing the per-device API key issued at enrollment.
 
 Protected with DPAPI at **`LocalMachine`** scope, not `CurrentUser`: the service runs as SYSTEM and
-must read the key at boot, before any user has logged on. LocalMachine scope binds the ciphertext
-to this machine - copying `device.key` elsewhere yields nothing - but any process already running
-as Administrator here could unprotect it, which is why the containing directory is ACL'd to SYSTEM
-and Administrators. A fixed entropy string (`EmployeeMonitor.Agent.DeviceApiKey.v3`) is mixed in.
+must read the key at boot, before any user has logged on.
+
+**Be precise about what that buys.** LocalMachine binds the ciphertext to this machine, so
+`device.key` is worthless copied elsewhere. It does **not** restrict decryption to privileged
+callers - Microsoft's wording is that with LocalMachine "any process running on the computer can
+unprotect data", and the caution is to use it "only when you trust every account on a computer".
+The fixed entropy string (`EmployeeMonitor.Agent.DeviceApiKey.v3`) is compiled into an executable
+that ships to every workstation, so it is obfuscation, not a secret.
+
+The control that actually keeps a standard user away from this key is therefore the **ACL on
+`%ProgramData%\EmployeeMonitor`** - SYSTEM and Administrators only. Weaken that ACL and the key is
+readable by anyone who can run code on the box, DPAPI or not.
+
+Plaintext buffers are zeroed with `CryptographicOperations.ZeroMemory` after use on both paths. The
+returned `string` cannot be scrubbed - strings are immutable - but the byte arrays this class owns
+are not left in the heap to be swapped out or captured in a crash dump.
 
 | Member | Description |
 |---|---|
