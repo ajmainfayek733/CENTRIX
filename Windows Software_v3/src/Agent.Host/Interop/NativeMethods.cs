@@ -42,9 +42,14 @@ internal static partial class NativeMethods
 
     /// <summary>
     /// The least privilege that still answers "what is this executable, and is it the same
-    /// process I saw last time". Deliberately not PROCESS_QUERY_INFORMATION: the limited right
-    /// is granted across integrity levels, so a standard-user agent can still name an elevated
-    /// application instead of logging it as unknown.
+    /// process I saw last time" - the documented requirement for QueryFullProcessImageName and
+    /// GetProcessTimes is this right or the broader PROCESS_QUERY_INFORMATION.
+    ///
+    /// Deliberately the limited one. PROCESS_QUERY_INFORMATION is on the list of rights Windows
+    /// refuses outright against a protected process; PROCESS_QUERY_LIMITED_INFORMATION exists
+    /// precisely to expose a subset that survives that restriction, and it is also granted across
+    /// integrity levels. Asking for more would mean logging an elevated or protected application
+    /// as unknown for no gain.
     /// </summary>
     internal const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
@@ -90,9 +95,9 @@ internal static partial class NativeMethods
 
         var handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
 
-        // A protected process (anti-malware, some system services) refuses the handle. That is
-        // expected on a normal desktop and is not worth an error - the caller degrades to the
-        // window title alone.
+        // No handle: the process exited between reading its window and this call, or its DACL
+        // denies even this right. Expected on a normal desktop and not worth an error - the
+        // caller degrades to the window title alone.
         if (handle == IntPtr.Zero) return (null, 0);
 
         try
@@ -143,11 +148,29 @@ internal static partial class NativeMethods
     internal static partial bool GetLastInputInfo(ref LASTINPUTINFO plii);
 
     /// <summary>
-    /// Time since the last keyboard or mouse input anywhere in this session.
+    /// Time since the last keyboard or mouse input in this session.
     ///
-    /// GetLastInputInfo and GetTickCount both report 32-bit millisecond counters that wrap
-    /// after ~49.7 days of uptime. Subtracting them as unsigned handles the wrap correctly, so
-    /// a long-uptime workstation does not suddenly report a 49-day idle time.
+    /// Session-specific by design, and the reason idle detection lives in the per-user host
+    /// rather than in the SYSTEM service: GetLastInputInfo reports only for the session that
+    /// called it, so a service in session 0 would see nothing the employee does.
+    ///
+    /// Two counter hazards, both documented and both handled below.
+    ///
+    /// GetLastInputInfo and GetTickCount are 32-bit millisecond counters that wrap after ~49.7
+    /// days of uptime. Subtracting as unsigned handles the wrap, so a long-uptime workstation
+    /// does not suddenly report a 49-day idle time.
+    ///
+    /// And dwTime is explicitly "not guaranteed to be incremental" - a timing gap between the raw
+    /// input thread and the desktop thread, or a SendInput event carrying its own tick count, can
+    /// leave it *ahead* of the tick count we read. The unsigned subtraction then underflows to
+    /// most of the counter range, which would report an active user as weeks idle and escalate a
+    /// Critical inactivity alert at them. Anything past half the range is that skew rather than
+    /// elapsed time: a genuine idle period of 24 days is not a case worth preserving, and a
+    /// workstation is not idle while someone is typing at it.
+    ///
+    /// Sleep is deliberately not special-cased here. GetTickCount includes time spent asleep, so
+    /// a machine resumed after three hours correctly reports three hours of idleness; the
+    /// orchestrator decides separately what to do with a stretch it never observed.
     /// </summary>
     internal static TimeSpan GetIdleTime()
     {
@@ -155,8 +178,17 @@ internal static partial class NativeMethods
         if (!GetLastInputInfo(ref info)) return TimeSpan.Zero;
 
         var elapsed = unchecked((uint)Environment.TickCount - info.dwTime);
-        return TimeSpan.FromMilliseconds(elapsed);
+
+        return elapsed > CounterSkewCeiling
+            ? TimeSpan.Zero
+            : TimeSpan.FromMilliseconds(elapsed);
     }
+
+    /// <summary>
+    /// Half the 32-bit millisecond counter range, ~24.8 days. Above this, a computed idle time is
+    /// counter skew rather than a measurement.
+    /// </summary>
+    private const uint CounterSkewCeiling = uint.MaxValue / 2;
 
     // -- Low-level input hooks (counts only) ---------------------------------
 

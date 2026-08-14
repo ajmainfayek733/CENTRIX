@@ -242,10 +242,26 @@ session-bound, which is why this half of the agent exists as a separate executab
 | Idle detection | `LASTINPUTINFO`, `GetLastInputInfo`, and `GetIdleTime()` |
 | Hooks | `WH_KEYBOARD_LL`, `WH_MOUSE_LL`, the `WM_*` message constants, `LowLevelHookProc`, `SetWindowsHookExW`, `UnhookWindowsHookEx`, `CallNextHookEx`, `GetModuleHandleW` |
 
-**`GetIdleTime()`** returns the time since the last keyboard or mouse input anywhere in the
-session. `GetLastInputInfo` and `GetTickCount` both report 32-bit millisecond counters that wrap
-after ~49.7 days of uptime; subtracting them as **unsigned** handles the wrap correctly, so a
-long-uptime workstation does not suddenly report a 49-day idle time.
+**`GetIdleTime()`** returns the time since the last keyboard or mouse input in the session.
+
+`GetLastInputInfo` reports **only for the session that called it**, which is why idle detection
+lives in the per-user host: a service in session 0 would see nothing the employee does.
+
+Two counter hazards, both from the API contract:
+
+- **Wrap.** `GetLastInputInfo` and `GetTickCount` are 32-bit millisecond counters that wrap after
+  ~49.7 days of uptime. Subtracting them as **unsigned** handles the wrap, so a long-uptime
+  workstation does not suddenly report a 49-day idle time.
+- **Skew.** `dwTime` is documented as **not guaranteed to be incremental** - a timing gap between
+  the raw input thread and the desktop thread, or a `SendInput` event carrying its own tick count,
+  can leave it *ahead* of the tick count we read. The unsigned subtraction then underflows to most
+  of the counter range. Untreated, that reports an active user as weeks idle and escalates a
+  Critical inactivity alert at them. Anything past half the range (~24.8 days) is treated as skew
+  and returns zero.
+
+Sleep needs no special case: `GetTickCount` includes time spent asleep, so a machine resumed after
+three hours correctly reports three hours of idleness. What to do with a stretch the agent never
+observed is decided separately, in `MonitoringOrchestrator.CloseObservationGapAsync`.
 
 ---
 
