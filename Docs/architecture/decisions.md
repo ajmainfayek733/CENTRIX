@@ -167,6 +167,23 @@ fails with `WIX7015` without it. Extensions not matching the CLI version fail wi
 
 **Revisit when:** the licensing position changes. Do not upgrade incidentally.
 
+## AD-15 - The installer does not write the agent's configuration
+
+**Decided:** the MSI shells out to `EmployeeMonitor.Service.exe --configure` from a deferred custom
+action. The agent creates its own ProgramData layout, applies the ACLs and writes
+`agent.config.json`; `Deploy-Agent.ps1` calls the same entry point.
+
+**Rules out:** authoring the JSON as an MSI file and the ACLs as `util:PermissionEx`. That would be
+a second definition of a layout the service depends on at runtime, in a language that cannot be
+tested, free to drift from the code that reads it - and it already had: the PowerShell version
+resolved identities by name (`BUILTIN\Users`), so it threw on a localized Windows.
+
+**Costs:** an install failure surfaces as a custom action exit code in the MSI log rather than as a
+typed MSI error. `Return="check"` makes it roll the transaction back, so the failure is at least
+never silent.
+
+**Revisit when:** the configuration grows beyond what a command line can carry.
+
 ---
 
 ## Related

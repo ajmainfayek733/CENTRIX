@@ -2,16 +2,66 @@
 
 Installing, updating and removing the Windows agent across a fleet.
 
-Script: `Windows Software_v3/scripts/Deploy-Agent.ps1`. Every action requires an **elevated**
-PowerShell.
+There are two supported paths, and they are not alternatives to each other:
+
+| | Use for | Artifact |
+|---|---|---|
+| **MSI** | Fleet rollout - GPO, Intune, ConfigMgr - and any install performed by someone who is not the developer | `artifacts/installer/EmployeeMonitorAgent.msi` |
+| **`Deploy-Agent.ps1`** | Development and single-machine work, where publishing and installing in one step is the point | none, installs from `artifacts/agent` |
+
+Both write their configuration through the **same** entry point in the agent
+(`EmployeeMonitor.Service.exe --configure`), so a machine installed either way ends up with an
+identical layout. Both require **elevation**.
 
 ---
 
-## 1. The script
+## 1. The MSI
+
+Built by `.\scripts\Deploy-Agent.ps1 -Action Package`, which publishes the agent and then builds
+`installer\EmployeeMonitor.Installer.wixproj` around the published output.
+
+### Interactive
+
+Running the MSI directly walks an administrator through licence, install location, and a
+**configuration page** carrying the three settings the agent cannot start without:
+
+| Field | Property | Notes |
+|---|---|---|
+| Server address | `SERVERURL` | e.g. `https://monitoring.example.com` |
+| Enrollment token | `ENROLLMENTTOKEN` | Masked on screen; from the dashboard under Settings - Organization |
+| Allow an insecure HTTP server address | `ALLOWINSECUREHTTP` | Checkbox. Test servers only |
+
+**Next stays disabled** until there is a server and a token and the address is either HTTPS or the
+checkbox is ticked. The same three rules are enforced as launch conditions, because a dialog
+cannot validate an install that never shows one.
+
+### Silent
+
+The same properties on the command line - this is how a fleet is actually deployed:
+
+```
+msiexec /i EmployeeMonitorAgent.msi /qn ^
+        SERVERURL=https://monitoring.example.com ^
+        ENROLLMENTTOKEN=%ENROLL_TOKEN%
+```
+
+A missing or non-HTTPS property fails immediately with a named message rather than installing a
+service that cannot enroll. Add `ALLOWINSECUREHTTP=1` for a test server. To capture a log:
+`/l*v install.log` - the token is registered in `MsiHiddenProperties`, so it is redacted there.
+
+Uninstall with `msiexec /x EmployeeMonitorAgent.msi /qn`, or from Apps and Features. Uninstall
+**leaves `%ProgramData%\EmployeeMonitor` in place**, collected data included; remove it separately
+if that is what you want.
+
+Upgrades are major upgrades: install the new MSI over the old one and it replaces it, keeping
+`%ProgramData%` - so no re-enrollment and nothing queued is lost.
+
+## 2. The script
 
 | Action | Does |
 |---|---|
 | `-Action Publish` | Builds both executables self-contained into `artifacts/agent` |
+| `-Action Package` | Publishes, then builds the MSI into `artifacts/installer` |
 | `-Action Install` | Publishes, copies to Program Files, writes config, sets ACLs, registers the service with recovery options, starts it |
 | `-Action Uninstall [-PurgeData]` | Stops and removes the service; `-PurgeData` also deletes `%ProgramData%\EmployeeMonitor` |
 | `-Action Status` | Reports service state and installed version |
@@ -24,12 +74,13 @@ cd "Windows Software_v3"
 ```
 
 The script is **unattended-safe and idempotent**, so it can be pushed via GPO startup script,
-Intune or PDQ.
+Intune or PDQ - though for a fleet the MSI is the better artifact, because it gives Windows a
+supported uninstall and upgrade path that a file copy does not.
 
 `-AllowInsecureHttp` permits a plain-HTTP server address. Local testing only - the service refuses
 one otherwise, because the spec requires TLS in production.
 
-## 2. Fleet rollout order
+## 3. Fleet rollout order
 
 1. **Create the organization.** `POST /v1/dashboard/organizations` returns the enrollment token
    **once**. Store it; only its HMAC is persisted.
@@ -43,7 +94,7 @@ one otherwise, because the spec requires TLS in production.
 **Step 4 is not cosmetic.** Until a device is assigned it sits on the hidden "Unassigned Devices"
 placeholder employee: its telemetry is stored but never reaches per-employee reports.
 
-## 3. What happens on the wire
+## 4. What happens on the wire
 
 Each agent trades the org token for its **own** 32-byte API key, stored DPAPI-protected at
 `LocalMachine` scope so the SYSTEM service can read it at boot before any user logs on. Only the
@@ -56,7 +107,7 @@ Two properties worth knowing:
 - **The kill switch survives reinstall.** A deactivated device gets 403 at enrollment, so
   reinstalling is not a way around deactivation.
 
-## 4. Token rotation
+## 5. Token rotation
 
 `POST /v1/dashboard/organizations/:id/enrollment-token` issues a new token. Already-issued device
 keys keep working.
@@ -65,7 +116,7 @@ keys keep working.
 later loses `device.key` cannot re-enroll until you push a new config. Rotate after rollout if you
 want to limit the shared secret's exposure, but plan to redistribute config.
 
-## 5. Installed layout
+## 6. Installed layout
 
 ```
 %ProgramFiles%\Employee Monitor\        both executables, published side by side
@@ -77,7 +128,13 @@ want to limit the shared secret's exposure, but plan to redistribute config.
     logs\                               service-<date>.log, host-s<session>-<date>.log
 ```
 
-ACLs set by the script:
+The layout and its ACLs are applied by `EmployeeMonitor.Service.exe --configure`, which both
+install paths call - the MSI from a deferred custom action, the script directly. It is in the agent
+rather than in either installer because the service depends on this layout at runtime, so there is
+one definition of it, in the codebase that has to agree with it. Identities are resolved from
+well-known SIDs rather than names like `BUILTIN\Users`, which do not exist on a localized Windows.
+
+ACLs applied:
 
 - The root is protected (inheritance disabled) and granted only to SYSTEM and Administrators, so a
   standard user cannot read or tamper with collected data on their own machine.
@@ -90,15 +147,25 @@ ACLs set by the script:
 Both executables must land in the **same folder** - the supervisor resolves
 `EmployeeMonitor.Host.exe` next to the service executable.
 
-## 6. Service recovery
+## 7. Service recovery
 
-Registered with `sc.exe failure`: restart after 5 s twice, then 60 s, counter reset daily.
+Restart on failure, with the failure counter reset daily. **The two install paths differ slightly**
+in the delay, because they configure the SCM through different mechanisms:
+
+| Path | Recovery actions |
+|---|---|
+| MSI (`util:ServiceConfig`) | restart after 5 s on each of the first three failures |
+| `Deploy-Agent.ps1` (`sc.exe failure`) | restart after 5 s twice, then 60 s |
+
+The daily reset is the part that matters either way: a machine that crashes once a week never
+accumulates enough failures to stop being restarted, while a genuine crash loop stops after the
+third attempt until the period rolls over.
 
 Separately, `HostSupervisorWorker` keeps the user-session host alive, checking every 15 s and
 reacting to `SessionSwitch` events so a new user's host comes up in about a second. After 5 fast
 failures it widens to a 5-minute backoff rather than spamming the Event Log.
 
-## 7. Build constraints
+## 8. Build constraints
 
 Both executables publish self-contained, `win-x64`, single-file, **untrimmed**.
 
@@ -106,16 +173,34 @@ Both executables publish self-contained, `win-x64`, single-file, **untrimmed**.
 resolved WMI types, and does so at runtime rather than at build time. `Directory.Build.props`
 fixes the target framework, RID, version metadata and `TreatWarningsAsErrors`.
 
-WiX is pinned to **5.0.2**, with `Util`, `UI` and `Firewall` extensions version-matched. v6+
-requires accepting the paid Open Source Maintenance Fee EULA (`WIX7015`); a version mismatch
-between CLI and extensions gives `WIX6101`. See
-[../architecture/decisions.md](../architecture/decisions.md) AD-14.
+WiX is pinned to **5.0.2** in `installer/EmployeeMonitor.Installer.wixproj`, and the `Util` and
+`UI` extension references must carry the same version. v6+ requires accepting the paid Open Source
+Maintenance Fee EULA (`WIX7015`); a version mismatch between the SDK and an extension gives
+`WIX6101`. See [../architecture/decisions.md](../architecture/decisions.md) AD-14.
 
-## 8. Updating
+The installer **packages an already-published directory** rather than building the agent itself:
+the publish settings that must not change live with the code that depends on them. It fails with a
+named error if that directory is missing, and excludes symbols and `appsettings.Development.json`
+from the payload.
 
-Re-run `-Action Install`. It stops the service, replaces the binaries and restarts. The device
-credential, queue and configuration in `%ProgramData%` are untouched, so no re-enrollment occurs
-and nothing queued is lost.
+Two WiX behaviours worth knowing before editing the authoring, because both fail quietly:
+
+- **An unreferenced `Fragment` is dropped at link time with no diagnostic.** A property, custom
+  action or dialog authored in a fragment that nothing references compiles, links, and produces an
+  MSI without it. Properties named only in a condition do not count as a reference.
+- **`ICE61` is suppressed**, and only that one, because `AllowSameVersionUpgrades` necessarily
+  puts the product's own version in its upgrade range.
+
+## 9. Updating
+
+**MSI:** install the newer package over the installed one. `MajorUpgrade` removes the old version
+first, and `ServiceControl` stops the service so the executable lock is released before the new
+file is written.
+
+**Script:** re-run `-Action Install`. It stops the service, replaces the binaries and restarts.
+
+Either way the device credential, queue and configuration in `%ProgramData%` are untouched, so no
+re-enrollment occurs and nothing queued is lost.
 
 If a contract-breaking change is involved, see
 [../architecture/cross-tier-contracts.md](../architecture/cross-tier-contracts.md) for whether the

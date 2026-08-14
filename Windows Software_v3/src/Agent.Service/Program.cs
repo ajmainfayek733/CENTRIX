@@ -7,6 +7,7 @@ using Agent.Service.Backend;
 using Agent.Service.Credentials;
 using Agent.Service.Interop;
 using Agent.Service.Ipc;
+using Agent.Service.Setup;
 using Agent.Service.Workers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -17,6 +18,14 @@ using Microsoft.Extensions.Logging;
 // Runs as LocalSystem in session 0. Owns policy, backend sync, USB events, the SQLite store and
 // supervision of the per-user host. It deliberately never touches the interactive desktop: see
 // HostSupervisorWorker for how the user-session half is started.
+
+// The installer runs this executable once, before the service is started, to lay out ProgramData
+// and write agent.config.json. Handled here rather than in the installer so there is exactly one
+// implementation of the layout the service then depends on. It never reaches the host builder.
+if (InstallConfigurator.IsConfigureRequest(args))
+{
+    return InstallConfigurator.Run(args);
+}
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -102,3 +111,5 @@ builder.Services.AddHostedService<HostSupervisorWorker>();
 
 var host = builder.Build();
 await host.RunAsync();
+
+return 0;

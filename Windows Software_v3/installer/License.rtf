@@ -1,0 +1,20 @@
+{\rtf1\ansi\ansicpg1252\deff0\nouicompat{\fonttbl{\f0\fnil\fcharset0 Segoe UI;}}
+\viewkind4\uc1
+\pard\sa120\sl240\slmult1\f0\fs20
+\b Employee Monitor Agent\b0\par
+\par
+\b What this software does\b0\par
+This software is installed by an organization on computers it owns, to record how those computers are used during work. It collects: sign-in and sign-out times; which application is in the foreground and for how long; whether the person is active or away; the web addresses visited in a browser; connection and removal of USB devices; and, when the organization enables it, periodic screen captures.\par
+\par
+\b What it does not do\b0\par
+It does not record what is typed. Keystrokes and mouse clicks are counted, never read, so passwords and message contents are never captured. It does not read files, does not read the contents of USB devices, and does not listen to microphones or cameras.\par
+\par
+\b Disclosure\b0\par
+Monitoring must be disclosed to the people it applies to. The agent shows a permanent icon in the notification area, and a window listing exactly what is being collected under the policy in force. That window is available at any time and asks for acknowledgement when the policy changes. Installing this software without telling the people using the computer may be unlawful in your jurisdiction.\par
+\par
+\b Administrator responsibilities\b0\par
+The server address supplied during installation receives everything collected. Use an HTTPS address: an insecure HTTP address sends window titles and visited domains across the network in the clear. The enrollment token entered during installation allows a machine to join the organization's fleet and should be handled as a secret.\par
+\par
+\b Uninstalling\b0\par
+The agent can be removed through Apps and Features, or with msiexec, by an administrator. Removing it leaves already-collected data on the machine under ProgramData; see the deployment documentation for how to purge it.\par
+}

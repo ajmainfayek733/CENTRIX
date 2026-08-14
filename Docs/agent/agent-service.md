@@ -25,6 +25,9 @@ trimming silently breaks USB collection.
 
 Top-level statements. Order matters in two places.
 
+0. **`InstallConfigurator.IsConfigureRequest(args)` first, before the host builder exists.** With
+   `--configure` the process is not a service at all: it is the installer asking the agent to lay
+   out its own ProgramData. See below.
 1. `Host.CreateApplicationBuilder(args)`, then `AddWindowsService` with
    `ServiceName = "EmployeeMonitorAgent"`.
 2. `AgentPaths.EnsureCreated()` - before anything writes.
@@ -50,6 +53,37 @@ Top-level statements. Order matters in two places.
 | `BackendClient` | typed `HttpClient` | Base address from `BackendClient.BuildBaseAddress`; 100 s timeout - generous enough for a screenshot upload on a slow office uplink, short enough that a black-holed connection cannot pin a sync cycle open indefinitely. User-Agent `EmployeeMonitorAgent/{version}`. |
 | `IpcServer` | singleton **and** hosted service | Registered once and resolved for both roles, because `UsbWorker` depends on it for broadcasts. |
 | `ConnectivityWorker`, `SyncWorker`, `UsbWorker`, `RetentionWorker`, `HostSupervisorWorker` | hosted services | |
+
+---
+
+## `Setup/InstallConfigurator.cs` - the install-time entry point
+
+```
+EmployeeMonitor.Service.exe --configure --server-url <url> --enrollment-token <token>
+                           [--allow-insecure-http]
+```
+
+Creates the ProgramData directories, applies their ACLs, and writes `agent.config.json`. Both
+install paths call it: the MSI from a deferred, non-impersonated custom action, and
+`Deploy-Agent.ps1` directly. See [decisions.md](../architecture/decisions.md) AD-15 for why this
+lives in the agent rather than in the installer.
+
+Because an MSI custom action is the caller, the contract is the **exit code**: 0 succeeded, 1 the
+arguments were wrong, 2 something failed while applying them. The custom action is authored
+`Return="check"`, so anything non-zero rolls the whole install back rather than leaving a
+registered service with no configuration to start from. Diagnostics go to stdout and stderr, which
+is where the MSI log picks them up.
+
+| Rule | Enforced because |
+|---|---|
+| Server URL required, absolute, `http` or `https` | A relative or malformed address fails at first contact otherwise, on a machine nobody is watching |
+| HTTPS unless `--allow-insecure-http` | Spec section 9. Failing at install time means a misconfigured rollout is caught on the machine being installed, rather than sending telemetry in the clear until someone notices |
+| Enrollment token required | Without it the agent cannot enroll, and the service refuses to start |
+
+Identities for the ACLs come from `WellKnownSidType`, never from names like `BUILTIN\Users`: those
+names are localized and do not exist on a German or Japanese install. The rules are re-applied on
+every run rather than only at creation, so an upgrade over an installation whose ACLs were loosened
+by hand ends up correct rather than merely unchanged.
 
 ---
 

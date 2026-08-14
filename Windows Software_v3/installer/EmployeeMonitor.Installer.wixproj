@@ -1,0 +1,82 @@
+<Project Sdk="WixToolset.Sdk/5.0.2">
+
+  <!--
+    The agent's MSI. See ../../Docs/operations/agent-deployment.md.
+
+    WiX is pinned to 5.0.2 here and in both extension references, and the three versions must
+    match: v6+ requires accepting the paid Open Source Maintenance Fee EULA (WIX7015), and a CLI
+    that disagrees with an extension fails with WIX6101. See decisions.md AD-14 before changing
+    any of these numbers.
+
+    This project does not compile the agent. It packages an already-published output directory,
+    given by AgentPublishDir, because the agent publishes self-contained and untrimmed and those
+    settings live with the code that depends on them. Build through scripts/Deploy-Agent.ps1
+    -Action Package, which publishes first and passes the directory in.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Package</OutputType>
+    <OutputName>EmployeeMonitorAgent</OutputName>
+
+    <!-- The agent is win-x64 only (spec section 11), so the package is too: an x86 package would
+         install into the 32-bit Program Files and register a service that cannot start. -->
+    <Platform>x64</Platform>
+    <InstallerPlatform>x64</InstallerPlatform>
+
+    <!--
+      ICE61 objects to AllowSameVersionUpgrades, because the upgrade range then includes the
+      product's own version. That is exactly what the attribute is for: during a pilot the version
+      does not change on every rebuild, and without it a reinstall installs a second copy
+      alongside the first instead of replacing it. Suppressed deliberately and only this one - the
+      remaining ICE validations still run and still fail the build.
+    -->
+    <SuppressIces>ICE61</SuppressIces>
+  </PropertyGroup>
+
+  <!-- Where the published agent binaries come from. Overridable so a CI job can package an
+       output it built elsewhere; the default is what Deploy-Agent.ps1 -Action Publish writes. -->
+  <PropertyGroup>
+    <!--
+      Normalised into a second property rather than edited in place. A property supplied with
+      -p: is a global property, and a global property cannot be reassigned from inside the
+      project - the assignment is silently ignored, which leaves the path without its trailing
+      separator and turns every harvest path into a concatenation of directory and file name.
+    -->
+    <AgentPublishRoot Condition="'$(AgentPublishDir)' != ''">$(AgentPublishDir)</AgentPublishRoot>
+    <AgentPublishRoot Condition="'$(AgentPublishRoot)' == ''">$(MSBuildThisFileDirectory)..\artifacts\agent</AgentPublishRoot>
+    <AgentPublishRoot>$([MSBuild]::EnsureTrailingSlash($(AgentPublishRoot)))</AgentPublishRoot>
+  </PropertyGroup>
+
+  <!--
+    AgentVersion comes from ../Directory.Build.props, which is the one place the product version
+    is set and is imported here because this project sits under it. A version defined separately
+    would ship an MSI whose ProductVersion disagrees with the binaries it carries, and
+    MajorUpgrade would then not trigger on the next release.
+  -->
+  <Target Name="VerifyAgentVersion" BeforeTargets="BeforeBuild">
+    <Error Condition="'$(AgentVersion)' == ''"
+           Text="AgentVersion is not set. It is defined in Directory.Build.props; this project must stay underneath it." />
+  </Target>
+
+  <PropertyGroup>
+    <DefineConstants>AgentPublishDir=$(AgentPublishRoot);AgentVersion=$(AgentVersion)</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.Util.wixext" Version="5.0.2" />
+    <PackageReference Include="WixToolset.UI.wixext" Version="5.0.2" />
+  </ItemGroup>
+
+  <!--
+    Fails the build early with an actionable message. Without this, a missing publish surfaces as
+    a WiX harvesting error listing a path, which reads like a broken installer rather than a
+    missing prerequisite step.
+  -->
+  <Target Name="VerifyAgentPublished" BeforeTargets="BeforeBuild">
+    <Error Condition="!Exists('$(AgentPublishRoot)EmployeeMonitor.Service.exe')"
+           Text="No published agent at $(AgentPublishRoot). Run scripts\Deploy-Agent.ps1 -Action Publish first, or pass -p:AgentPublishDir=&lt;dir&gt;." />
+    <Error Condition="!Exists('$(AgentPublishRoot)EmployeeMonitor.Host.exe')"
+           Text="$(AgentPublishRoot) has no EmployeeMonitor.Host.exe. Both executables must publish into the same folder - the supervisor resolves the host next to the service." />
+  </Target>
+
+</Project>

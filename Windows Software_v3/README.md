@@ -135,6 +135,16 @@ the service refuses a plain-HTTP server address without it.
 
 Other actions: `-Action Status`, `-Action Publish`, `-Action Uninstall [-PurgeData]`.
 
+For anything beyond your own machine, build the MSI instead - it gives Windows a supported
+uninstall and upgrade path, and prompts for the server address and token (or takes them as
+properties for an unattended rollout):
+
+```powershell
+.\scripts\Deploy-Agent.ps1 -Action Package
+msiexec /i .\artifacts\installer\EmployeeMonitorAgent.msi /qn `
+        SERVERURL=https://monitoring.example.com ENROLLMENTTOKEN=<token>
+```
+
 The device enrolls, appears on the dashboard's **Devices** screen as *Unassigned*, and starts
 reporting once an admin assigns it to an employee.
 

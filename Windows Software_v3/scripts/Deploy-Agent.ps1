@@ -11,9 +11,14 @@
 
 .PARAMETER Action
     Publish   - build both executables self-contained into .\artifacts\agent
+    Package   - publish, then build the MSI into .\artifacts\installer
     Install   - publish, copy to Program Files, write config, register and start the service
     Uninstall - stop and remove the service, and optionally delete collected data
     Status    - show the service state and what the agent has queued locally
+
+    Package produces the artifact for a fleet rollout; Install is the scripted path for a single
+    machine and for development. Both end up with the same layout on disk, because both write
+    their configuration through the agent's own --configure step.
 
 .PARAMETER ServerUrl
     Base URL of the monitoring server, e.g. https://monitoring.example.com
@@ -39,7 +44,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('Publish', 'Install', 'Uninstall', 'Status')]
+    [ValidateSet('Publish', 'Package', 'Install', 'Uninstall', 'Status')]
     [string]$Action,
 
     [string]$ServerUrl,
@@ -56,6 +61,8 @@ $InstallDir   = Join-Path $env:ProgramFiles 'Employee Monitor'
 $DataDir      = Join-Path $env:ProgramData 'EmployeeMonitor'
 $RepoRoot     = Split-Path -Parent $PSScriptRoot
 $ArtifactDir  = Join-Path $RepoRoot 'artifacts\agent'
+$InstallerDir = Join-Path $RepoRoot 'artifacts\installer'
+$InstallerProject = Join-Path $RepoRoot 'installer\EmployeeMonitor.Installer.wixproj'
 
 function Assert-Elevated {
     $identity  = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -79,53 +86,39 @@ function Invoke-Publish {
     Write-Host "Published to $ArtifactDir" -ForegroundColor Green
 }
 
+function Invoke-Package {
+    Invoke-Publish
+
+    Write-Host 'Building the MSI...' -ForegroundColor Cyan
+
+    # The WiX project packages an already-published directory rather than building the agent
+    # itself: the publish settings (self-contained, untrimmed - trimming silently breaks USB
+    # collection) live with the code that depends on them.
+    dotnet build $InstallerProject -c Release --nologo `
+        -p:AgentPublishDir=$ArtifactDir `
+        -p:OutputPath=$InstallerDir
+    if ($LASTEXITCODE -ne 0) { throw 'Installer build failed.' }
+
+    $msi = Join-Path $InstallerDir 'EmployeeMonitorAgent.msi'
+    Write-Host "Built $msi" -ForegroundColor Green
+    Write-Host 'Install it with:' -ForegroundColor Green
+    Write-Host "  msiexec /i `"$msi`" /qn SERVERURL=https://monitoring.example.com ENROLLMENTTOKEN=<token>" -ForegroundColor Gray
+}
+
 function Write-AgentConfig {
-    if (-not (Test-Path $DataDir)) { New-Item -ItemType Directory -Path $DataDir -Force | Out-Null }
+    # Delegated to the agent's own configure step rather than reimplemented here.
+    #
+    # This used to write the JSON and set the ACLs inline, which made it a second definition of a
+    # layout the service depends on - and one that resolved identities by name ("BUILTIN\Users"),
+    # so it threw on a non-English Windows. The MSI calls the same entry point, so a scripted
+    # install and a packaged install cannot diverge.
+    $serviceExe = Join-Path $InstallDir 'EmployeeMonitor.Service.exe'
 
-    # The data directory holds the local telemetry database and the DPAPI-protected device
-    # key. Inheritance is disabled and Users are dropped so a standard user cannot read or
-    # tamper with collected data on their own machine.
-    $acl = Get-Acl $DataDir
-    $acl.SetAccessRuleProtection($true, $false)
-    $acl.Access | ForEach-Object { $acl.RemoveAccessRule($_) | Out-Null }
-    foreach ($principal in 'NT AUTHORITY\SYSTEM', 'BUILTIN\Administrators') {
-        $rule = [Security.AccessControl.FileSystemAccessRule]::new(
-            $principal, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')
-        $acl.AddAccessRule($rule)
-    }
-    Set-Acl -Path $DataDir -AclObject $acl
+    $arguments = @('--configure', '--server-url', $ServerUrl, '--enrollment-token', $EnrollmentToken)
+    if ($AllowInsecureHttp) { $arguments += '--allow-insecure-http' }
 
-    # The host writes screenshots here before the service uploads them, and the host runs as
-    # the logged-on user - so this one subdirectory has to stay writable by users.
-    $spool = Join-Path $DataDir 'screenshots'
-    if (-not (Test-Path $spool)) { New-Item -ItemType Directory -Path $spool -Force | Out-Null }
-    $spoolAcl = Get-Acl $spool
-    $spoolRule = [Security.AccessControl.FileSystemAccessRule]::new(
-        'BUILTIN\Users', 'Modify', 'ContainerInherit,ObjectInherit', 'None', 'Allow')
-    $spoolAcl.AddAccessRule($spoolRule)
-    Set-Acl -Path $spool -AclObject $spoolAcl
-
-    # Same problem for logs: the host runs as the employee and writes host-s<session>-<date>.log
-    # here. Granted 'Write' rather than 'Modify' on purpose - a standard user can create and
-    # append to their own log file but cannot delete or truncate the agent's history. Ageing
-    # files out is the service's job (RetentionWorker), which runs as SYSTEM.
-    $logs = Join-Path $DataDir 'logs'
-    if (-not (Test-Path $logs)) { New-Item -ItemType Directory -Path $logs -Force | Out-Null }
-    $logsAcl = Get-Acl $logs
-    $logsRule = [Security.AccessControl.FileSystemAccessRule]::new(
-        'BUILTIN\Users', 'Write, ReadAndExecute', 'ContainerInherit,ObjectInherit', 'None', 'Allow')
-    $logsAcl.AddAccessRule($logsRule)
-    Set-Acl -Path $logs -AclObject $logsAcl
-
-    $config = [ordered]@{
-        serverUrl         = $ServerUrl
-        enrollmentToken   = $EnrollmentToken
-        allowInsecureHttp = [bool]$AllowInsecureHttp
-    }
-
-    $configPath = Join-Path $DataDir 'agent.config.json'
-    $config | ConvertTo-Json | Out-File -FilePath $configPath -Encoding utf8 -Force
-    Write-Host "Wrote $configPath" -ForegroundColor Green
+    & $serviceExe @arguments
+    if ($LASTEXITCODE -ne 0) { throw "Agent configuration failed with exit code $LASTEXITCODE." }
 }
 
 function Invoke-Install {
@@ -236,6 +229,7 @@ function Invoke-Status {
 
 switch ($Action) {
     'Publish'   { Invoke-Publish }
+    'Package'   { Invoke-Package }
     'Install'   { Invoke-Install }
     'Uninstall' { Invoke-Uninstall }
     'Status'    { Invoke-Status }
