@@ -111,8 +111,15 @@ server deduplicates on this id. `BackendClient.PushEventsAsync` is generically c
 
 #### `AttendanceEvent`
 
-One per Windows logon session. Upserted server-side on `SessionId`: the agent re-sends the row as
-`LogoutTime` firms up across lock -> sleep -> shutdown, and last write wins.
+One per uninterrupted stretch of presence - not per Windows logon session. Upserted server-side on
+`SessionId`: an open session re-sends the row every couple of minutes as its running totals grow.
+
+**Once `LogoutTime` is set the row is closed and accepts no further writes.** A lock, a suspend or a
+logoff ends the session; presence resumed afterwards arrives as a **new** `SessionId` with its own
+login time, so a day is several rows and its first login and last logout are the earliest and latest
+across them. The store and the ingest layer both enforce this, because the periodic refresh sends a
+null `LogoutTime` to mean "still open" and letting one land on a closed row blanks a logout that has
+already been reported.
 
 `ClientEventId`, `SessionId`, `UserSid`, `LoginTime`, `LogoutTime?`, `EndReason?`, `WorkDate`,
 `TotalActiveSeconds`, `TotalIdleSeconds`.
@@ -376,7 +383,7 @@ semantics; the rest are insert-once:
 
 | Method | Semantics |
 |---|---|
-| `Enqueue(AttendanceEvent)` | Upsert on `session_id`, **resetting `sent_utc` to NULL and `attempts` to 0**. The logout time firms up as the agent observes lock -> sleep -> shutdown, and the server needs each revision. |
+| `Enqueue(AttendanceEvent)` | Upsert on `session_id`, **resetting `sent_utc` to NULL and `attempts` to 0**, so each refresh of an open session's running totals reaches the server. The conflict clause carries `WHERE attendance_sessions.logout_time IS NULL`: **a stamped logout is final**, and a write arriving after it is dropped rather than merged. This is the layer where getting it wrong is unrecoverable - a null logout time means "still open", and one landing on a closed row blanked a logout that had already been reported. |
 | `Enqueue(AlertEvent)` | Upsert on `client_event_id`, also requeuing. An escalating incident reuses one id and each escalation must reach the server. |
 | `Enqueue(ActivityMetricEvent)` | `INSERT OR IGNORE` on `client_event_id` |
 | `Enqueue(ActivitySessionEvent)` | `INSERT OR IGNORE` on `activity_session_id` |

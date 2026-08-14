@@ -88,8 +88,14 @@ liveness tracking must never fail the request it rides on.
 
 Two upserts, and both have a reason:
 
-- **Attendance** is re-sent as `logoutTime` firms up across lock -> sleep -> shutdown, so later
-  writes must overwrite earlier ones.
+- **Attendance** is re-sent by an open session every couple of minutes as its running totals grow,
+  so later writes overwrite earlier ones - **until `logoutTime` is stamped, after which the row is
+  final and further writes are dropped**. The agent closes a session once and sends a new
+  `sessionId` when presence resumes, so a write against a closed row is stale by definition.
+  Enforced here as well as on the agent because sync is at-least-once over an offline queue: a
+  retried batch, or one from an agent still on the old build, must not be able to blank a logout
+  that has already been reported. That is exactly what produced days of logins with no logout - the
+  null `logoutTime` meaning "still open" landing on a row closed minutes earlier.
 - **Alerts** escalate (idle 30 -> 45 -> 60 min) reusing one `clientEventId` rather than creating
   a row per escalation. Every alert is written; only first sightings are **counted**, or an
   escalation would inflate the day's alert total on every re-send.

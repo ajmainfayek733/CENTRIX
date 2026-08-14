@@ -598,6 +598,33 @@ async function main() {
       { logoutTime: attendanceRow?.logoutTime, endReason: attendanceRow?.endReason }
     );
 
+    // A null logout time means "this session is still open". Landing one on a session that has
+    // already ended is what left days of logins with no logout, so a closed row must ignore it.
+    const attendanceStale = await push('attendance', [
+      {
+        clientEventId: randomUUID(),
+        sessionId,
+        userSid: 'S-1-5-21-smoke',
+        loginTime: earlier.toISOString(),
+        logoutTime: null,
+        workDate: now.toISOString().slice(0, 10),
+        totalActiveSeconds: 90,
+        totalIdleSeconds: 30,
+      },
+    ]);
+    const attendanceAfterStale = await prisma.attendanceSession.findUnique({ where: { sessionId } });
+    check('a stale refresh cannot clear a logout time that was already stamped',
+      attendanceStale.status === 200 &&
+        attendanceAfterStale?.logoutTime?.getTime() === attendanceRow?.logoutTime?.getTime() &&
+        attendanceAfterStale?.endReason === 'Shutdown' &&
+        attendanceAfterStale?.totalActiveSeconds === 60,
+      {
+        logoutTime: attendanceAfterStale?.logoutTime,
+        endReason: attendanceAfterStale?.endReason,
+        totalActiveSeconds: attendanceAfterStale?.totalActiveSeconds,
+      }
+    );
+
     // -- Server-side categorization -----------------------------------------
     console.log('\nServer-side productivity categorization');
 

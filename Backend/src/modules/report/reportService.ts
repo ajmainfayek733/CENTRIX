@@ -161,9 +161,14 @@ export class ReportService {
       employeesTracked: totals.size,
       onlineNow: onlineDevices,
       openHighSeverityAlerts: openAlerts,
+      // Counted by person, not by row. An attendance row is one uninterrupted stretch of presence,
+      // so a day with a lunch break and a couple of locked screens is several rows for the same
+      // employee; counting rows would report a headcount of eleven for a team of three.
       attendanceToday: {
-        checkedIn: todaysAttendance.length,
-        stillActive: todaysAttendance.filter((a) => a.logoutTime === null).length,
+        checkedIn: new Set(todaysAttendance.map((a) => a.userSid)).size,
+        stillActive: new Set(
+          todaysAttendance.filter((a) => a.logoutTime === null).map((a) => a.userSid)
+        ).size,
       },
       totals: { ...team, productivityPercent: productivityPercent(team) },
     };

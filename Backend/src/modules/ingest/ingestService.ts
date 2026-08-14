@@ -256,8 +256,16 @@ class IngestService {
   }
 
   // -------------------------------------------------------------------------
-  // Attendance - upsert on sessionId. The agent re-sends the row as logoutTime
-  // firms up (lock -> sleep -> shutdown), so later writes must overwrite earlier ones.
+  // Attendance - upsert on sessionId. An open session re-sends its row every couple of minutes as
+  // its running totals grow, so later writes overwrite earlier ones.
+  //
+  // A STAMPED LOGOUT IS FINAL. The agent closes a session once - a lock, a suspend or a logoff ends
+  // it, and presence resumed afterwards arrives as a new sessionId - so a write against a row that
+  // already has a logoutTime is stale by definition and is dropped. Enforced here as well as on the
+  // agent because sync is at-least-once over an offline queue: a batch that was retried, or one
+  // from an agent still running the old build, must not be able to blank a logout that has already
+  // been reported. That is exactly what produced days of logins with no logout - the null
+  // logoutTime that means "still open" landing on a row closed minutes earlier.
   //
   // Contributes no seconds to the rollup: totalActiveSeconds here is the agent's own sum of the
   // activity sessions it already sent, and counting both would double every working day. It only
@@ -265,9 +273,19 @@ class IngestService {
   // -------------------------------------------------------------------------
 
   private async prepareAttendance(device: DeviceContext, events: AttendanceEventDto[]): Promise<PreparedBatch> {
-    const stored = await this.existingEventIds('attendance', events.map((e) => e.sessionId));
+    const sessionIds = events.map((e) => e.sessionId);
+    const existing = await prisma.attendanceSession.findMany({
+      where: { sessionId: { in: sessionIds } },
+      select: { sessionId: true, logoutTime: true },
+    });
+
+    const stored = new Set(existing.map((r) => r.sessionId));
+    const closed = new Set(existing.filter((r) => r.logoutTime !== null).map((r) => r.sessionId));
+
     const accumulator = new RollupAccumulator();
 
+    // Acknowledged even when the write is dropped: the agent is told the row is stored so it stops
+    // resending it. Rejecting would leave a stale row queued on the workstation forever.
     for (const e of events) accumulator.touchDate(e.workDate);
 
     return {
@@ -275,6 +293,8 @@ class IngestService {
       accumulator,
       write: async (tx) => {
         for (const e of events) {
+          if (closed.has(e.sessionId)) continue;
+
           const shared = {
             deviceId: device.id,
             userSid: e.userSid,
@@ -285,10 +305,26 @@ class IngestService {
             totalActiveSeconds: e.totalActiveSeconds,
             totalIdleSeconds: e.totalIdleSeconds,
           };
-          await tx.attendanceSession.upsert({
-            where: { sessionId: e.sessionId },
-            create: { sessionId: e.sessionId, ...shared },
-            update: shared,
+
+          // A session the server has never seen: upsert, because the create side has to tolerate a
+          // concurrent insert of the same id rather than aborting the whole batch on the unique
+          // constraint.
+          if (!stored.has(e.sessionId)) {
+            await tx.attendanceSession.upsert({
+              where: { sessionId: e.sessionId },
+              create: { sessionId: e.sessionId, ...shared },
+              update: shared,
+            });
+            continue;
+          }
+
+          // A session already on file: updateMany rather than update, so the "still open" test is
+          // part of the statement instead of a decision taken from a read outside the transaction.
+          // A row closed since that read matches nothing and the write is dropped, which is the
+          // whole point - a logout time, once reported, is not revised.
+          await tx.attendanceSession.updateMany({
+            where: { sessionId: e.sessionId, logoutTime: null },
+            data: shared,
           });
         }
       },

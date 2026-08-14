@@ -307,6 +307,7 @@ Every report about an employee is built on this, so the rules are explicit:
 | **Durations are wall-clock differences between recorded instants.** Nothing is derived from the tick rate. | A slow or delayed tick changes *when a change is noticed*, never *how much time is reported*. Counting `PollSeconds` per tick - the previous behaviour - assumed each tick took exactly its interval, when the real period is interval + work, so the totals drifted downwards and worst for the busiest machines. |
 | **A transition into or out of idle is dated from the last real input**, not from the tick that noticed it. | Otherwise every idle period hands the whole idle threshold - five minutes by default - to whichever application was in focus when the user walked away, and starts the idle period five minutes late. Ten idle periods a day is nearly an hour of phantom working time. |
 | **Time the agent did not observe is not invented.** | A laptop closed at lunch and opened at two would otherwise report ninety minutes of the last application in focus. |
+| **An attendance session's logout time only ever moves in one direction: once stamped, the row is final.** A lock, a suspend or a logoff ends the session; coming back opens a new one with a new id and a new login time. | The periodic refresh sends a *null* logout time to mean "still open", and it used to keep doing so after a lock or a suspend had already stamped one - blanking, two minutes later, a logout that had already been reported. Every session the employee returned from ended up as a login with no logout. Reopening the closed row instead would have been just as wrong in the report: one row would claim to span a lunch break nobody was there for. |
 | **The attendance totals are accumulated from the closed segments**, not counted separately. | The totals and the activity log can never disagree. Time from a segment too short to earn a row is still counted, so a day of rapid window switching does not report as less than a day. |
 | **Durations are rounded, not truncated.** | Truncating every segment biases the day downwards by up to a second per switch - on the order of a minute across a busy day - and always in the same direction. |
 
@@ -318,7 +319,8 @@ belongs to looks like it may have navigated. See `ShouldProbeBrowser`.
 
 | Field | Purpose |
 |---|---|
-| `_userSid`, `_sessionId`, `_loginTime` | Identify this logon session. `_sessionId` is a fresh GUID per host start and is the foreign key every event carries. |
+| `_userSid`, `_sessionId`, `_loginTime` | Identify the **attendance session** every event carries as its foreign key - not the Windows logon session, and deliberately not fixed for the life of the process. A fresh GUID is taken at host start and again each time presence resumes after the session was closed. Guarded by `_stateGate` like the rest of the session state. |
+| `_attendanceClosed`, `_attendanceClosedAt`, `_attendanceCloseReason` | Whether the current attendance session has already had its logout time stamped, and when and why. `_attendanceClosed` is the invariant that makes a stamped logout final; the other two decide when presence may be treated as resumed. |
 | `_stateGate` (`SemaphoreSlim`) | Serialises everything touching the open segments and the running totals. **Two threads reach that state**: the monitoring loop, and the Windows session callbacks for lock, sleep and shutdown, which arrive whenever Windows decides to send them. Without it, a suspend landing mid-tick could close a segment the tick is still writing and double-count it. |
 | `_current` (`ActivitySegment`) | In-progress foreground activity session: `ActivitySessionId`, `Snapshot`, `Type`, `StartedAt`. |
 | `_currentVisit` (`BrowserSegment`) | In-progress browser visit: `BrowserActivityId`, `ActivitySessionId`, `Visit`, `WindowTitle`, `StartedAt`. |
@@ -330,6 +332,7 @@ belongs to looks like it may have navigated. See `ShouldProbeBrowser`.
 | `MetricFlushInterval` (1 min) | How often the activity metric window is closed and sent. |
 | `AttendanceFlushInterval` (2 min) | How often the open attendance row is refreshed - frequent enough that a power loss loses at most this much of the day, cheap enough not to matter since it is an upsert on one row. |
 | `GapIntervalMultiple` (4) / `MinimumGapThreshold` (10 s) | When a late tick stops being a busy machine and starts being a discontinuity. Four intervals rather than two because a workstation under load can genuinely stall a one-second loop; the ten-second floor because four intervals of a one-second poll would treat any brief hiccup as a sleep. |
+| `AnnouncedEndGrace` (30 s) | How long an announced end of the session is believed before the host concludes it was called off. A logoff, a shutdown and a suspend are all announced *before* they happen and the loop keeps ticking in between; those ticks see a closed session on an unlocked desktop, which looks exactly like a returning employee. Windows allows a process seconds, not tens of seconds, at that point, so a host still running this much later was never going anywhere. |
 
 **Lifecycle**
 
@@ -348,18 +351,26 @@ up later as an attendance row closed as `Recovered`.
 
 `ShutdownAsync` then closes the current segment with `SessionEnd`, flushes the final metric window
 (otherwise the last partial minute of keystrokes is lost) and writes the closing attendance row.
+That last write is a no-op when the session was already closed by the lock or suspend that preceded
+the shutdown: the employee stopped being present *then*, and stamping the later instant would credit
+them the whole locked interval.
 
 **`TickAsync`** - the whole body runs under `_stateGate`.
 
 1. Stamp `_lastTickAt`; if the previous tick was more than the gap threshold ago, or a session
-   callback flagged a break, close the observation gap.
+   callback flagged a break, close the observation gap. The **measured** gap is kept separate from
+   the callback flag: the flag says a discontinuity was announced, the elapsed time says one
+   actually happened, and only the second proves the machine went away and came back.
 2. Read idle time, derive `lastInputAt`, and resolve the current state.
-3. On a state or app/title change, resolve the transition instant, close the old segment there and
+3. If the attendance session is closed and `ShouldRotateAttendance` says the employee is back, open
+   a new one - **before** the segment logic, so everything this tick records belongs to the session
+   that is actually open.
+4. On a state or app/title change, resolve the transition instant, close the old segment there and
    start the new one **at the same instant** - so the timeline has no gap and no overlap.
-4. If `Application`: track the browser and evaluate application alerts. Otherwise close any open
+5. If `Application`: track the browser and evaluate application alerts. Otherwise close any open
    browser visit and reset the probe gate.
-5. Evaluate idle alerts.
-6. Flush metrics and attendance on their intervals; capture a screenshot if due.
+6. Evaluate idle alerts.
+7. Flush metrics and attendance on their intervals; capture a screenshot if due.
 
 | Method | Description |
 |---|---|
@@ -374,10 +385,12 @@ up later as an attendance row closed as `Recovered`.
 | `ResetBrowserProbe()` | Forgets what was last probed. Leaving a browser and returning to the same window and title is otherwise indistinguishable from never having left it, and the visit would not reopen until the refresh interval elapsed. |
 | `CloseBrowserVisitAsync(endedAt, ct)` | Same rounding and sub-second rules, tags via `PolicyEvaluator.MatchDomain`, submits `SubmitBrowserActivityMessage`. A `Guid.Empty` activity-session link is normalized to `null`. |
 | `FlushMetricsAsync(now, ct)` | Drains the input counters and submits the window. **A window with no input at all is skipped** - the idle activity session already records that the user was away. |
-| `FlushAttendanceAsync(logoutTime, reason, now, ct)` | Writes the attendance row. The **open segment counts towards the totals without being closed**, so a refresh mid-way through a two-hour stretch of work reports that work rather than waiting for the user to switch applications. `WorkDate` is the **local** date, because attendance is reported against the employee's own working day. |
+| `FlushAttendanceAsync(logoutTime, reason, now, ct)` | Writes the attendance row. The **open segment counts towards the totals without being closed**, so a refresh mid-way through a two-hour stretch of work reports that work rather than waiting for the user to switch applications. `WorkDate` is the **local** date, because attendance is reported against the employee's own working day. **A closed session is final**: both a periodic refresh and a second closing write are dropped here rather than at the call sites, because the store and the server both upsert on the session id - a null logout time would blank the row, and a later instant would silently annex the time the employee was away. |
+| `ShouldRotateAttendance(type, now, observedGap)` | Whether the employee is back at a workstation whose attendance session has already ended. The two families of end are told apart by what proves the return, because they fail in opposite directions. A **lock or disconnect** is a state Windows reports and later reverses, so the unlock (`type != Locked`) is proof on its own. A **logoff, shutdown or suspend** is an announcement about what is *about* to happen while the process keeps running, so it needs real evidence: an observed gap in the clock, or `AnnouncedEndGrace` elapsing. |
+| `RotateAttendanceSessionAsync(now, ct)` | Opens a fresh attendance session at the instant the desktop came back: closes the locked or suspended interval under the **outgoing** session id, takes a new id and login time, zeroes the per-session totals and the metric window, and writes the new open row. A new row rather than a reopened one - reopening would clear a logout that has already been reported, and would leave one row claiming to span a break nobody was there for. The day's first login and last logout are still the earliest and latest across the rows. Driven by the tick and not by the resume callback, because a machine woken by a wake timer is not an employee arriving, and it stays locked. |
 | `MaybeCaptureScreenshotAsync(policy, type, now, ct)` | Captures on schedule, but **only while someone is there to be captured**. A locked or idle machine shows a lock screen or an untouched desktop: the capture costs a full-screen bitmap and a JPEG encode, and stores an image answering no question the activity log has not already answered. The timer is deliberately **not** reset while skipping, so the first capture after the user returns happens immediately. |
 | `CaptureScreenshotAsync(ct)` | Captures off the UI thread and submits the path and metadata. Guarded by `_screenshotGate` with a zero timeout: a manual request from the dashboard landing during a scheduled capture is skipped, because the image already being taken is the one that was asked for. |
-| `OnSessionSuspended(reason)` | **Fire-and-forget** on purpose: this runs on a `SystemEvents` callback Windows expects to return promptly - on shutdown it has only seconds before the process is killed. Takes `_stateGate` with a **3-second bound** (waiting without a limit inside a shutdown callback risks the process being killed mid-wait, which costs the whole session's logout time rather than one segment's end reason), closes the segment, flushes the final attendance row, and flags the observation as broken. |
+| `OnSessionSuspended(reason)` | **Fire-and-forget** on purpose: this runs on a `SystemEvents` callback Windows expects to return promptly - on shutdown it has only seconds before the process is killed. Takes `_stateGate` with a **3-second bound** (waiting without a limit inside a shutdown callback risks the process being killed mid-wait, which costs the whole session's logout time rather than one segment's end reason), closes the segment, flushes the metric window **before** the attendance row (the counts belong to the session that is ending, not to the one the employee starts on return), stamps the logout, and flags the observation as broken. |
 | `OnSessionResumed()` | Flags the observation as broken. **Only a flag is set here** - this is a Windows callback thread, and the tick owns every timestamp in the class. |
 | `Dispose()` | Unsubscribes from the session events and disposes both gates. |
 

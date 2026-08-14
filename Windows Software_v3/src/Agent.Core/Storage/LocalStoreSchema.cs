@@ -31,8 +31,10 @@ internal static class LocalStoreSchema
         );
 
         -- Features.md "Attendace report".
-        -- Upserted on session_id: logout_time firms up as the agent observes lock -> sleep ->
-        -- shutdown, so the row is rewritten in place and re-queued for sync each time.
+        -- Upserted on session_id: an open row is rewritten in place and re-queued for sync every
+        -- time its running totals are refreshed. Once logout_time is set the row is closed and no
+        -- longer accepts writes - presence resumed after a lock or a suspend is a new session, not
+        -- an amendment to the one that ended.
         CREATE TABLE IF NOT EXISTS attendance_sessions (
             session_id           TEXT    PRIMARY KEY,
             client_event_id      TEXT    NOT NULL,

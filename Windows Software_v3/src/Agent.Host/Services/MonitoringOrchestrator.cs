@@ -32,6 +32,9 @@ namespace Agent.Host.Services;
 ///   * Time the agent did not observe is not invented. If a tick arrives long after the previous
 ///     one, the machine slept or the process was suspended, and the gap is left unattributed
 ///     rather than credited to whatever was last on screen.
+///   * An attendance session is one uninterrupted stretch of presence, and its logout time only
+///     ever moves in one direction: once stamped, the row is final. A lock, a suspend or a logoff
+///     ends the session; coming back opens a new one. See <see cref="RotateAttendanceSessionAsync"/>.
 ///
 /// AND HOW IT STAYS CHEAP: the poll interval buys boundary precision, not data, so it is left at
 /// one second while the expensive collector - the browser address bar, a cross-process UI
@@ -59,9 +62,31 @@ public sealed class MonitoringOrchestrator(
 
     private readonly string _userSid = WindowsIdentity.GetCurrent().User?.Value ?? "S-1-0-0";
 
-    /// <summary>The Windows logon session this host is monitoring, for attendance and grouping.</summary>
-    private readonly Guid _sessionId = Guid.NewGuid();
-    private readonly DateTimeOffset _loginTime = DateTimeOffset.UtcNow;
+    /// <summary>
+    /// The attendance session every event this host emits is grouped under.
+    ///
+    /// Not the Windows logon session id, and deliberately not fixed for the lifetime of the
+    /// process: a lock, a suspend or a logoff ends the current attendance session, and the return
+    /// to the desktop starts a new one with a new id and a new login time. Guarded by
+    /// <see cref="_stateGate"/> like every other piece of session state.
+    /// </summary>
+    private Guid _sessionId = Guid.NewGuid();
+    private DateTimeOffset _loginTime = DateTimeOffset.UtcNow;
+
+    /// <summary>
+    /// Whether the current attendance session has already had its logout time stamped.
+    ///
+    /// This is the invariant that keeps the attendance report honest: a stamped logout is final,
+    /// so no later write may clear it or move it. Without it, the periodic refresh - which sends a
+    /// null logout time to mean "still open" - overwrote the logout stamped at the preceding lock
+    /// or suspend two minutes later, and every session the employee ever returned from ended up
+    /// with a login and no logout.
+    /// </summary>
+    private bool _attendanceClosed;
+
+    /// <summary>When and why the current attendance session was closed. Drives <see cref="ShouldRotateAttendance"/>.</summary>
+    private DateTimeOffset _attendanceClosedAt;
+    private SessionEndReason? _attendanceCloseReason;
 
     /// <summary>
     /// Serialises everything that touches the open segments and the running totals.
@@ -144,6 +169,21 @@ public sealed class MonitoringOrchestrator(
     /// four-second hiccup as a discontinuity, which is far too eager on a busy machine.
     /// </summary>
     private static readonly TimeSpan MinimumGapThreshold = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// How long an announced end of the session is believed before this host concludes it was
+    /// called off.
+    ///
+    /// A logoff, a shutdown and a suspend are all announced before they happen, and this loop keeps
+    /// ticking in the interval between. Those ticks see a closed attendance session on an unlocked
+    /// desktop, which is exactly what a returning employee looks like - and rotating there would
+    /// open a new session on every single shutdown, abandon it a second later, and have it
+    /// resurface as a "Recovered" row. Windows allows a process seconds, not tens of seconds, at
+    /// that point (WM_QUERYENDSESSION, PBT_APMSUSPEND), so a host still running this much later was
+    /// never going anywhere: the shutdown was cancelled or the suspend was refused, and the
+    /// employee is still at their desk.
+    /// </summary>
+    private static readonly TimeSpan AnnouncedEndGrace = TimeSpan.FromSeconds(30);
 
     /// <summary>An in-progress foreground activity session.</summary>
     private sealed class ActivitySegment
@@ -241,8 +281,14 @@ public sealed class MonitoringOrchestrator(
 
             // Sleep, hibernation, or a process the OS stopped scheduling. Whatever happened, the
             // time between the two ticks was not observed and must not be attributed to anyone.
+            //
+            // The measured gap is kept separate from the flag the session callbacks set: the flag
+            // says a discontinuity was announced, the elapsed time says one actually happened, and
+            // only the second is proof that the machine went away and came back.
             var gapThreshold = Max(interval * GapIntervalMultiple, MinimumGapThreshold);
-            if (Interlocked.Exchange(ref _observationBroken, 0) == 1 || now - previousTickAt > gapThreshold)
+            var observedGap = now - previousTickAt > gapThreshold;
+
+            if (Interlocked.Exchange(ref _observationBroken, 0) == 1 || observedGap)
             {
                 await CloseObservationGapAsync(previousTickAt, now, ct).ConfigureAwait(false);
             }
@@ -258,6 +304,15 @@ public sealed class MonitoringOrchestrator(
             // Resolve the current state. Lock beats idle: a locked screen is locked whether or not
             // the idle timer has elapsed, and reporting it as Idle would lose why the user stopped.
             var (type, snapshot) = ResolveState(policy, idleFor, idleThreshold);
+
+            // The desktop is back after a lock, a suspend or an aborted shutdown, so the presence
+            // that the closed attendance row recorded has resumed as a new one. Done before the
+            // segment logic below so that everything this tick records belongs to the session that
+            // is actually open.
+            if (ShouldRotateAttendance(type, now, observedGap))
+            {
+                await RotateAttendanceSessionAsync(now, ct).ConfigureAwait(false);
+            }
 
             // A new segment starts when the state changes, or when the focused app/title changes.
             var isSameSegment = _current is not null &&
@@ -616,11 +671,34 @@ public sealed class MonitoringOrchestrator(
     /// <summary>
     /// Writes the attendance row. Called periodically with nulls to refresh the running
     /// totals, and with a concrete time and reason when the session actually ends.
+    ///
+    /// A closed session is final. Both the periodic refresh and a second closing write are dropped
+    /// here rather than at the call sites, because this is the one place the row is produced and
+    /// the invariant is worth enforcing where it cannot be forgotten: the store and the server both
+    /// upsert on the session id, so anything written after the logout time overwrites it - a null
+    /// would blank it, and a later instant would silently annex the time the employee was away.
     /// </summary>
     private async Task FlushAttendanceAsync(
         DateTimeOffset? logoutTime, SessionEndReason? reason, DateTimeOffset now, CancellationToken ct)
     {
+        // Advanced even when the write below is dropped, so a closed session does not retry the
+        // refresh on every tick for as long as the workstation stays locked.
         _lastAttendanceFlush = now;
+
+        if (_attendanceClosed)
+        {
+            _logger.LogDebug(
+                "Attendance session {SessionId} is already closed; ignoring a {Kind} write",
+                _sessionId, logoutTime is null ? "refresh" : "second closing");
+            return;
+        }
+
+        if (logoutTime is not null)
+        {
+            _attendanceClosed = true;
+            _attendanceClosedAt = now;
+            _attendanceCloseReason = reason;
+        }
 
         // The open segment counts towards the totals without being closed, so a refresh mid-way
         // through a two-hour stretch of work reports that work rather than waiting for the user
@@ -653,6 +731,83 @@ public sealed class MonitoringOrchestrator(
                 TotalIdleSeconds = (int)Math.Round(idle.TotalSeconds, MidpointRounding.AwayFromZero)
             }
         }, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Whether the employee is back at a workstation whose attendance session has already ended,
+    /// which is the one condition under which a new session may be opened.
+    ///
+    /// The two families of end are told apart by what proves the return, because they fail in
+    /// opposite directions:
+    ///
+    ///   * A lock or a disconnect is a state Windows reports and later reverses. The session stays
+    ///     closed for exactly as long as <see cref="SessionEventMonitor.IsLocked"/> says the desktop
+    ///     is unavailable, and the unlock is proof enough on its own.
+    ///   * A logoff, a shutdown or a suspend is an announcement about what is *about* to happen, and
+    ///     the process keeps running until it does. Returning needs real evidence: an observed gap
+    ///     in the clock (the machine went away and came back) or enough time passing to establish
+    ///     that it never went anywhere. See <see cref="AnnouncedEndGrace"/>.
+    /// </summary>
+    private bool ShouldRotateAttendance(ActivityType type, DateTimeOffset now, bool observedGap)
+    {
+        if (!_attendanceClosed) return false;
+
+        // Locked covers the lock screen, RDP disconnection and fast user switching alike: whatever
+        // ended the session, nobody is at this desktop yet.
+        if (type == ActivityType.Locked) return false;
+
+        return _attendanceCloseReason switch
+        {
+            SessionEndReason.Lock or SessionEndReason.Disconnect => true,
+            _ => observedGap || now - _attendanceClosedAt >= AnnouncedEndGrace
+        };
+    }
+
+    /// <summary>
+    /// Opens a fresh attendance session after the closed one, at the instant the desktop came back.
+    ///
+    /// WHY A NEW ROW RATHER THAN REOPENING THE OLD ONE. An attendance row is a stretch of presence:
+    /// a login, a logout, and the working time in between. Reopening the closed row would mean
+    /// clearing a logout time that has already been reported - the defect this replaces - and would
+    /// leave one row claiming to span a lunch break the employee was not there for. Two rows say
+    /// what actually happened, the day's first login and last logout are still the earliest and
+    /// latest across them, and a row that is open is genuinely open right now.
+    ///
+    /// Deliberately driven by the tick and not by the resume callback: a machine woken by a wake
+    /// timer or a remote wake is not an employee arriving, and it stays locked. Presence resumes
+    /// when the desktop is usable again, which is what the tick observes.
+    /// </summary>
+    private async Task RotateAttendanceSessionAsync(DateTimeOffset now, CancellationToken ct)
+    {
+        // The interval the workstation spent locked or suspended belongs to the session that ended,
+        // and is closed here under the outgoing session id. Its duration is deliberately dropped
+        // from the totals below: the closed row's totals are presence, and the employee was away.
+        await CloseCurrentSegmentAsync(ActivityEndReason.SessionEnd, now, ct).ConfigureAwait(false);
+
+        var previous = _sessionId;
+
+        _sessionId = Guid.NewGuid();
+        _loginTime = now;
+        _attendanceClosed = false;
+        _attendanceCloseReason = null;
+
+        // Per-session totals, so the new row starts at zero. RecoverOpenAttendanceSessions infers
+        // an abandoned row's logout time from login plus these seconds, and carrying the previous
+        // session's totals over would push that inference hours past the truth.
+        _activeTime = TimeSpan.Zero;
+        _idleTime = TimeSpan.Zero;
+
+        // Metric windows are keyed on the session id too; the outgoing one was flushed when the
+        // session closed, so this window starts here and starts empty. Anything the counter picked
+        // up while the workstation was away belongs to the session that ended, not to this one.
+        _inputCounter.DrainSample();
+        _lastMetricFlush = now;
+
+        await FlushAttendanceAsync(null, null, now, ct).ConfigureAwait(false);
+
+        _logger.LogInformation(
+            "Attendance session {Previous} ended; {SessionId} opened at {LoginTime:o}",
+            previous, _sessionId, _loginTime);
     }
 
     // -- Screenshots ---------------------------------------------------------
@@ -756,6 +911,12 @@ public sealed class MonitoringOrchestrator(
                 // The screen locked or the machine suspended now; there is no idle threshold to
                 // back-date past, so this instant is the boundary.
                 await CloseCurrentSegmentAsync(endReason, now, CancellationToken.None).ConfigureAwait(false);
+
+                // Before the attendance row closes, because the counts belong to the session that
+                // is ending. The next session gets its own window; leaving them buffered would
+                // either lose them here or bill them to the session the employee starts on return.
+                await FlushMetricsAsync(now, CancellationToken.None).ConfigureAwait(false);
+
                 await FlushAttendanceAsync(now, reason, now, CancellationToken.None).ConfigureAwait(false);
 
                 // Whatever happens next - a resume hours later, or nothing at all - the stretch
@@ -797,6 +958,10 @@ public sealed class MonitoringOrchestrator(
             // CancellationToken.None throughout: the token that brought us here is already
             // cancelled, and these two writes are the difference between an accurate logout time
             // and a recovered guess on the next start.
+            //
+            // The attendance write is a no-op when the session was already closed by the lock or
+            // suspend that preceded this shutdown - the employee stopped being present then, not
+            // now, and stamping the later instant would credit them the whole locked interval.
             await CloseCurrentSegmentAsync(ActivityEndReason.SessionEnd, now, CancellationToken.None).ConfigureAwait(false);
             await FlushMetricsAsync(now, CancellationToken.None).ConfigureAwait(false);
             await FlushAttendanceAsync(now, SessionEndReason.Logout, now, CancellationToken.None).ConfigureAwait(false);

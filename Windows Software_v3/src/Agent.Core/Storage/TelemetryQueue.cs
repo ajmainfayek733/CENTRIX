@@ -23,9 +23,17 @@ public sealed class TelemetryQueue(LocalStore store, ILogger<TelemetryQueue> log
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Upserted on session id, and re-queued (sent_utc reset to NULL) on every write: the
-    /// logout time firms up as the agent observes lock, then sleep, then shutdown, and the
-    /// server needs each revision.
+    /// Upserted on session id, and re-queued (sent_utc reset to NULL) on every write: an open
+    /// session refreshes its running totals every couple of minutes and the server needs each
+    /// revision.
+    ///
+    /// A STAMPED LOGOUT IS FINAL, which is what the <c>WHERE</c> on the conflict clause enforces:
+    /// the row is only rewritten while it is still open. The host now closes an attendance session
+    /// once and starts a new one when the employee comes back, but this is the layer where getting
+    /// it wrong is unrecoverable - the periodic refresh sends a null logout time to mean "still
+    /// open", and letting one land on a closed row blanked a logout that had already been reported,
+    /// leaving a day of logins with no logouts. A late write is dropped here rather than merged,
+    /// because a row that has ended has nothing left to revise.
     /// </summary>
     public void Enqueue(AttendanceEvent e)
     {
@@ -45,7 +53,8 @@ public sealed class TelemetryQueue(LocalStore store, ILogger<TelemetryQueue> log
                 total_active_seconds = excluded.total_active_seconds,
                 total_idle_seconds   = excluded.total_idle_seconds,
                 sent_utc             = NULL,
-                attempts             = 0;
+                attempts             = 0
+            WHERE attendance_sessions.logout_time IS NULL;
             """;
         command.Parameters.AddWithValue("$sessionId", e.SessionId.ToString());
         command.Parameters.AddWithValue("$clientEventId", e.ClientEventId.ToString());

@@ -148,9 +148,14 @@ export default async function EmployeeDetailPage({
             <table className="w-full min-w-[440px] border-collapse">
               <thead>
                 <tr>
+                  {/*
+                    One row per stretch of presence, not per day: a lock, a suspend or a logoff ends
+                    a session and coming back starts a new one, so a normal day is several rows. The
+                    day's first sign-in and last sign-out are the first and last rows for that date.
+                  */}
                   <Th>Date</Th>
-                  <Th>First sign-in</Th>
-                  <Th>Last sign-out</Th>
+                  <Th>Signed in</Th>
+                  <Th>Signed out</Th>
                   <Th>Ended by</Th>
                 </tr>
               </thead>
