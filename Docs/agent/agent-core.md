@@ -403,7 +403,29 @@ semantics; the rest are insert-once:
 | `DropExhausted(maxAttempts)` | Deletes pending rows whose `attempts` has reached the limit, across every channel, in one transaction. Returns the count per channel so the caller can log what was lost - **losing data is the point here, so it must never happen quietly.** Without this, an event the server will never accept is resent every sync cycle until the retention window expires weeks later. |
 | `PendingCount(channel)` | Count of unsent rows. |
 | `Purge(undeliveredRetentionDays)` | Deletes rows that are either already sent **or** older than the cutoff, across all seven telemetry tables plus sent consent records, in one transaction. **Returns the screenshot file paths that were dropped** so the caller can delete them from disk. |
-| `RecoverOpenAttendanceSessions()` | At startup, closes rows with a `NULL` logout time by setting it to `COALESCE(logout_time, login_time)`, stamping `end_reason = 'Recovered'` and requeuing them. Without it, a power loss would leave the day's attendance open forever. Returns the row count and logs a warning when non-zero. |
+| `RecoverOpenAttendanceSessions()` | At startup, closes rows abandoned by a power loss, a killed host or an upgrade, stamping `end_reason = 'Recovered'` and requeuing them. Without it the day's attendance would stay open forever. Returns the row count and logs a warning when non-zero. **Two rules, both of which this got wrong before** - see below. |
+
+**Recovery has to answer two questions, and the obvious answer is wrong to both.**
+
+*What logout time?* The last instant the agent actually observed, reconstructed as
+`login_time + (total_active_seconds + total_idle_seconds)`. Those totals are refreshed on every
+flush, so they are exactly how far the session had got when it was last persisted; the result is
+accurate to the flush interval. It used to be stamped at `login_time`, which reported a session
+carrying a quarter of an hour of recorded work as having ended the instant it began - a
+zero-length working day, on precisely the rows where the real answer was already sitting in the
+adjacent columns.
+
+*Which rows?* Only sessions that are actually over. **Every open row has a `NULL` logout time,
+including the session running right now** - the host sends `NULL` on every periodic flush and
+fills it in only at the end. Closing all of them at startup stamped a logout on the live session
+while the employee was still at their desk. A row now counts as abandoned only once it has gone
+`AgentCadence.AttendanceStale` without being refreshed, which a live host cannot do.
+
+The two constants are in `AgentCadence` rather than beside the code that uses them, because the
+staleness window is a contract between the processes: the host writes on `AttendanceFlush`, and
+the service concludes a host is gone from how long it has been since the last write. Declaring
+them separately would let them drift, and the resulting failure is silent - the service would just
+start reaching the wrong conclusion.
 
 `TableName(channel)` and `KeyColumn(channel)` are private closed switches. They are the only
 source of the interpolated identifiers in `MarkSent`, `RecordFailure`, `PendingCount` and

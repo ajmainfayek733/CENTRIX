@@ -622,27 +622,87 @@ public sealed class TelemetryQueue(LocalStore store, ILogger<TelemetryQueue> log
     }
 
     /// <summary>
-    /// Closes attendance sessions the agent never got to finish - an unexpected power loss
-    /// leaves a row with no logout time. Called at startup so the day's attendance is not
-    /// left open forever (Features.md "Attendace report" edge cases).
+    /// Closes attendance sessions the agent never got to finish - a power loss, a killed host, an
+    /// upgrade that replaced the executable - so the day's attendance is not left open forever
+    /// (Features.md "Attendace report" edge cases).
+    ///
+    /// TWO THINGS THIS MUST GET RIGHT, both of which it previously got wrong.
+    ///
+    /// The logout time is the last instant the agent actually observed, reconstructed from the
+    /// running totals on the row itself: they are refreshed on every flush, so login plus the
+    /// observed seconds is precisely how far the session had got when it was last persisted. It
+    /// used to be stamped at <c>login_time</c>, which reported a session with a quarter of an hour
+    /// of recorded work on it as having ended the moment it began - a zero-length working day, on
+    /// exactly the rows where the truth was already sitting in the adjacent columns.
+    ///
+    /// And it only applies to sessions that are actually over. Every open row has a null logout
+    /// time, including the row of the session running right now: the host sends null on every
+    /// periodic flush and only fills it in at the end. Closing all of them at startup stamped a
+    /// logout on the live session while the employee was still at their desk. A row is treated as
+    /// abandoned only once it has gone <see cref="AgentCadence.AttendanceStale"/> without being
+    /// refreshed, which a live host cannot do.
     /// </summary>
     public int RecoverOpenAttendanceSessions()
     {
+        var now = DateTimeOffset.UtcNow;
+        var abandoned = new List<(string SessionId, DateTimeOffset LastObservedAt)>();
+
         using var connection = _store.Open();
-        using var command = connection.CreateCommand();
-        command.CommandText = """
-            UPDATE attendance_sessions
-            SET logout_time = COALESCE(logout_time, login_time),
-                end_reason  = 'Recovered',
-                sent_utc    = NULL,
-                attempts    = 0
-            WHERE logout_time IS NULL;
-            """;
-        var recovered = command.ExecuteNonQuery();
+
+        using (var select = connection.CreateCommand())
+        {
+            select.CommandText = """
+                SELECT session_id, login_time, total_active_seconds + total_idle_seconds
+                FROM attendance_sessions
+                WHERE logout_time IS NULL;
+                """;
+
+            using var reader = select.ExecuteReader();
+            while (reader.Read())
+            {
+                var loginTime = SqlTime.Parse(reader.GetString(1));
+                var observedSeconds = reader.GetInt32(2);
+
+                // Where the session had got to when it last wrote. Bounded by now, because a clock
+                // moved backwards since the row was written would otherwise put the logout in the
+                // future.
+                var lastObservedAt = loginTime.AddSeconds(observedSeconds);
+                if (lastObservedAt > now) lastObservedAt = now;
+
+                if (now - lastObservedAt < AgentCadence.AttendanceStale) continue;
+
+                abandoned.Add((reader.GetString(0), lastObservedAt));
+            }
+        }
+
+        var recovered = 0;
+
+        foreach (var (sessionId, lastObservedAt) in abandoned)
+        {
+            using var update = connection.CreateCommand();
+            update.CommandText = """
+                UPDATE attendance_sessions
+                SET logout_time = $logoutTime,
+                    end_reason  = 'Recovered',
+                    sent_utc    = NULL,
+                    attempts    = 0
+                WHERE session_id = $sessionId AND logout_time IS NULL;
+                """;
+            update.Parameters.AddWithValue("$logoutTime", SqlTime.From(lastObservedAt));
+            update.Parameters.AddWithValue("$sessionId", sessionId);
+            recovered += update.ExecuteNonQuery();
+        }
+
         if (recovered > 0)
         {
-            _logger.LogWarning("Recovered {Count} attendance session(s) left open by an unclean shutdown", recovered);
+            // Logged as a warning because the logout time is inferred, not observed: it is
+            // accurate to the flush interval, and the reason column says so.
+            _logger.LogWarning(
+                "Recovered {Count} attendance session(s) left open by an unclean shutdown; " +
+                "logout time inferred from the last persisted totals",
+                recovered);
         }
+
         return recovered;
     }
 

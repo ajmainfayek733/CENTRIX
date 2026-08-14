@@ -380,7 +380,8 @@ and an agent that never reaches its server must not grow without bound (hence th
 Runs hourly. The cutoff is measured in days, so sweeping more often would only add wakeups;
 sweeping less often risks a burst of disk use between passes.
 
-**Startup:** calls `TelemetryQueue.RecoverOpenAttendanceSessions()` before the first sweep, so a
+**Startup:** calls `TelemetryQueue.RecoverOpenAttendanceSessions()` - which closes only sessions
+that have gone stale, never the one running now - before the first sweep, so a
 session left open by an unclean shutdown is recovered and uploaded rather than swept as stale.
 
 | Method | Description |

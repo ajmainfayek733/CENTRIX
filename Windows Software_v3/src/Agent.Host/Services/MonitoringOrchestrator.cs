@@ -1,4 +1,5 @@
 using System.Security.Principal;
+using Agent.Core;
 using Agent.Core.Contracts;
 using Agent.Core.Ipc;
 using Agent.Core.Policy;
@@ -122,11 +123,13 @@ public sealed class MonitoringOrchestrator(
     private static readonly TimeSpan MetricFlushInterval = TimeSpan.FromMinutes(1);
 
     /// <summary>
-    /// How often the open attendance row is refreshed. Frequent enough that an unexpected
-    /// power loss loses at most this much of the day, cheap enough not to matter - it is an
-    /// upsert on one row.
+    /// How often the open attendance row is refreshed.
+    ///
+    /// Shared with the service rather than declared here: the service decides whether a session is
+    /// still alive by how long its row has gone unrefreshed, so this cadence is a contract between
+    /// the two processes, not a local choice. See <see cref="AgentCadence"/>.
     /// </summary>
-    private static readonly TimeSpan AttendanceFlushInterval = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan AttendanceFlushInterval = AgentCadence.AttendanceFlush;
 
     /// <summary>
     /// A tick arriving more than this multiple of the poll interval late did not measure a long

@@ -100,6 +100,28 @@ them. A single agent hitting 429 repeatedly is an agent stuck in a retry loop.
 | Productive share looks wrong | Idle time in the denominator | It must be `productive / active` |
 | A day is attributed to the wrong date | Work-date fallback used because the attendance row had not arrived | Expected for out-of-order batches; corrects on the next attendance push |
 | Totals and timeline disagree | The timeline is one page; totals are the range | Not a bug |
+| **Logout time equals login time** | The session was closed by attendance recovery, which used to stamp the logout at `login_time` | Check `endReason`: `Recovered` confirms it. Fixed - recovery now infers the logout from the row's own totals. [../agent/agent-core.md](../agent/agent-core.md) |
+| A session shows zero duration but non-zero active seconds | Same cause - the duration came from recovery, the seconds from real collection | The seconds are the trustworthy half, and are what the repair below reconstructs from |
+
+**`endReason` tells you how much to trust a logout time.** `Logout`, `Shutdown`, `Lock` and `Sleep`
+were observed. **`Recovered` was inferred** - the host died without closing its session, so the
+logout is reconstructed from the last totals the agent managed to persist and is accurate to the
+two-minute flush interval. A run of `Recovered` rows means hosts are dying rather than exiting:
+look for crashes, or for an upgrade that replaced the executable under a running host.
+
+Rows written before the recovery fix carry `logoutTime = loginTime`. They can be repaired in
+place, because the observed seconds on the row are the same data the fixed code uses:
+
+```sql
+UPDATE attendance_sessions
+SET "logoutTime" = "loginTime" + make_interval(secs => "totalActiveSeconds" + "totalIdleSeconds")
+WHERE "endReason" = 'Recovered'
+  AND "logoutTime" = "loginTime"
+  AND "totalActiveSeconds" + "totalIdleSeconds" > 0;
+```
+
+This corrects the attendance rows only. Rollup counters are incremented and never recomputed, so
+anything already aggregated from them stays as it is.
 
 **Rollup counters are incremented, never recomputed.** There is no repair pass - a double count is
 permanent and silent. Treat any change to a `prepare*` method as touching accounting code.
