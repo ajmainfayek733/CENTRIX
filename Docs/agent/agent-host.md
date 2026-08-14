@@ -95,7 +95,7 @@ session lasts.
 | `NotificationRequested` | `event Action<ShowNotificationMessage>` |
 | `ScreenshotRequested` | `event Action` - on-demand capture requested by the service. |
 | `ConnectionStateChanged` | `event Action<bool>` |
-| `ConnectAsync(ct)` | Connects with a **3 s** timeout (the caller retries on a schedule, and a long block would delay collectors starting when the service simply is not up yet), sends `HelloMessage` carrying the user SID, name, terminal-services session id and host version, then starts the read loop. Returns `false` on `TimeoutException`, `IOException` or `UnauthorizedAccessException`. |
+| `ConnectAsync(ct)` | Connects with `TokenImpersonationLevel.None` - stated explicitly, though it is also the default, because a named pipe server can call `ImpersonateNamedPipeClient` and execute as whoever connected. This client runs as the employee and connects to a well-known name, so a process that owned that name first could impersonate them; `None` is the documented defence, and writing it here stops a later edit granting impersonation by choosing a different overload. Connects with a **3 s** timeout (the caller retries on a schedule, and a long block would delay collectors starting when the service simply is not up yet), sends `HelloMessage` carrying the user SID, name, terminal-services session id and host version, then starts the read loop. Returns `false` on `TimeoutException`, `IOException` or `UnauthorizedAccessException`. |
 | `ReadLoopAsync(ct)` (private) | Dispatches `HelloAckMessage` and `PolicyUpdatedMessage` to `Policy` + `PolicyUpdated`, `ShowNotificationMessage` to `NotificationRequested`, `RequestScreenshotMessage` to `ScreenshotRequested`, and `ShutdownMessage` to `Environment.Exit(0)`. Always raises `ConnectionStateChanged(false)` on exit. |
 | `SendAsync(message, ct)` | Serialized behind a `SemaphoreSlim`, because collectors run on several timers and two concurrent writes would interleave their length-prefixed frames. Returns `false` when not connected or on `IOException`/`ObjectDisposedException`. |
 | `DisposeAsync()` | Cancels the reader, disposes the pipe and the write lock. |
@@ -154,6 +154,18 @@ Keystroke and mouse-click counts as an activity score. `IDisposable`.
 |---|---|
 | `_keyboardProc` / `_mouseProc` | The delegates are stored in **fields** because `SetWindowsHookEx` does not root its callback. As locals the GC would collect them while Windows still held the pointer, and the process would crash the first time a key was pressed. |
 | `Start()` | Installs `WH_KEYBOARD_LL` and `WH_MOUSE_LL`. Must be called from a thread with a running message pump - low-level hooks are dispatched to the installing thread's message queue, and installing them from a worker yields a hook that silently never fires. Logs an error and returns if installation fails; metrics then read zero. |
+
+> **A low-level hook can be removed behind your back.** The procedure must complete within
+> `LowLevelHooksTimeout` (`HKCU\Control Panel\Desktop`, capped at 1000 ms since Windows 10 1709).
+> On Windows 7 and later a hook that exceeds it is *silently removed without being called*, and
+> Microsoft states there is **no way for the application to know**. Metrics would read zero for the
+> rest of the session with nothing in any log.
+>
+> The callbacks are two instructions and a chain call, so they cannot time out themselves. The
+> exposure is the **installing thread**: these hooks dispatch to the message queue of the thread
+> that installed them, which here is the UI thread. Nothing slow may ever be added to the
+> disclosure window's handlers. Installing from a dedicated thread with its own message loop would
+> remove the coupling and is the correct fix if this ever bites.
 | `KeyboardCallback` (private) | Increments on `WM_KEYDOWN`/`WM_SYSKEYDOWN` when `nCode >= 0`, then always chains `CallNextHookEx`. |
 | `MouseCallback` (private) | Increments per button on `WM_LBUTTONDOWN`/`RBUTTONDOWN`/`MBUTTONDOWN`/`XBUTTONDOWN`. **Mouse movement is deliberately not counted** - it fires hundreds of times a second and says little about engagement that clicks do not. |
 | `InputSample` (readonly record struct) | `KeyCount`, `MouseLeft`, `MouseRight`, `MouseMiddle`, `MouseOther`, plus `MouseTotal` and `IsEmpty`. |

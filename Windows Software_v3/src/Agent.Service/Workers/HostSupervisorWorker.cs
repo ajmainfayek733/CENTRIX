@@ -49,9 +49,17 @@ public sealed class HostSupervisorWorker(
             return;
         }
 
-        // A session change (logon, logoff, fast user switch) means the previous host is gone
-        // or about to be. Reacting to the event rather than only polling gets the new user's
-        // host up in about a second instead of up to fifteen.
+        // A session change (logon, logoff, fast user switch) means the previous host is gone or
+        // about to be, and reacting to it brings the new user's host up in about a second rather
+        // than on the next poll.
+        //
+        // TREAT IT AS A BONUS, NEVER AS THE MECHANISM. SystemEvents raises its events from a
+        // message pump, and Microsoft documents that "in a Windows service, unless a hidden form
+        // is used or the message pump has been started manually, this event will not be raised".
+        // This worker is a hosted service in session 0 with neither. The poll below is therefore
+        // the actual guarantee, and CheckInterval is the real worst-case launch latency; if this
+        // ever needs to be dependable, the supported route is a WindowsServiceLifetime with
+        // CanHandleSessionChangeEvent set, not this subscription.
         SystemEvents.SessionSwitch += OnSessionSwitch;
 
         try

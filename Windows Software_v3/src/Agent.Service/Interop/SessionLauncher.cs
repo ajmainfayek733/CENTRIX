@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using System.Text;
 using Microsoft.Extensions.Logging;
 
 namespace Agent.Service.Interop;
@@ -30,9 +31,9 @@ public sealed partial class SessionLauncher(ILogger<SessionLauncher> logger)
     {
         var sessionId = WTSGetActiveConsoleSessionId();
 
-        // 0xFFFFFFFF means there is no console session attached - the machine is at the
-        // logon screen or between sessions. Not an error; the supervisor retries.
-        if (sessionId == 0xFFFFFFFF)
+        // No console session attached - the machine is at the logon screen, between sessions, or
+        // the session is being switched. Not an error; the supervisor retries.
+        if (sessionId == NoActiveSession)
         {
             _logger.LogDebug("No active console session; nothing to launch into");
             return null;
@@ -53,7 +54,7 @@ public sealed partial class SessionLauncher(ILogger<SessionLauncher> logger)
         {
             if (!DuplicateTokenEx(
                     userToken,
-                    TOKEN_ALL_ACCESS,
+                    TokenRightsForLaunch,
                     IntPtr.Zero,
                     SecurityImpersonationLevel.SecurityIdentification,
                     TokenType.TokenPrimary,
@@ -77,13 +78,24 @@ public sealed partial class SessionLauncher(ILogger<SessionLauncher> logger)
                 lpDesktop = @"winsta0\default"
             };
 
-            var commandLine = arguments is null
-                ? $"\"{executablePath}\""
-                : $"\"{executablePath}\" {arguments}";
+            // A StringBuilder, not a string. lpCommandLine is documented [in, out]:
+            // CreateProcessAsUserW "can modify the contents of this string", and "this parameter
+            // cannot be a pointer to read-only memory... the function may cause an access
+            // violation". The interop marshaller can hand a native function a pointer straight
+            // into a managed string's own storage, and managed strings are immutable and shared -
+            // letting the kernel write into one corrupts memory the CLR believes it owns.
+            var commandLine = new StringBuilder(
+                arguments is null ? $"\"{executablePath}\"" : $"\"{executablePath}\" {arguments}",
+                MaxCommandLineLength);
 
             var created = CreateProcessAsUser(
                 primaryToken,
-                null,
+                // Named explicitly rather than left null and inferred from the command line.
+                // With a null application name Windows resolves the unquoted-path ambiguity by
+                // trying each prefix in turn, so a planted C:\Program.exe would be launched
+                // instead of the agent - as SYSTEM chose it and the user runs it. The quoting
+                // below is the documented fallback; this is the documented fix.
+                executablePath,
                 commandLine,
                 IntPtr.Zero,
                 IntPtr.Zero,
@@ -119,7 +131,27 @@ public sealed partial class SessionLauncher(ILogger<SessionLauncher> logger)
 
     // -- Win32 -------------------------------------------------------------------
 
-    private const uint TOKEN_ALL_ACCESS = 0xF01FF;
+    /// <summary>WTSGetActiveConsoleSessionId's "no session is attached to the console" return.</summary>
+    private const uint NoActiveSession = 0xFFFFFFFF;
+
+    /// <summary>
+    /// Documented maximum for lpCommandLine. The buffer is sized to it because the callee may
+    /// write into the string it is given.
+    /// </summary>
+    private const int MaxCommandLineLength = 32767;
+
+    // Token access rights, from the two functions that consume this token:
+    //   CreateEnvironmentBlock - TOKEN_QUERY and TOKEN_DUPLICATE for a primary token
+    //   CreateProcessAsUser    - TOKEN_QUERY, TOKEN_DUPLICATE and TOKEN_ASSIGN_PRIMARY
+    //
+    // Exactly that union, rather than the TOKEN_ALL_ACCESS this used to request. Nothing here
+    // impersonates, adjusts privileges or reads the token source, so asking for those rights
+    // granted the launched process's token more than the launch needs for no gain.
+    private const uint TOKEN_ASSIGN_PRIMARY = 0x0001;
+    private const uint TOKEN_DUPLICATE = 0x0002;
+    private const uint TOKEN_QUERY = 0x0008;
+    private const uint TokenRightsForLaunch = TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY;
+
     private const uint CREATE_UNICODE_ENVIRONMENT = 0x00000400;
     private const uint CREATE_NO_WINDOW = 0x08000000;
 
@@ -206,7 +238,8 @@ public sealed partial class SessionLauncher(ILogger<SessionLauncher> logger)
     private static extern bool CreateProcessAsUser(
         IntPtr token,
         string? applicationName,
-        string? commandLine,
+        // StringBuilder because this parameter is [in, out] - see the call site.
+        StringBuilder? commandLine,
         IntPtr processAttributes,
         IntPtr threadAttributes,
         [MarshalAs(UnmanagedType.Bool)] bool inheritHandles,

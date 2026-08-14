@@ -44,7 +44,16 @@ public sealed class HostIpcClient(ILogger<HostIpcClient> logger) : IAsyncDisposa
                 ".",
                 AgentPaths.IpcPipeName,
                 PipeDirection.InOut,
-                PipeOptions.Asynchronous);
+                PipeOptions.Asynchronous,
+                // Stated rather than left to the default, which is already None.
+                //
+                // A named pipe server can call ImpersonateNamedPipeClient and execute as whoever
+                // connected to it. This client runs as the logged-on employee and connects to a
+                // well-known name, so a local process that managed to own that name first could
+                // impersonate them. None is the documented defence, and writing it here means a
+                // later edit to this constructor cannot quietly grant impersonation by picking a
+                // different overload.
+                TokenImpersonationLevel.None);
 
             // Short timeout: the caller retries on a schedule, and a long block here would
             // delay the collectors starting when the service is simply not up yet.

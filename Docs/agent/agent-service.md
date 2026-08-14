@@ -266,6 +266,14 @@ is no desktop, no foreground window and nothing to screenshot. The sequence is:
 - The process and thread handles are closed immediately (only the pid is needed to supervise);
   the environment block and tokens are released in a `finally`.
 
+**Three details that are load-bearing, each from the Win32 contract rather than from taste:**
+
+| Detail | Why |
+|---|---|
+| `lpCommandLine` is a `StringBuilder`, never a `string` | The parameter is `[in, out]`: `CreateProcessAsUserW` "can modify the contents of this string", and it "cannot be a pointer to read-only memory... the function may cause an access violation". The interop marshaller can hand a native callee a pointer into a managed string's own storage, and managed strings are immutable and shared. |
+| `lpApplicationName` is passed, not left `NULL` | With a null application name Windows resolves an ambiguous path by trying each prefix in turn, so a planted `C:\Program.exe` would be launched instead of the agent - chosen by SYSTEM, run by the user. Microsoft's guidance is "do not pass NULL for lpApplicationName"; quoting the path is only the fallback. |
+| The duplicated token asks for `TOKEN_QUERY \| TOKEN_DUPLICATE \| TOKEN_ASSIGN_PRIMARY` | Exactly the union the two consumers document: `CreateEnvironmentBlock` needs QUERY and DUPLICATE for a primary token, `CreateProcessAsUser` needs those plus ASSIGN_PRIMARY. It previously asked for `TOKEN_ALL_ACCESS`; nothing here impersonates or adjusts privileges. |
+
 Interop is `[LibraryImport]`-generated except `CreateProcessAsUser`, which uses `[DllImport]` for
 its `ref STARTUPINFO` signature. Private types: `SecurityImpersonationLevel`, `TokenType`,
 `PROCESS_INFORMATION`, `STARTUPINFO`.
@@ -407,7 +415,15 @@ If the host executable is not found next to the service, it logs an error naming
 |---|---|
 | `CheckInterval` (15 s) | Normal verification cadence. |
 | `CrashLoopBackoff` (5 min) / `CrashLoopThreshold` (5) | If the host dies immediately on every launch - a missing dependency, a corrupt install - relaunching every 15 s forever would spam the Event Log and burn CPU, so repeated fast failures widen the interval. |
-| `OnSessionSwitch` | Subscribes to `SystemEvents.SessionSwitch`. A session change means the previous host is gone or about to be; reacting to the event rather than only polling gets the new user's host up in about a second instead of up to fifteen. A `SessionLogon`/`ConsoleConnect` **resets** the crash-loop counter - earlier failures may have been specific to the old session. |
+| `OnSessionSwitch` | Subscribes to `SystemEvents.SessionSwitch`. A session change means the previous host is gone or about to be, so reacting to it brings the new user's host up in about a second. A `SessionLogon`/`ConsoleConnect` **resets** the crash-loop counter - earlier failures may have been specific to the old session. **Treat this as a bonus, not the mechanism** - see below. |
+
+> **`SystemEvents` does not fire in this process.** Microsoft documents that these events are raised
+> only if a message pump is running, and that "in a Windows service, unless a hidden form is used or
+> the message pump has been started manually, this event will not be raised". This worker is a
+> hosted service in session 0 with neither, so the **poll is the real guarantee** and `CheckInterval`
+> is the true worst-case launch latency. If session changes ever need to be dependable here, the
+> supported route is a `WindowsServiceLifetime` with `CanHandleSessionChangeEvent` set, not this
+> subscription.
 | `EnsureHostRunning(hostPath)` | If the host is not running, distinguishes "died immediately" (relaunched under 30 s ago -> increment the fast-exit counter) from "ran a while then exited" (reset), then launches via `SessionLauncher`. |
 | `IsHostRunning()` | Checks by **process name**, not a remembered pid: the host can also be started by the shell during development, and a stale pid would make the supervisor launch a duplicate. Disposes every `Process` it enumerates. |
 | `ResolveHostPath()` | `EmployeeMonitor.Host.exe` next to the service executable - which is why `Deploy-Agent.ps1` publishes both into the same folder. |

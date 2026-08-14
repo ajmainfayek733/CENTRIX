@@ -47,6 +47,21 @@ public sealed class InputCounter : IDisposable
     /// Installs the hooks. Must be called from a thread with a running message pump -
     /// low-level hooks are dispatched to the installing thread's message queue, and installing
     /// them from a worker thread yields a hook that silently never fires.
+    ///
+    /// KNOWN LIMITATION, documented here because the platform gives no way to detect it.
+    /// A low-level hook procedure must complete within the LowLevelHooksTimeout in
+    /// HKCU\Control Panel\Desktop (capped at 1000 ms since Windows 10 1709). On Windows 7 and
+    /// later, a hook that exceeds it is *silently removed without being called*, and Microsoft
+    /// states plainly that "there is no way for the application to know whether the hook is
+    /// removed". Activity-level metrics would then read zero for the rest of the session with
+    /// nothing in any log to say why.
+    ///
+    /// The callbacks below are two instructions and a chain call, so they cannot themselves time
+    /// out. The exposure is the *installing thread*: these hooks are dispatched to the message
+    /// queue of the thread that installed them, which is the UI thread, so a window doing slow
+    /// work is what would blow the deadline. That is why nothing expensive may ever be added to
+    /// the disclosure window's handlers. Moving installation to a dedicated thread with its own
+    /// message loop would remove the coupling entirely and is the correct fix if this ever bites.
     /// </summary>
     public void Start()
     {
