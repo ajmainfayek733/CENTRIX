@@ -184,6 +184,32 @@ never silent.
 
 **Revisit when:** the configuration grows beyond what a command line can carry.
 
+## AD-16 - The server may close an attendance session, and only the agent may close it for good
+
+**Decided:** attendance rows carry `logoutSource`. The workstation is the primary author, but when
+a row is abandoned the backend closes it itself from the last evidence it holds and marks the
+result `Server`. A `Server` logout is an estimate any later agent report overwrites - including one
+that says the session is still open, which reopens the row. Only `Agent` is final.
+
+**Because:** every mechanism that closed a session ran on the workstation, and both of them need
+the machine to still be there - the agent observing the end, or its recovery pass at the next
+start. Deployments here lose power on a schedule. A machine that dies mid-session and does not
+return until Monday leaves a row that reads `logoutTime = NULL` all weekend, which reporting can
+only render as "unknown", so the day is a login with no logout and attendance is unusable for
+payroll. The server is the one participant still running.
+
+**Rules out:** treating any stamped logout as final, which was the previous invariant and is
+simpler. It cannot survive server-side closure: the estimate would outrank the truth, and a laptop
+that ran through the blackout on battery could never correct the record.
+
+**Costs:** a second writer for one column, and a window in which a report can show an inferred
+logout that is later revised. Bounded by `ATTENDANCE_ABANDON_AFTER_SECONDS`, visible in
+`logoutSource`, and strictly better than the `NULL` it replaces - an approximate answer that says
+it is approximate beats no answer at all.
+
+**Revisit when:** agents can be relied on to report an end - a UPS on every workstation, or a
+deployment without scheduled outages. The mechanism stays correct either way; it just stops firing.
+
 ---
 
 ## Related

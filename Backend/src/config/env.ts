@@ -83,6 +83,53 @@ const envSchema = z.object({
   // request means a row update per telemetry call - pure write amplification on the hottest
   // table, and needless contention on a single row. Liveness only needs minute granularity.
   DEVICE_LAST_SEEN_MAX_STALENESS_SECONDS: z.coerce.number().int().nonnegative().default(60),
+
+  // -- Maintenance jobs ------------------------------------------------------
+  // Set false to run a server that serves traffic but sweeps nothing - useful when several
+  // instances share a database and you would rather one dedicated box did the housekeeping.
+  // The jobs are safe to leave on everywhere regardless: each takes a Postgres advisory lock,
+  // so only one instance sweeps at a time.
+  MAINTENANCE_JOBS_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((value) => value === 'true'),
+
+  // -- Attendance closure ----------------------------------------------------
+  // How often the server looks for attendance sessions nothing is ever going to close. Well
+  // under the abandonment threshold below, so a session is closed promptly once it qualifies
+  // rather than up to a whole interval later.
+  ATTENDANCE_REAP_INTERVAL_SECONDS: z.coerce.number().int().positive().default(300),
+
+  // How long a workstation must be silent before an attendance session still open on it is
+  // treated as abandoned and closed from the last evidence the server holds.
+  //
+  // THIS IS THE LOAD-SHEDDING KNOB. The agent's own recovery pass uses 14 minutes
+  // (AgentCadence.AttendanceStale) and can afford to: it runs on the workstation, where
+  // silence means the host process really did stop. The server is behind the network as
+  // well, and an outage that kills the workstations kills the router with them - so a live
+  // agent can go quiet for reasons that have nothing to do with the employee leaving. It
+  // therefore waits several times longer before inferring anything, and what it writes stays
+  // correctable: `logoutSource = Server` lets the agent's own report overwrite it later.
+  ATTENDANCE_ABANDON_AFTER_SECONDS: z.coerce.number().int().positive().default(2_700),
+
+  // Hard ceiling on how long any attendance session may stay open, however healthy the device
+  // looks. A row this old is a bug or a missed rotation, not a shift - and left alone it
+  // reports one employee as permanently signed in and drags every day's totals with it.
+  // Sized above the longest plausible working day so it can never truncate a real one.
+  ATTENDANCE_MAX_OPEN_SECONDS: z.coerce.number().int().positive().default(57_600),
+
+  // Sessions examined per sweep. Bounds the work of the first run after an outage - a fleet
+  // that was dark for a week can present a large backlog at once - without letting it hold a
+  // transaction open for minutes. Whatever is left over is picked up next interval.
+  ATTENDANCE_REAP_MAX_SESSIONS: z.coerce.number().int().positive().default(500),
+
+  // Ceiling on one reaper sweep. It holds an advisory lock for its duration, so a wedged
+  // sweep must not be able to block every later one.
+  ATTENDANCE_REAP_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+
+  // How often the batch-idempotency ledger is pruned. It only grows by one row per device per
+  // channel per sync, so daily is ample.
+  INGEST_BATCH_PRUNE_INTERVAL_SECONDS: z.coerce.number().int().positive().default(86_400),
 });
 
 const _env = envSchema.safeParse(process.env);

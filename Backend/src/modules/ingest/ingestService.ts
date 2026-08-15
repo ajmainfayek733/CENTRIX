@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { ActivityType, Prisma, ProductivityTag } from '@prisma/client';
+import { ActivityType, LogoutSource, Prisma, ProductivityTag } from '@prisma/client';
 import { prisma } from '../../config/db';
 import { env } from '../../config/env';
 import { categoryService } from '../report/categoryService';
@@ -20,6 +20,9 @@ import type {
   ScreenshotFieldsDto,
   UsbEventDto,
 } from './ingest.dto';
+
+/** Retention windows are configured in days; this is the only place they become milliseconds. */
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 export interface DeviceContext {
   id: string;
@@ -259,13 +262,21 @@ class IngestService {
   // Attendance - upsert on sessionId. An open session re-sends its row every couple of minutes as
   // its running totals grow, so later writes overwrite earlier ones.
   //
-  // A STAMPED LOGOUT IS FINAL. The agent closes a session once - a lock, a suspend or a logoff ends
-  // it, and presence resumed afterwards arrives as a new sessionId - so a write against a row that
-  // already has a logoutTime is stale by definition and is dropped. Enforced here as well as on the
-  // agent because sync is at-least-once over an offline queue: a batch that was retried, or one
-  // from an agent still running the old build, must not be able to blank a logout that has already
-  // been reported. That is exactly what produced days of logins with no logout - the null
+  // AN AGENT-STAMPED LOGOUT IS FINAL. The agent closes a session once - a lock, a suspend or a
+  // logoff ends it, and presence resumed afterwards arrives as a new sessionId - so a write against
+  // a row the agent already closed is stale by definition and is dropped. Enforced here as well as
+  // on the agent because sync is at-least-once over an offline queue: a batch that was retried, or
+  // one from an agent still running the old build, must not be able to blank a logout that has
+  // already been reported. That is exactly what produced days of logins with no logout - the null
   // logoutTime that means "still open" landing on a row closed minutes earlier.
+  //
+  // A SERVER-STAMPED LOGOUT IS NOT. When a workstation loses power the agent never gets to close
+  // anything, so attendanceReaper closes the row from the last evidence the server holds and marks
+  // it `logoutSource = Server`. That is an inference about a machine that stopped answering, and
+  // the machine itself is the better witness: when it comes back and drains its queue, its report
+  // overwrites the estimate - including a "still open" refresh, which reopens the row. A laptop
+  // that ran on battery through the outage was never gone, and the server must be able to be told
+  // so. Only `logoutSource = Agent` closes the door.
   //
   // Contributes no seconds to the rollup: totalActiveSeconds here is the agent's own sum of the
   // activity sessions it already sent, and counting both would double every working day. It only
@@ -273,34 +284,46 @@ class IngestService {
   // -------------------------------------------------------------------------
 
   private async prepareAttendance(device: DeviceContext, events: AttendanceEventDto[]): Promise<PreparedBatch> {
-    const sessionIds = events.map((e) => e.sessionId);
+    const collapsed = collapseAttendanceBySession(events);
+
     const existing = await prisma.attendanceSession.findMany({
-      where: { sessionId: { in: sessionIds } },
-      select: { sessionId: true, logoutTime: true },
+      where: { sessionId: { in: collapsed.map((e) => e.sessionId) } },
+      select: { sessionId: true, logoutTime: true, logoutSource: true },
     });
 
     const stored = new Set(existing.map((r) => r.sessionId));
-    const closed = new Set(existing.filter((r) => r.logoutTime !== null).map((r) => r.sessionId));
+
+    // Anything closed that the reaper did not close is the agent's own work and is final. Tested
+    // as "not Server" rather than "is Agent" so rows closed before logoutSource existed keep the
+    // stricter treatment: they predate the reaper, so an agent is the only thing that can have
+    // written them, and a null source there means unknown provenance - not permission to revise.
+    const closedByAgent = new Set(
+      existing.filter((r) => r.logoutTime !== null && r.logoutSource !== LogoutSource.Server).map((r) => r.sessionId)
+    );
 
     const accumulator = new RollupAccumulator();
 
     // Acknowledged even when the write is dropped: the agent is told the row is stored so it stops
     // resending it. Rejecting would leave a stale row queued on the workstation forever.
-    for (const e of events) accumulator.touchDate(e.workDate);
+    for (const e of collapsed) accumulator.touchDate(e.workDate);
 
     return {
-      newEventIds: events.filter((e) => !stored.has(e.sessionId)).map((e) => e.sessionId),
+      newEventIds: collapsed.filter((e) => !stored.has(e.sessionId)).map((e) => e.sessionId),
       accumulator,
       write: async (tx) => {
-        for (const e of events) {
-          if (closed.has(e.sessionId)) continue;
+        for (const e of collapsed) {
+          if (closedByAgent.has(e.sessionId)) continue;
 
+          const logoutTime = e.logoutTime ?? null;
           const shared = {
             deviceId: device.id,
             userSid: e.userSid,
             loginTime: e.loginTime,
-            logoutTime: e.logoutTime ?? null,
+            logoutTime,
             endReason: e.endReason ?? null,
+            // Everything arriving on this channel came from the workstation, so a logout it
+            // carries is observed rather than inferred - and supersedes any estimate on the row.
+            logoutSource: logoutTime === null ? null : LogoutSource.Agent,
             workDate: new Date(`${e.workDate}T00:00:00.000Z`),
             totalActiveSeconds: e.totalActiveSeconds,
             totalIdleSeconds: e.totalIdleSeconds,
@@ -318,12 +341,16 @@ class IngestService {
             continue;
           }
 
-          // A session already on file: updateMany rather than update, so the "still open" test is
-          // part of the statement instead of a decision taken from a read outside the transaction.
-          // A row closed since that read matches nothing and the write is dropped, which is the
-          // whole point - a logout time, once reported, is not revised.
+          // A session already on file: updateMany rather than update, so the test is part of the
+          // statement instead of a decision taken from a read outside the transaction. A row the
+          // agent closed since that read matches nothing and the write is dropped, which is the
+          // whole point - an observed logout is not revised. A row the *reaper* closed still
+          // matches, because that one was only ever a best guess at what this agent now knows.
           await tx.attendanceSession.updateMany({
-            where: { sessionId: e.sessionId, logoutTime: null },
+            where: {
+              sessionId: e.sessionId,
+              OR: [{ logoutTime: null }, { logoutSource: LogoutSource.Server }],
+            },
             data: shared,
           });
         }
@@ -781,11 +808,45 @@ class IngestService {
    * an agent has stopped resending a batch the row can never be consulted again, and leaving it
    * would grow a table nothing reads at roughly one row per device per channel per interval.
    */
-  async pruneIngestBatches(): Promise<number> {
-    const cutoff = new Date(Date.now() - env.INGEST_BATCH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
-    const { count } = await prisma.ingestBatch.deleteMany({ where: { receivedAt: { lt: cutoff } } });
+  async pruneIngestBatches(client: Prisma.TransactionClient = prisma): Promise<number> {
+    const cutoff = new Date(Date.now() - env.INGEST_BATCH_RETENTION_DAYS * MS_PER_DAY);
+    const { count } = await client.ingestBatch.deleteMany({ where: { receivedAt: { lt: cutoff } } });
     return count;
   }
+}
+
+/**
+ * Reduces a batch to one event per attendance session.
+ *
+ * The current agent keeps one row per session in its local queue (`ON CONFLICT (session_id) DO
+ * UPDATE`), so a batch normally carries each session once. This does not rely on that. Two events
+ * for one session applied in the order they happen to arrive would let a stale "still open"
+ * refresh land after the close and blank it - the original bug, reintroduced from inside a single
+ * batch - and array order is not a guarantee the wire protocol makes.
+ *
+ * The winner is the one that closes the session, or the latest close if several do. Order within
+ * the batch is preserved for everything else, so the caller still writes sessions in the sequence
+ * the agent sent them.
+ */
+function collapseAttendanceBySession(events: AttendanceEventDto[]): AttendanceEventDto[] {
+  const bySession = new Map<string, AttendanceEventDto>();
+
+  for (const event of events) {
+    const winner = bySession.get(event.sessionId);
+
+    if (winner === undefined) {
+      bySession.set(event.sessionId, event);
+      continue;
+    }
+
+    // A close beats a refresh; between two closes, the later logout is the more complete report.
+    if (event.logoutTime == null) continue;
+    if (winner.logoutTime == null || event.logoutTime > winner.logoutTime) {
+      bySession.set(event.sessionId, event);
+    }
+  }
+
+  return [...bySession.values()];
 }
 
 /**

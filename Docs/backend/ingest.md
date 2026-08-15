@@ -89,13 +89,23 @@ liveness tracking must never fail the request it rides on.
 Two upserts, and both have a reason:
 
 - **Attendance** is re-sent by an open session every couple of minutes as its running totals grow,
-  so later writes overwrite earlier ones - **until `logoutTime` is stamped, after which the row is
-  final and further writes are dropped**. The agent closes a session once and sends a new
+  so later writes overwrite earlier ones - **until the agent stamps `logoutTime`, after which the
+  row is final and further writes are dropped**. The agent closes a session once and sends a new
   `sessionId` when presence resumes, so a write against a closed row is stale by definition.
   Enforced here as well as on the agent because sync is at-least-once over an offline queue: a
   retried batch, or one from an agent still on the old build, must not be able to blank a logout
   that has already been reported. That is exactly what produced days of logins with no logout - the
   null `logoutTime` meaning "still open" landing on a row closed minutes earlier.
+
+  A logout the **server** inferred is the one exception - see
+  [Abandoned sessions](#9-abandoned-sessions---closing-what-the-workstation-never-could). It carries
+  `logoutSource = Server` and any later agent report overwrites it, including a "still open"
+  refresh, which reopens the row. Only `logoutSource = Agent` closes the door. A row closed before
+  that column existed has a null source and is treated as final.
+
+  Duplicate `sessionId`s **within one batch** are collapsed before the write, the close winning over
+  a refresh. Array order is not part of the wire contract, and applying two events for one session
+  in arrival order would reintroduce the same bug from inside a single push.
 - **Alerts** escalate (idle 30 -> 45 -> 60 min) reusing one `clientEventId` rather than creating
   a row per escalation. Every alert is written; only first sightings are **counted**, or an
   escalation would inflate the day's alert total on every re-send.
@@ -137,8 +147,9 @@ repacked events into a different batch.
 
 Layer 2 is also what makes the rollup exact (see below).
 
-The ledger is pruned by `pruneIngestBatches()` after `INGEST_BATCH_RETENTION_DAYS` (7). It only
-has to outlive the agent's retry window.
+The ledger is pruned by `pruneIngestBatches()` after `INGEST_BATCH_RETENTION_DAYS` (7), on the
+maintenance schedule (section 9) every `INGEST_BATCH_PRUNE_INTERVAL_SECONDS`. It only has to
+outlive the agent's retry window.
 
 ## 5. Prepare, then write
 
@@ -209,12 +220,68 @@ one replica each holds a different subset and the dashboard 404s whichever it as
   **and** that the server can reach Postgres, neither of which an open socket implies. Returns the
   current `policyVersion` so the agent can detect a change without pulling the whole document.
 
+## 9. Abandoned sessions - closing what the workstation never could
+
+Every path that stamps an attendance `logoutTime` runs on the workstation: the agent observes the
+lock, suspend or shutdown, and whatever it missed is repaired by its own recovery pass
+(`TelemetryQueue.RecoverOpenAttendanceSessions`) at its next start. **Both require the machine to
+still be there.**
+
+Under scheduled load shedding it is not. Power drops mid-session, the agent gets no notice and
+writes nothing, and the recovery pass runs only if and when that machine boots again with the agent
+installed - after the weekend, after a reimage, or never. Until then the row reads `logoutTime =
+NULL`, the reporting layer correctly renders that as "we do not know", and the day is a login with
+no logout. **The server is the only participant still running, so it closes the row itself.**
+
+`attendanceReaper.closeAbandonedSessions` runs on the maintenance schedule (`lib/scheduler.ts`,
+every `ATTENDANCE_REAP_INTERVAL_SECONDS`, plus once at startup - the startup pass is the one that
+clears the backlog an outage left behind). Three rules, in order:
+
+| Rule | Fires when | Stamps | `endReason` |
+|---|---|---|---|
+| Superseded | A later login by the same user on the same workstation exists | `min(last evidence, that login)` | `Recovered` |
+| Abandoned | The device has been silent **and** the row has not advanced, both for `ATTENDANCE_ABANDON_AFTER_SECONDS` | last evidence | `PowerLoss` |
+| Ceiling | The row has not advanced for `ATTENDANCE_MAX_OPEN_SECONDS`, however healthy the device | last evidence | `Recovered` |
+
+Rule 1 is evidence, not a timeout, so it needs no waiting - and it is the common case after an
+outage, because the machine comes back and opens a fresh session while the dead one is still open.
+Rule 2 needs *both* halves: a device still checking in has a live agent that will close its own
+session, and a row whose totals are still growing belongs to somebody at their desk.
+
+**Last evidence, never `now`.** A session that ended when the power went did not run until a sweep
+noticed it; stamping the discovery time would add the length of the blackout to the working day. It
+is the best of `loginTime + totalActiveSeconds + totalIdleSeconds`, the latest activity-log
+`endTime`, and the latest metric `windowEndUtc` - all workstation clocks, clamped into
+`[loginTime, now]`. **`updatedAt` is deliberately not among them**: it records when the row reached
+*this server*, and a queue drained after an outage writes rows hours after the presence they
+describe.
+
+**Every close here is reversible.** It is written with `logoutSource = Server`, and the ingest guard
+lets any later agent report overwrite it - a laptop that ran on battery through the blackout reports
+the session still open, and the row reopens. The writes are guarded `updateMany ... WHERE
+logoutTime IS NULL`, the same predicate ingest uses, so a sweep and an agent's real close racing
+each other always resolve in the agent's favour without a lock between them.
+
+`ATTENDANCE_ABANDON_AFTER_SECONDS` defaults to 45 minutes against the agent's own 14
+(`AgentCadence.AttendanceStale`). The agent can afford the shorter window because it runs on the
+workstation, where silence means the host really stopped; the server is behind the network too, and
+an outage that kills the workstations kills the router with them.
+
+Each job takes a Postgres **transaction-scoped** advisory lock (`pg_try_advisory_xact_lock`), so
+several instances can run the schedule and only one sweeps. Transaction-scoped, not session-scoped:
+Prisma is pooled, so consecutive queries can land on different backends and a session lock taken by
+one would be unreleasable by the other. Set `MAINTENANCE_JOBS_ENABLED=false` to run an instance that
+serves traffic and sweeps nothing.
+
 ---
 
 ## Failure modes
 
 | Symptom | Likely cause | Check |
 |---|---|---|
+| Attendance day with a login and no logout | Row still open - workstation gone, sweep not yet run | `SELECT * FROM attendance_sessions WHERE "logoutTime" IS NULL`; see section 9 |
+| A logout that looks too early | Server-inferred close; the agent had reported nothing since | `logoutSource = 'Server'` - it is corrected when the machine syncs |
+| A logout that keeps reappearing as null | Agent legitimately reporting the session still open after a server close | Expected: only `logoutSource = 'Agent'` is final |
 | 400 on every batch of one channel | Wire contract drift on that channel | Response `details[]` names the field; [../architecture/cross-tier-contracts.md](../architecture/cross-tier-contracts.md) |
 | 413 | Batch over `JSON_BODY_LIMIT` | Agent halves and retries automatically; only act if a *single* event cannot fit |
 | 429 | One agent in a retry loop | Limits are per device - a healthy fleet never hits them |

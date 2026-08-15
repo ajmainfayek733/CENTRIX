@@ -25,9 +25,12 @@ Backend/src/
     validate.ts             Zod validation for body/params/query
     auditLogger.ts          writes who-viewed-what
     errorHandler.ts         terminal handler; 4xx warn, 5xx with stack
+  lib/
+    scheduler.ts            maintenance loop; advisory-locked so one replica sweeps
   modules/
     ingest/                 the agent write path        -> ingest.md
     report/                 the dashboard read path     -> reporting.md
+    attendance/             closes sessions the workstation never could -> ingest.md section 9
     employee/               employees and device inventory
     organization/           organizations, policy, categories
     auth/                   login, register, /me, realtime ticket
@@ -38,6 +41,10 @@ Backend/src/
 Each module is `*.routes.ts` -> `*Controller.ts` -> `*Service.ts`, with `*.dto.ts` holding the
 Zod schemas. Controllers are thin: they unwrap the request, call one service method, and shape
 the response. Business logic that touches more than one table belongs in the service.
+
+`attendance/` has no routes. It exists because one piece of state can go wrong with nobody left to
+fix it: a workstation that loses power never closes its attendance session, and no request will
+ever arrive to repair it. The scheduler is what calls it.
 
 ## Request lifecycle
 

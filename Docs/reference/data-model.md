@@ -100,7 +100,7 @@ Each has a unique client-generated id that is the deduplication key, and `device
 
 | Table | Dedup key | Write mode | Indexes |
 |---|---|---|---|
-| `attendance_sessions` | `sessionId` | upsert | `(deviceId, workDate)`, `(userSid, workDate)` |
+| `attendance_sessions` | `sessionId` | upsert | `(deviceId, workDate)`, `(userSid, workDate)`, `(logoutTime, loginTime)`, `(deviceId, userSid, loginTime)` |
 | `activity_metrics` | `clientEventId` | insert | `(deviceId, windowEndUtc)`, `(sessionId)` |
 | `activity_sessions` | `activitySessionId` | insert | `(deviceId, startTime)`, `(sessionId, startTime)`, `(deviceId, productivityTag)` |
 | `browser_activity` | `browserActivityId` | insert | `(deviceId, startTime)`, `(domain)`, `(activitySessionId)` |
@@ -110,6 +110,15 @@ Each has a unique client-generated id that is the deduplication key, and `device
 
 Notes worth carrying:
 
+- **`attendance_sessions.logoutSource` says who stamped the logout, and therefore what it is
+  worth.** `Agent` means the workstation observed the end - final, never revised. `Server` means
+  the row was abandoned and the reaper inferred an end from the last evidence available, because a
+  machine that loses power closes nothing and its agent's recovery pass only runs if it boots
+  again; that estimate is overwritten by the agent's own report whenever it arrives, including one
+  that reopens the row. Null on an open row, and on rows closed before the column existed - those
+  predate the reaper, so they are read as final. The two extra indexes serve the sweep: the open
+  rows oldest first, and the next login on the same workstation for the same user. See
+  [../backend/ingest.md](../backend/ingest.md) section 9.
 - **`activity_metrics` has no field that could hold a character.** Counts only, structurally.
 - **`browser_activity.activitySessionId` is a nullable FK.** The parent app session closes *after*
   the visits inside it, so an unknown parent is nulled rather than rejected.

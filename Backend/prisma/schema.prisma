@@ -347,7 +347,23 @@ model DailyActivityRollup {
 // state. Once `logoutTime` is set the row is closed and ingest drops further writes:
 // the periodic refresh sends a null logout time to mean "still open", and letting one
 // land on a closed row blanks a logout that has already been reported.
+//
+// WHO CLOSED IT MATTERS - see `logoutSource`. A workstation that loses power mid-session
+// never gets to stamp anything, and its agent's own recovery pass only runs if and when
+// that machine boots again. On a site with scheduled load shedding that can be days, so
+// the server closes abandoned rows itself (attendanceReaper) from the last evidence it
+// holds. That estimate must stay correctable, which is what the source column buys.
 // ---------------------------------------------------------------------------
+
+/// Who stamped an attendance session's `logoutTime`, and therefore how much it is worth.
+enum LogoutSource {
+  /// The workstation observed the end of the session. Ground truth - never revised.
+  Agent
+
+  /// The server inferred it, because the row was abandoned and nothing on the device was
+  /// ever going to close it. An estimate: any later agent report supersedes it.
+  Server
+}
 
 model AttendanceSession {
   id       String @id @default(uuid())
@@ -362,6 +378,12 @@ model AttendanceSession {
   loginTime  DateTime
   logoutTime DateTime?
   endReason  SessionEndReason?
+
+  /// Set to `Server` the row carries an inferred logout that an agent report is still allowed
+  /// to overwrite; `Agent` it is final. Null on an open row - and also on rows closed before
+  /// this column existed, which are read as final: they predate the reaper, so an agent is the
+  /// only thing that can have written them.
+  logoutSource LogoutSource?
 
   /// Local calendar date the session belongs to, for day-grained attendance reporting.
   workDate DateTime @db.Date
@@ -379,6 +401,12 @@ model AttendanceSession {
 
   @@index([deviceId, workDate])
   @@index([userSid, workDate])
+  /// The reaper's sweep: the open rows, oldest first. Leading on the nullable column keeps
+  /// the scan proportional to how many sessions are actually open rather than to the table.
+  @@index([logoutTime, loginTime])
+  /// Finding the session that superseded an abandoned one - same workstation, same user,
+  /// the next login after it.
+  @@index([deviceId, userSid, loginTime])
   @@map("attendance_sessions")
 }
 

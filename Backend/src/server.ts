@@ -9,6 +9,9 @@ import { prisma } from "./config/db";
 import { env } from "./config/env";
 import { errorHandler } from "./middleware/errorHandler";
 import { initRealtime } from "./realtime";
+import { defineJob, startMaintenanceJobs } from "./lib/scheduler";
+import { closeAbandonedSessions, describeReap } from "./modules/attendance/attendanceReaper";
+import { ingestService } from "./modules/ingest/ingestService";
 
 import ingestRoutes from "./modules/ingest";
 import authRoutes from "./modules/auth";
@@ -92,6 +95,33 @@ app.use(errorHandler);
 export const server = createServer(app);
 
 export const io = initRealtime(server);
+
+/**
+ * Housekeeping the request path cannot do for itself.
+ *
+ * Attendance closure is the load-bearing one. An attendance row is closed by the workstation that
+ * opened it, and a workstation that loses power closes nothing - so on a site with scheduled load
+ * shedding the server is the only participant left able to finish those sessions. Without this the
+ * rows stay open until that exact machine boots again, and every report covering the day reads a
+ * login with no logout.
+ */
+startMaintenanceJobs([
+  defineJob(
+    'attendanceReap',
+    env.ATTENDANCE_REAP_INTERVAL_SECONDS,
+    env.ATTENDANCE_REAP_TIMEOUT_MS,
+    async (tx) => describeReap(await closeAbandonedSessions(tx))
+  ),
+  defineJob(
+    'ingestBatchPrune',
+    env.INGEST_BATCH_PRUNE_INTERVAL_SECONDS,
+    env.INGEST_TRANSACTION_TIMEOUT_MS,
+    async (tx) => {
+      const pruned = await ingestService.pruneIngestBatches(tx);
+      return pruned === 0 ? null : `pruned ${pruned} expired batch ledger row(s)`;
+    }
+  ),
+]);
 
 server.listen(env.PORT, () => {
   console.log(` Monitoring Server active at http://localhost:${env.PORT}`);

@@ -77,6 +77,22 @@ magnitude above normal and exists only to contain an agent stuck in a retry loop
 | `INGEST_BATCH_RETENTION_DAYS` | `7` | Must outlive the agent's retry window; after that the ledger row can never be consulted |
 | `DEVICE_LAST_SEEN_MAX_STALENESS_SECONDS` | `60` | Throttles `lastSeen` writes. Lower means write amplification on the hottest table |
 
+### Maintenance jobs
+
+Server-side housekeeping the request path cannot do for itself - see
+[../backend/ingest.md](../backend/ingest.md) section 9. Every job takes a Postgres advisory lock, so
+these are safe to leave enabled on every replica.
+
+| Variable | Default | Notes |
+|---|---|---|
+| `MAINTENANCE_JOBS_ENABLED` | `true` | Set `false` for an instance that serves traffic but sweeps nothing |
+| `ATTENDANCE_REAP_INTERVAL_SECONDS` | `300` | How often abandoned attendance sessions are closed. Also runs once at startup |
+| `ATTENDANCE_ABANDON_AFTER_SECONDS` | `2700` | **The load-shedding knob.** How long a workstation must be silent *and* its session unchanged before the server infers an end. Against the agent's own 14 minutes: the agent only has to trust the host, the server has to trust the network too, and an outage takes out the router with the workstations |
+| `ATTENDANCE_MAX_OPEN_SECONDS` | `57600` | Hard ceiling on an open session however healthy the device. Sized above the longest plausible working day so it can never truncate a real one |
+| `ATTENDANCE_REAP_MAX_SESSIONS` | `500` | Sessions examined per sweep. Bounds the first pass after a long outage; the remainder is picked up next interval |
+| `ATTENDANCE_REAP_TIMEOUT_MS` | `30000` | A sweep holds the advisory lock for its duration, so a wedged one must not block every later one |
+| `INGEST_BATCH_PRUNE_INTERVAL_SECONDS` | `86400` | How often the batch ledger is pruned to `INGEST_BATCH_RETENTION_DAYS` |
+
 ### Storage and database
 
 | Variable | Default | Notes |

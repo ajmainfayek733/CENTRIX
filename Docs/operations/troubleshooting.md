@@ -102,20 +102,41 @@ them. A single agent hitting 429 repeatedly is an agent stuck in a retry loop.
 | Totals and timeline disagree | The timeline is one page; totals are the range | Not a bug |
 | **Logout time equals login time** | The session was closed by attendance recovery, which used to stamp the logout at `login_time` | Check `endReason`: `Recovered` confirms it. Fixed - recovery now infers the logout from the row's own totals. [../agent/agent-core.md](../agent/agent-core.md) |
 | A session shows zero duration but non-zero active seconds | Same cause - the duration came from recovery, the seconds from real collection | The seconds are the trustworthy half, and are what the repair below reconstructs from |
+| **A day has a login and no logout** | The row is still open. The workstation that owned it stopped without closing it, and no sweep has closed it yet | Expected for up to `ATTENDANCE_ABANDON_AFTER_SECONDS` (45 min) after the machine goes quiet, and immediately resolved once the same user logs in again. Longer than that, see below |
 
-**`endReason` tells you how much to trust a logout time.** `Logout`, `Shutdown`, `Lock` and `Sleep`
-were observed. **`Recovered` was inferred** - the host died without closing its session, so the
-logout is reconstructed from the last totals the agent managed to persist and is accurate to the
-two-minute flush interval. A run of `Recovered` rows means hosts are dying rather than exiting:
-look for crashes, or for an upgrade that replaced the executable under a running host.
+**`endReason` tells you how much to trust a logout time, and `logoutSource` tells you who wrote
+it.** `Logout`, `Shutdown`, `Lock` and `Sleep` were observed. `Recovered` and `PowerLoss` were
+**inferred** - by the agent from the last totals it managed to persist, or by the server from the
+last evidence it holds. `logoutSource = 'Agent'` means the workstation reported it and it is final;
+`'Server'` means the row was abandoned and the reaper closed it, and the agent's own report will
+overwrite that estimate whenever the machine comes back. A run of inferred rows means hosts are
+dying rather than exiting: look for crashes, an upgrade that replaced the executable under a running
+host, or - the usual answer on a load-shedding site - the power.
 
-Rows written before the recovery fix carry `logoutTime = loginTime`. They can be repaired in
+**A session that stays open past the threshold is a job that is not running.** Check for it:
+
+```sql
+SELECT "sessionId", "loginTime", "totalActiveSeconds" + "totalIdleSeconds" AS observed_seconds
+FROM attendance_sessions
+WHERE "logoutTime" IS NULL
+ORDER BY "loginTime";
+```
+
+More than one row per currently-live workstation means the sweep is not happening. In order:
+`MAINTENANCE_JOBS_ENABLED` is not `false`; the server log carries a `scheduler:` line at startup;
+no `scheduler: attendanceReap failed` since. The sweep also runs once at startup, so a restart is a
+valid way to force it. There is no manual repair to run - the sweep is the repair, it is
+idempotent, and it fixes a backlog of any age. See
+[../backend/ingest.md](../backend/ingest.md) section 9.
+
+Rows written before the *agent* recovery fix carry `logoutTime = loginTime`. They can be repaired in
 place, because the observed seconds on the row are the same data the fixed code uses:
 
 ```sql
 UPDATE attendance_sessions
 SET "logoutTime" = "loginTime" + make_interval(secs => "totalActiveSeconds" + "totalIdleSeconds")
 WHERE "endReason" = 'Recovered'
+  AND "logoutSource" IS NULL          -- pre-dates server-side closure; leave the reaper's work alone
   AND "logoutTime" = "loginTime"
   AND "totalActiveSeconds" + "totalIdleSeconds" > 0;
 ```

@@ -16,6 +16,7 @@ import { io as ioClient } from 'socket.io-client';
 import app, { server } from '../src/server';
 import { issueRealtimeTicket } from '../src/realtime/ticket';
 import { forgetDeviceLiveness } from '../src/modules/ingest/deviceLiveness';
+import { closeAbandonedSessions } from '../src/modules/attendance/attendanceReaper';
 import { prisma } from '../src/config/db';
 import { env } from '../src/config/env';
 import { currentOrganizationId } from '../src/config/tenant';
@@ -623,6 +624,198 @@ async function main() {
         endReason: attendanceAfterStale?.endReason,
         totalActiveSeconds: attendanceAfterStale?.totalActiveSeconds,
       }
+    );
+
+    // A batch is not ordered. Two events for one session in the same push must not let a stale
+    // "still open" refresh land after the close and blank it - the bug above, from inside one
+    // batch instead of across two.
+    const collapseSessionId = randomUUID();
+    const collapseLogout = new Date(now.getTime() - 30_000);
+    const attendanceCollapse = await push('attendance', [
+      {
+        clientEventId: randomUUID(),
+        sessionId: collapseSessionId,
+        userSid: 'S-1-5-21-smoke',
+        loginTime: earlier.toISOString(),
+        logoutTime: collapseLogout.toISOString(),
+        endReason: 'Lock',
+        workDate: now.toISOString().slice(0, 10),
+        totalActiveSeconds: 30,
+        totalIdleSeconds: 0,
+      },
+      {
+        clientEventId: randomUUID(),
+        sessionId: collapseSessionId,
+        userSid: 'S-1-5-21-smoke',
+        loginTime: earlier.toISOString(),
+        logoutTime: null,
+        workDate: now.toISOString().slice(0, 10),
+        totalActiveSeconds: 20,
+        totalIdleSeconds: 0,
+      },
+    ]);
+    const collapsedRow = await prisma.attendanceSession.findUnique({ where: { sessionId: collapseSessionId } });
+    check('a close and a stale refresh in one batch resolve to the close',
+      attendanceCollapse.status === 200 &&
+        collapsedRow?.logoutTime?.getTime() === collapseLogout.getTime() &&
+        collapsedRow?.endReason === 'Lock',
+      { logoutTime: collapsedRow?.logoutTime, endReason: collapsedRow?.endReason }
+    );
+
+    // -- Abandoned sessions: the load-shedding path --------------------------
+    //
+    // A workstation that loses power stamps no logout and its agent's recovery pass only runs if
+    // that machine boots again. These assertions cover the server closing those rows itself, and
+    // - just as important - the agent still being able to correct it afterwards.
+    console.log('\nAbandoned attendance closure');
+
+    const reapEnroll = await fetch(`${BASE}/api/v1/device/enroll`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-enrollment-token': enrollmentToken },
+      body: JSON.stringify({ deviceId: `smoke-reap-${runId}`, deviceName: 'SMOKE-REAP-PC', agentVersion: '3.0.0' }),
+    });
+    const reapDevice = (await reapEnroll.json()) as any;
+    const reapAuth = { authorization: `Bearer ${reapDevice.apiKey}`, 'content-type': 'application/json' };
+    const reapDeviceRowId: string = reapDevice.deviceId;
+    const reapSid = 'S-1-5-21-reap';
+
+    async function pushReapAttendance(event: Record<string, unknown>) {
+      const res = await fetch(`${BASE}/api/v1/events/attendance`, {
+        method: 'POST',
+        headers: reapAuth,
+        body: JSON.stringify({ events: [{ clientEventId: randomUUID(), userSid: reapSid, ...event }] }),
+      });
+      return res.status;
+    }
+
+    /** Runs one sweep in its own transaction, the way the scheduler does. */
+    function reap(at: Date) {
+      return prisma.$transaction((tx) => closeAbandonedSessions(tx, at));
+    }
+
+    // Thresholds come from configuration, so the test derives its clock from them rather than
+    // restating the numbers - a retuned deployment must not silently invalidate these assertions.
+    const abandonMs = env.ATTENDANCE_ABANDON_AFTER_SECONDS * 1_000;
+    const wellPastAbandonMs = abandonMs * 2;
+
+    // The session power loss interrupted: half an hour of observed presence, then nothing.
+    const deadSessionId = randomUUID();
+    const deadLogin = new Date(now.getTime() - wellPastAbandonMs - 3_600_000);
+    const deadObservedSeconds = 1_800;
+    const deadLastEvidence = new Date(deadLogin.getTime() + deadObservedSeconds * 1_000);
+
+    // The session opened when the power came back.
+    const liveSessionId = randomUUID();
+    const liveLogin = new Date(now.getTime() - wellPastAbandonMs);
+
+    await pushReapAttendance({
+      sessionId: deadSessionId,
+      loginTime: deadLogin.toISOString(),
+      logoutTime: null,
+      workDate: deadLogin.toISOString().slice(0, 10),
+      totalActiveSeconds: deadObservedSeconds,
+      totalIdleSeconds: 0,
+    });
+
+    await pushReapAttendance({
+      sessionId: liveSessionId,
+      loginTime: liveLogin.toISOString(),
+      logoutTime: null,
+      workDate: liveLogin.toISOString().slice(0, 10),
+      totalActiveSeconds: 0,
+      totalIdleSeconds: 0,
+    });
+
+    const supersededSweep = await reap(now);
+    const deadRow = await prisma.attendanceSession.findUnique({ where: { sessionId: deadSessionId } });
+
+    check('closes a session superseded by a later login on the same workstation',
+      supersededSweep.superseded >= 1 && deadRow?.logoutTime !== null && deadRow?.endReason === 'Recovered',
+      { superseded: supersededSweep.superseded, logoutTime: deadRow?.logoutTime, endReason: deadRow?.endReason }
+    );
+
+    // The whole point of the estimate: a session that ended when the power went did not run until
+    // a sweep noticed it. Stamping the discovery time would add the length of the outage to the
+    // working day.
+    check('stamps the last evidence of presence, not the time the sweep ran',
+      deadRow?.logoutTime?.getTime() === deadLastEvidence.getTime(),
+      { logoutTime: deadRow?.logoutTime, expected: deadLastEvidence, sweptAt: now }
+    );
+
+    check('marks an inferred logout as server-sourced', deadRow?.logoutSource === 'Server', deadRow?.logoutSource);
+
+    // The device is still checking in, so its newest session belongs to somebody at their desk.
+    const liveAfterFirstSweep = await prisma.attendanceSession.findUnique({ where: { sessionId: liveSessionId } });
+    check('leaves the newest session of a reporting workstation open',
+      liveAfterFirstSweep?.logoutTime === null,
+      { logoutTime: liveAfterFirstSweep?.logoutTime }
+    );
+
+    // Now the workstation goes dark - the power cut itself, with no successor session to prove
+    // anything, which is the state the agent can never resolve on its own.
+    await prisma.device.update({
+      where: { id: reapDeviceRowId },
+      data: { lastSeen: new Date(now.getTime() - wellPastAbandonMs) },
+    });
+    forgetDeviceLiveness(reapDeviceRowId);
+
+    const abandonedSweep = await reap(now);
+    const liveAfterBlackout = await prisma.attendanceSession.findUnique({ where: { sessionId: liveSessionId } });
+
+    check('closes a session whose workstation stopped reporting',
+      abandonedSweep.abandoned >= 1 &&
+        liveAfterBlackout?.endReason === 'PowerLoss' &&
+        liveAfterBlackout?.logoutSource === 'Server' &&
+        liveAfterBlackout?.logoutTime?.getTime() === liveLogin.getTime(),
+      {
+        abandoned: abandonedSweep.abandoned,
+        endReason: liveAfterBlackout?.endReason,
+        logoutTime: liveAfterBlackout?.logoutTime,
+      }
+    );
+
+    // The machine comes back and drains its queue. It was on battery all along, so its own report
+    // says the session never ended - and it is the better witness.
+    await pushReapAttendance({
+      sessionId: liveSessionId,
+      loginTime: liveLogin.toISOString(),
+      logoutTime: null,
+      workDate: liveLogin.toISOString().slice(0, 10),
+      totalActiveSeconds: 600,
+      totalIdleSeconds: 0,
+    });
+
+    const reopened = await prisma.attendanceSession.findUnique({ where: { sessionId: liveSessionId } });
+    check('an agent refresh reopens a session the server had inferred closed',
+      reopened?.logoutTime === null && reopened?.logoutSource === null && reopened?.totalActiveSeconds === 600,
+      { logoutTime: reopened?.logoutTime, logoutSource: reopened?.logoutSource, totalActiveSeconds: reopened?.totalActiveSeconds }
+    );
+
+    // And when it does report the real end, that is final.
+    const observedLogout = new Date(now.getTime() - 60_000);
+    await pushReapAttendance({
+      sessionId: liveSessionId,
+      loginTime: liveLogin.toISOString(),
+      logoutTime: observedLogout.toISOString(),
+      endReason: 'Shutdown',
+      workDate: liveLogin.toISOString().slice(0, 10),
+      totalActiveSeconds: 900,
+      totalIdleSeconds: 0,
+    });
+
+    await prisma.device.update({
+      where: { id: reapDeviceRowId },
+      data: { lastSeen: new Date(now.getTime() - wellPastAbandonMs) },
+    });
+    forgetDeviceLiveness(reapDeviceRowId);
+    await reap(now);
+
+    const observedRow = await prisma.attendanceSession.findUnique({ where: { sessionId: liveSessionId } });
+    check('a sweep cannot revise a logout the workstation observed',
+      observedRow?.logoutTime?.getTime() === observedLogout.getTime() &&
+        observedRow?.endReason === 'Shutdown' &&
+        observedRow?.logoutSource === 'Agent',
+      { logoutTime: observedRow?.logoutTime, endReason: observedRow?.endReason, logoutSource: observedRow?.logoutSource }
     );
 
     // -- Server-side categorization -----------------------------------------
