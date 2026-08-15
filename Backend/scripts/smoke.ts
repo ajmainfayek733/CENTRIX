@@ -23,6 +23,7 @@ import { currentOrganizationId } from '../src/config/tenant';
 import { generateDeviceApiKey, hashDeviceApiKey } from '../src/utils/token';
 import { organizationService } from '../src/modules/organization/organizationService';
 import { employeeService } from '../src/modules/employee/employeeService';
+import { resolveRange } from '../src/modules/report/reportService';
 
 const BASE = `http://127.0.0.1:${env.PORT}`;
 
@@ -817,6 +818,42 @@ async function main() {
         observedRow?.logoutSource === 'Agent',
       { logoutTime: observedRow?.logoutTime, endReason: observedRow?.endReason, logoutSource: observedRow?.logoutSource }
     );
+
+    // -- Report date ranges --------------------------------------------------
+    //
+    // Not agent surface, but the failure it guards is invisible: a zero-width window empties
+    // attendance, sessions and the timeline while the totals beside them still render, because
+    // those read the rollup by day and everything else filters raw timestamps.
+    console.log('\nReport date ranges');
+
+    const singleDay = resolveRange('2026-08-15', '2026-08-15');
+    check('a date-only end bound includes the day it names',
+      singleDay.start.toISOString() === '2026-08-15T00:00:00.000Z' &&
+        singleDay.end.toISOString() === '2026-08-15T23:59:59.999Z',
+      { start: singleDay.start, end: singleDay.end }
+    );
+
+    // The "Today" preset sends startDate === endDate. Before the fix this window was zero-width.
+    check('a same-day range is a whole day, not an instant',
+      singleDay.end.getTime() > singleDay.start.getTime(),
+      { widthMs: singleDay.end.getTime() - singleDay.start.getTime() }
+    );
+
+    const explicitInstant = resolveRange('2026-08-15T00:00:00.000Z', '2026-08-15T09:30:00.000Z');
+    check('an explicit timestamp is not widened to the end of its day',
+      explicitInstant.end.toISOString() === '2026-08-15T09:30:00.000Z',
+      { end: explicitInstant.end }
+    );
+
+    const badRange = (() => {
+      try {
+        resolveRange('not-a-date', '2026-08-15');
+        return null;
+      } catch (error) {
+        return error as { statusCode?: number };
+      }
+    })();
+    check('an unparseable bound is a 400, not a silent empty range', badRange?.statusCode === 400, badRange);
 
     // -- Server-side categorization -----------------------------------------
     console.log('\nServer-side productivity categorization');

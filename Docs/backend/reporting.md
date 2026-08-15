@@ -35,6 +35,19 @@ headcount, so it got worse forever and could not be fixed by adding capacity.
 **No endpoint here returns "everything in the range."** If you are adding one that would, you are
 adding the problem back.
 
+### The range itself
+
+`?startDate=&endDate=` resolve through `resolveRange`. **A date-only `endDate` is inclusive of the
+day it names** - it is snapped to `23:59:59.999Z`, because `new Date('2026-08-15')` is midnight at
+the *start* of the 15th and taking that literally makes `startDate=endDate` a zero-width window.
+That is what the "Today" preset sends, and the failure was invisible in the worst way: totals still
+rendered, because they read the rollup through `startOfUtcDay` on both bounds, while attendance,
+sessions and the timeline came back empty on a day full of activity.
+
+An `endDate` carrying a time component is left exactly as given - a caller that asked for an
+instant is not silently widened by up to a day. `startDate` needs no equivalent, since midnight at
+the start of a day is already the inclusive lower bound.
+
 ## 2. Keyset pagination
 
 Cursor = `(timestamp, id)`, encoded as `<ISO timestamp>|<uuid>`, newest first.
@@ -188,6 +201,7 @@ Categories also drive blacklist alerts, via `isBlacklisted`.
 | Scrolling stops early | `hasMore` false because over-fetch was dropped | Caller must ask for `limit + 1` |
 | Employee shows zero, device is online | Device on the "Unassigned" placeholder | Devices screen |
 | Totals disagree with the timeline | Expected - the timeline is one page, totals are the range | Not a bug |
+| Totals render but attendance and timeline are empty | The range resolved to a zero-width window | `period` in the response - if `start` equals `end`, `resolveRange` did not snap a date-only `endDate` (section 1) |
 | Auditor gets 403 on screenshots | Working as designed (AD-12) | - |
 
 ---

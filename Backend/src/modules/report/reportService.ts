@@ -41,12 +41,47 @@ function startOfUtcDay(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
 }
 
-function resolveRange(startDate?: string, endDate?: string) {
+/** A bare calendar date, as every date input and preset on the dashboard sends. */
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Last representable instant of a day, so a date-only bound includes the day it names. */
+const END_OF_DAY_MS = 24 * 60 * 60 * 1000 - 1;
+
+const DEFAULT_RANGE_DAYS = 7;
+
+/**
+ * Resolves the `?startDate=&endDate=` pair every report screen sends into an instant range.
+ *
+ * **A date-only `endDate` is inclusive of the day it names.** `new Date('2026-08-15')` is midnight
+ * *at the start* of the 15th, so taking it literally makes `startDate=endDate=2026-08-15` a
+ * zero-width window - which is exactly what the "Today" preset sends. Totals still rendered,
+ * because those read the rollup through `startOfUtcDay` on both bounds, but everything filtering
+ * raw timestamps - attendance, sessions, timeline - came back empty on a day full of activity.
+ *
+ * The snap is guarded on the date-only form rather than applied to every `endDate`, so a caller
+ * that passes a full timestamp gets the instant it asked for instead of being silently widened by
+ * up to a day. `startDate` needs no equivalent: midnight at the start of a day is already the
+ * inclusive lower bound.
+ *
+ * The default start is measured from the *unsnapped* end, so an omitted `startDate` still lands on
+ * midnight rather than a second before it.
+ *
+ * Exported only so the smoke suite can assert this directly. It is pure, and the bug it encodes
+ * empties three tables on a screen that still renders its totals - which is precisely the kind
+ * that comes back unnoticed.
+ */
+export function resolveRange(startDate?: string, endDate?: string) {
   const end = endDate ? new Date(endDate) : new Date();
-  const start = startDate ? new Date(startDate) : new Date(end.getTime() - 7 * 86400_000);
+  const start = startDate ? new Date(startDate) : new Date(end.getTime() - DEFAULT_RANGE_DAYS * 86400_000);
+
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
     throw { statusCode: 400, message: 'startDate/endDate must be valid ISO dates' };
   }
+
+  if (endDate !== undefined && DATE_ONLY.test(endDate)) {
+    return { start, end: new Date(end.getTime() + END_OF_DAY_MS) };
+  }
+
   return { start, end };
 }
 
