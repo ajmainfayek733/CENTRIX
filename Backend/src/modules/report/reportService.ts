@@ -1,4 +1,4 @@
-import { ActivityType } from '@prisma/client';
+import { ActivityType, LogoutSource } from '@prisma/client';
 import { prisma } from '../../config/db';
 import { currentOrganizationId } from '../../config/tenant';
 import {
@@ -111,6 +111,13 @@ interface AttendanceDay {
   /** How many stretches of presence made up the day (a lock or a suspend ends one). */
   sessionCount: number;
   status: 'present' | 'ended' | 'unknown';
+  /**
+   * True when `lastLogout` was inferred by the server rather than observed by the workstation -
+   * the session the day ends on was abandoned, and the reaper closed it from the last evidence
+   * available. The figure is the best one there is, and it is approximate; a screen that feeds
+   * payroll has to be able to say so rather than presenting it as a recorded time.
+   */
+  logoutEstimated: boolean;
 }
 
 export class ReportService {
@@ -208,7 +215,13 @@ export class ReportService {
    * report a day with a lunch break as shorter than it was.
    */
   private summarizeAttendance(
-    sessions: { loginTime: Date; logoutTime: Date | null; workDate: Date; deviceId: string }[],
+    sessions: {
+      loginTime: Date;
+      logoutTime: Date | null;
+      logoutSource: LogoutSource | null;
+      workDate: Date;
+      deviceId: string;
+    }[],
     dailyTotals: Map<string, { activeSeconds: number; idleSeconds: number; lastActivityAt: Date | null }>,
     lastSeenByDevice: Map<string, Date | null>,
     now: number
@@ -228,6 +241,7 @@ export class ReportService {
         idleSeconds: totals?.idleSeconds ?? 0,
         sessionCount: 0,
         status: 'ended' as const,
+        logoutEstimated: false,
         openAndLive: false,
         hasOpen: false,
       };
@@ -240,6 +254,10 @@ export class ReportService {
         day.openAndLive ||= isLive(lastSeenByDevice.get(session.deviceId), now);
       } else if (day.lastLogout === null || session.logoutTime > day.lastLogout) {
         day.lastLogout = session.logoutTime;
+        // Tracks the session that *currently* supplies the day's last logout, so a later observed
+        // logout clears the flag a server-inferred one set. Assigned rather than OR-ed for exactly
+        // that reason: an estimate earlier in the day says nothing about the time the day ended on.
+        day.logoutEstimated = session.logoutSource === LogoutSource.Server;
       }
 
       byDate.set(key, day);
@@ -445,6 +463,9 @@ export class ReportService {
           loginTime: true,
           logoutTime: true,
           endReason: true,
+          // Whether the logout was observed by the workstation or inferred by the server after the
+          // machine stopped answering. A payroll figure has to be able to say which it is.
+          logoutSource: true,
           workDate: true,
           // Which workstation the session ran on, so an open row can be tested against that
           // device's liveness rather than reported as presence on its own.

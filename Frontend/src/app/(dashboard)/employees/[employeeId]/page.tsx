@@ -174,7 +174,28 @@ export default async function EmployeeDetailPage({
                   <tr key={day.workDate}>
                     <Td>{new Date(day.workDate).toLocaleDateString()}</Td>
                     <Td numeric>{formatTime(day.firstLogin)}</Td>
-                    <Td numeric>{day.status === 'present' ? '-' : formatTime(day.lastLogout)}</Td>
+                    {/*
+                      An estimated logout is marked on the value itself rather than in Status,
+                      because it is the time that is approximate and not the fact that the day
+                      ended. The workstation stopped answering without recording a logout - power
+                      loss, most often - so the backend closed the session at the last evidence it
+                      held. Reading it as a recorded clock-out is the mistake this prevents.
+                    */}
+                    <Td numeric>
+                      {day.status === 'present' ? (
+                        '-'
+                      ) : day.lastLogout && day.logoutEstimated ? (
+                        <span
+                          className="inline-flex items-center gap-1.5"
+                          title="Estimated - the workstation stopped reporting without recording a logout, so this is the last activity seen"
+                        >
+                          {formatTime(day.lastLogout)}
+                          <Badge tone="warning">Estimated</Badge>
+                        </span>
+                      ) : (
+                        formatTime(day.lastLogout)
+                      )}
+                    </Td>
                     <Td align="right" numeric>
                       {formatDuration(day.sessionSeconds)}
                     </Td>
@@ -230,7 +251,18 @@ export default async function EmployeeDetailPage({
                     <Td numeric>
                       {row.logoutTime ? formatTime(row.logoutTime) : <Badge tone="brand">Still signed in</Badge>}
                     </Td>
-                    <Td muted>{row.endReason ?? '-'}</Td>
+                    {/*
+                      Per session the end reason and its provenance answer one question together:
+                      how much the signed-out time above is worth. `Server` means nothing on the
+                      workstation ever recorded an end - the reason is the backend's reading of why,
+                      not the agent's report of what happened.
+                    */}
+                    <Td muted>
+                      <span className="inline-flex items-center gap-1.5">
+                        {row.endReason ?? '-'}
+                        {row.logoutSource === 'Server' && <Badge tone="warning">Estimated</Badge>}
+                      </span>
+                    </Td>
                   </tr>
                 ))}
               </tbody>

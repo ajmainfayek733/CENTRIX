@@ -96,6 +96,14 @@ export interface AttendanceRow {
   loginTime: string;
   logoutTime: string | null;
   endReason: string | null;
+  /**
+   * Who stamped `logoutTime`, and therefore how much it is worth. `Agent` - the workstation
+   * observed the end. `Server` - the workstation stopped answering without recording one and the
+   * backend inferred it from the last evidence it held, which happens whenever a machine loses
+   * power mid-session. Null on an open session, and on sessions closed before the backend could
+   * record the distinction.
+   */
+  logoutSource: 'Agent' | 'Server' | null;
   workDate: string;
   deviceId: string;
 }
@@ -119,6 +127,12 @@ export interface AttendanceDay {
   idleSeconds: number;
   sessionCount: number;
   status: 'present' | 'ended' | 'unknown';
+  /**
+   * True when `lastLogout` was inferred by the backend rather than observed by the workstation.
+   * The figure is the best one available and it is approximate - a screen these numbers reach
+   * payroll from has to say which of the two it is showing.
+   */
+  logoutEstimated: boolean;
 }
 
 export interface EmployeeDetail {

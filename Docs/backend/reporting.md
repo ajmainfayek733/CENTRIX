@@ -115,8 +115,9 @@ and what ended each stretch".
 | `activeSeconds` / `idleSeconds` | The **daily rollup**, not the attendance rows. |
 | `sessionCount` | How many stretches of presence made up the day. |
 | `status` | `present`, `ended`, or `unknown`. |
+| `logoutEstimated` | Whether `lastLogout` was inferred by the server rather than observed. |
 
-Two things here are deliberate and easy to get wrong.
+Three things here are deliberate and easy to get wrong.
 
 **The seconds come from the rollup, not from summing the attendance rows.** The rollup counts the
 activity log, which includes the locked and suspended stretches *between* sessions; an attendance
@@ -131,6 +132,15 @@ therefore requires the owning device to have been seen inside the "online now" w
 session on a device that has gone quiet is `unknown`, and its day is measured to the last activity
 the rollup saw rather than to a logout that was never observed. Without that test the dashboard
 shows yesterday's crash as somebody still at their desk.
+
+**A logout can be an estimate, and the report says which.** When a workstation stops answering
+without recording an end, the backend closes the session itself from the last evidence it holds
+(`logoutSource = Server` - see [ingest.md](ingest.md) section 9). `attendance[].logoutSource`
+carries that per session and `attendanceDays[].logoutEstimated` says whether the day's *last*
+logout is one - assigned from whichever session supplies it, not OR-ed across the day, because an
+estimate at lunchtime says nothing about the time the day ended on. The UI marks both. These
+numbers reach payroll, and an approximate figure presented as a recorded clock-out is worse than
+one labelled approximate.
 
 ## 4. "Online now"
 
