@@ -7,7 +7,7 @@ There are three paths, and they are not alternatives to each other:
 | | Use for | Artifact |
 |---|---|---|
 | **Bundle** | Fleet rollout - copied to a workstation and installed by double-clicking `install.bat`, or driven unattended from GPO/Intune/PDQ. **No .NET runtime or SDK on the target.** | `artifacts/deploy/EmployeeMonitorAgent-<version>/` (and `.zip`) |
-| **MSI** | GPO/Intune/ConfigMgr where a native MSI is required. **Currently under repair** - the configuration page does not surface its fields; use the bundle until this is fixed | `artifacts/installer/EmployeeMonitorAgent.msi` |
+| **MSI** | GPO/Intune/ConfigMgr where a native MSI is required. A single self-contained `.msi` - both executables are embedded, and running it self-elevates | `artifacts/installer/EmployeeMonitorAgent.msi` |
 | **`Deploy-Agent.ps1`** | Development and single-machine work on the build box, where publishing and installing in one step is the point | none, installs from `artifacts/agent` |
 
 All three write their configuration through the **same** entry point in the agent
@@ -70,12 +70,19 @@ launched with the purge option.
 
 ## 2. The MSI
 
-> **Status:** under repair. The interactive configuration page does not currently render the server
-> address, token and insecure-HTTP fields. Use the bundle for rollouts until this is fixed. The
-> reference below describes the intended behaviour.
-
 Built by `.\scripts\Deploy-Agent.ps1 -Action Package`, which publishes the agent and then builds
 `installer\EmployeeMonitor.Installer.wixproj` around the published output.
+
+The result is a **single self-contained file**. Both executables are compressed into cabinets
+embedded in the `.msi` itself (`MediaTemplate EmbedCab="yes"`), so there is nothing to distribute
+beside it, and because they publish self-contained the target needs no .NET runtime. The `.wixpdb`
+written alongside is installer debug symbols, not part of the deployment. Double-clicking the MSI
+self-elevates through UAC (it is a perMachine package).
+
+The configuration page is inserted into the WixUI sequence between the install-location page and the
+confirmation page. Its forward transition is ordered **above** WixUI's own jump to the confirmation
+page (see `ConfigurationDialog.wxs`): MSI lets the highest-ordered `NewDialog` win, so a lower order
+silently skips the page - which is exactly the bug that hid it before.
 
 ### Interactive
 

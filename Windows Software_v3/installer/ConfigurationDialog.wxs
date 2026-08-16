@@ -82,10 +82,19 @@
         returns here rather than skipping to the directory page and losing the context of what
         was just typed.
 
-        Order="3" on the two overridden events puts them after the built-in publishes on those
-        controls, which is what makes them win.
+        Ordering is the whole game here, and getting it wrong is what made the page never appear.
+        MSI fires a control's events in ascending Order, and for NewDialog the highest-ordered one
+        whose condition holds wins. WixUI's own InstallDirDlg/Next jumps to VerifyReadyDlg at
+        Order 4, so a forward transition to this page has to sit ABOVE 4 - at Order 3 it lost and
+        the installer went straight to the confirmation page. It also has to carry WixUI's own
+        path-valid guard, or an invalid install location (whose InvalidDirDlg spawn is Order 3)
+        would be navigated away from anyway.
+
+        The Back transitions win at Order 3 because the built-in Backs they override sit at
+        Order 1 and 2.
       -->
-      <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="AgentConfigDlg" Order="3" />
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="AgentConfigDlg"
+               Order="5" Condition="WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID = &quot;1&quot;" />
       <Publish Dialog="AgentConfigDlg" Control="Back" Event="NewDialog" Value="InstallDirDlg" />
       <Publish Dialog="AgentConfigDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" />
       <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="AgentConfigDlg" Order="3" />
