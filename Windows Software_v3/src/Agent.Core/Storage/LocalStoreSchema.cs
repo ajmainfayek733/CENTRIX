@@ -15,10 +15,44 @@ namespace Agent.Core.Storage;
 /// Timestamps are stored as ISO-8601 UTC strings ('o' round-trip format). SQLite has no date
 /// type; text sorts correctly in that format and survives a timezone change on the workstation,
 /// which a local-time or Unix-tick column would not.
+///
+/// <para>
+/// <see cref="Sql"/> is what a database created today looks like, and every statement in it is
+/// <c>IF NOT EXISTS</c>, so running it against an existing file adds whatever is missing and
+/// touches nothing else. What it cannot do is change a table that already exists - SQLite applies
+/// <c>CREATE TABLE IF NOT EXISTS</c> by name, not by shape, so a column added to a table here is
+/// invisible to every agent that was installed before it. <see cref="Migrations"/> is that other
+/// half: an ordered list of steps applied once each to a database that predates them, tracked by
+/// <c>schema_info</c>. Adding a column means editing both, and bumping <see cref="Version"/>.
+/// </para>
 /// </summary>
 internal static class LocalStoreSchema
 {
-    public const int Version = 1;
+    /// <summary>
+    /// The shape <see cref="Sql"/> describes. Also the highest version in <see cref="Migrations"/>:
+    /// a fresh database is stamped with this directly, an upgraded one reaches it a step at a time.
+    /// </summary>
+    public const int Version = 2;
+
+    /// <summary>One upgrade step: the version it produces, and the statements that get there.</summary>
+    public readonly record struct Migration(int Version, string Sql);
+
+    /// <summary>
+    /// Upgrade steps for a database created by an earlier agent, applied in ascending order and
+    /// only when the stored version is below them. Never rewritten once shipped - a workstation
+    /// that has already run one will not run it again, so changing it changes nothing there and
+    /// silently diverges the two schemas.
+    /// </summary>
+    public static readonly IReadOnlyList<Migration> Migrations =
+    [
+        // v2 - attendance revision. The server receives many snapshots of one session and needs
+        // to know which the workstation wrote last; it used to infer that from whether a snapshot
+        // carried a logout, which an out-of-order delivery gets wrong. Existing rows start at 0,
+        // matching the server default, so the first refresh after the upgrade lands as revision 1.
+        new Migration(2, """
+            ALTER TABLE attendance_sessions ADD COLUMN revision INTEGER NOT NULL DEFAULT 0;
+            """)
+    ];
 
     public const string Sql = """
         PRAGMA journal_mode = WAL;
@@ -35,9 +69,14 @@ internal static class LocalStoreSchema
         -- time its running totals are refreshed. Once logout_time is set the row is closed and no
         -- longer accepts writes - presence resumed after a lock or a suspend is a new session, not
         -- an amendment to the one that ended.
+        --
+        -- revision numbers those rewrites. The server keeps one row per session too, and several
+        -- reports of the same session reach it out of order after an outage; the counter is how it
+        -- tells a newer report from a redelivered older one without guessing from the contents.
         CREATE TABLE IF NOT EXISTS attendance_sessions (
             session_id           TEXT    PRIMARY KEY,
             client_event_id      TEXT    NOT NULL,
+            revision             INTEGER NOT NULL DEFAULT 0,
             user_sid             TEXT    NOT NULL,
             login_time           TEXT    NOT NULL,
             logout_time          TEXT    NULL,

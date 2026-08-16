@@ -262,6 +262,19 @@ class IngestService {
   // Attendance - upsert on sessionId. An open session re-sends its row every couple of minutes as
   // its running totals grow, so later writes overwrite earlier ones.
   //
+  // "LATER" IS THE AGENT'S REVISION NUMBER, NOT THE SHAPE OF THE REPORT. One session produces a
+  // stream of snapshots - open at 0 seconds, open at 120, closed at 215 - and the server has to
+  // know which of two of them the workstation wrote last. It used to infer that from the contents:
+  // a report carrying a logout was assumed to be the later of the pair. That holds only while
+  // delivery is ordered, and this queue is at-least-once over a link that drops for hours: a
+  // refresh written before the close, retried after it, arrived looking exactly like fresh news
+  // that the session was open again. The agent now stamps a counter it bumps on every rewrite of
+  // the row, and a report whose revision is below the one on file is dropped as stale - the whole
+  // question answered by one comparison, before any of the rules below are consulted.
+  //
+  // A revision of 0 means the agent predates the counter. Those reports are not ordered relative
+  // to each other and fall back to the older rules, which is why the rules are still here.
+  //
   // AN AGENT-STAMPED LOGOUT IS FINAL. The agent closes a session once - a lock, a suspend or a
   // logoff ends it, and presence resumed afterwards arrives as a new sessionId - so a write against
   // a row the agent already closed is stale by definition and is dropped. Enforced here as well as
@@ -318,6 +331,7 @@ class IngestService {
           const shared = {
             deviceId: device.id,
             userSid: e.userSid,
+            revision: e.revision,
             loginTime: e.loginTime,
             logoutTime,
             endReason: e.endReason ?? null,
@@ -341,14 +355,21 @@ class IngestService {
             continue;
           }
 
-          // A session already on file: updateMany rather than update, so the test is part of the
-          // statement instead of a decision taken from a read outside the transaction. A row the
-          // agent closed since that read matches nothing and the write is dropped, which is the
-          // whole point - an observed logout is not revised. A row the *reaper* closed still
-          // matches, because that one was only ever a best guess at what this agent now knows.
+          // A session already on file: updateMany rather than update, so both tests are part of
+          // the statement instead of decisions taken from a read outside the transaction.
+          //
+          // `revision: { lte }` is the ordering guard - a snapshot older than the one stored
+          // matches nothing and is discarded. Equality still matches, because a redelivered batch
+          // carries the same revision *and* the same values, so applying it again changes nothing.
+          //
+          // The logout test is the provenance guard, and is still ANDed on: a row the agent closed
+          // matches nothing and the write is dropped, which is the whole point - an observed logout
+          // is not revised. A row the *reaper* closed still matches, because that one was only ever
+          // a best guess at what this agent now knows.
           await tx.attendanceSession.updateMany({
             where: {
               sessionId: e.sessionId,
+              revision: { lte: e.revision },
               OR: [{ logoutTime: null }, { logoutSource: LogoutSource.Server }],
             },
             data: shared,
@@ -816,7 +837,7 @@ class IngestService {
 }
 
 /**
- * Reduces a batch to one event per attendance session.
+ * Reduces a batch to one event per attendance session - the newest snapshot of each.
  *
  * The current agent keeps one row per session in its local queue (`ON CONFLICT (session_id) DO
  * UPDATE`), so a batch normally carries each session once. This does not rely on that. Two events
@@ -824,9 +845,14 @@ class IngestService {
  * refresh land after the close and blank it - the original bug, reintroduced from inside a single
  * batch - and array order is not a guarantee the wire protocol makes.
  *
- * The winner is the one that closes the session, or the latest close if several do. Order within
- * the batch is preserved for everything else, so the caller still writes sessions in the sequence
- * the agent sent them.
+ * The winner is the highest revision, which is the agent's own statement of which snapshot it
+ * wrote last. Order within the batch is preserved for everything else, so the caller still writes
+ * sessions in the sequence the agent sent them.
+ *
+ * Equal revisions mean the batch carries no ordering: either duplicates of one snapshot, or an
+ * agent old enough that every report is revision 0. Both are settled by the older rule - a close
+ * beats a refresh, and the later of two closes is the more complete report - which is a guess, but
+ * the only one available for reports that do not number themselves.
  */
 function collapseAttendanceBySession(events: AttendanceEventDto[]): AttendanceEventDto[] {
   const bySession = new Map<string, AttendanceEventDto>();
@@ -839,7 +865,11 @@ function collapseAttendanceBySession(events: AttendanceEventDto[]): AttendanceEv
       continue;
     }
 
-    // A close beats a refresh; between two closes, the later logout is the more complete report.
+    if (event.revision !== winner.revision) {
+      if (event.revision > winner.revision) bySession.set(event.sessionId, event);
+      continue;
+    }
+
     if (event.logoutTime == null) continue;
     if (winner.logoutTime == null || event.logoutTime > winner.logoutTime) {
       bySession.set(event.sessionId, event);

@@ -43,12 +43,17 @@ const count = z.number().int().min(0);
 // ---------------------------------------------------------------------------
 // Attendance - Features.md "Attendace report".
 // Upserted on sessionId: the agent re-sends the row as logoutTime firms up across
-// lock -> sleep -> shutdown, and last write wins.
+// lock -> sleep -> shutdown, and the highest `revision` wins.
 // ---------------------------------------------------------------------------
 
 export const attendanceEventSchema = z.object({
   clientEventId: uuid,
   sessionId: uuid,
+  /// The agent's revision of this session, bumped on every rewrite of the row. It is what
+  /// orders the several reports one session produces, so a batch delayed by an outage cannot
+  /// overwrite a newer one that got through. Defaults to 0 - meaning "this agent does not
+  /// number its reports" - so a fleet mid-rollout keeps ingesting on the older rules.
+  revision: count.default(0),
   userSid: z.string().min(1),
   loginTime: utc,
   logoutTime: utc.nullish(),

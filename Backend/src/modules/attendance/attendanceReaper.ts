@@ -119,6 +119,10 @@ function lastEvidenceAt(session: OpenSession, activityEnd: Date | null, metricEn
  * an agent that closed the session for real between the read and the write keeps its own answer:
  * the statement matches nothing and the inference is discarded. That guard is the same one ingest
  * uses, and it is the reason the two can run concurrently without a lock between them.
+ *
+ * `revision` is deliberately left alone. It numbers the workstation's own snapshots, and raising
+ * it here would make the next genuine agent report look stale against a number the agent never
+ * issued - the row would then reject the very evidence that is supposed to correct this guess.
  */
 export async function closeAbandonedSessions(tx: Prisma.TransactionClient, now = new Date()): Promise<ReapSummary> {
   const summary: ReapSummary = { superseded: 0, abandoned: 0, expired: 0 };

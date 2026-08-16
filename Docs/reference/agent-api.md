@@ -115,12 +115,13 @@ previous response was lost.
 ### Channel: `attendance`
 
 Upserted on `sessionId` - the agent re-sends as `logoutTime` firms up across lock, sleep and
-shutdown, and last write wins.
+shutdown, and the **highest `revision` wins**.
 
 | Field | Type | Notes |
 |---|---|---|
 | `clientEventId` | uuid | |
 | `sessionId` | uuid | The upsert key |
+| `revision` | int >= 0 | Which snapshot of this session it is. Starts at 1, bumped by the agent on every rewrite of the row. A report below the stored revision is **dropped as stale**; equal is applied (a redelivered batch carries the same values). Omitted or `0` means the agent predates the counter, and the server falls back to ordering by whether a report carries a logout |
 | `userSid` | string | |
 | `loginTime` | datetime | |
 | `logoutTime` | datetime? | |

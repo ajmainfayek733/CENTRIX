@@ -38,29 +38,94 @@ public sealed class LocalStore
         return connection;
     }
 
+    /// <summary>
+    /// Brings the database up to <see cref="LocalStoreSchema.Version"/>, creating it if this is a
+    /// first run.
+    ///
+    /// The two cases are told apart before anything is created, because they need opposite
+    /// treatment: a fresh file gets the current schema in one statement and is stamped at the
+    /// current version, while an existing one gets only the upgrade steps it has not run. Deciding
+    /// afterwards would mean re-running v2's <c>ALTER TABLE</c> against a table that was just
+    /// created with the column, which SQLite rejects as a duplicate column and which would leave
+    /// every new install failing to start.
+    /// </summary>
     public void Initialize()
     {
         using var connection = Open();
+
+        var isNewDatabase = !TableExists(connection, "schema_info");
+
         using (var command = connection.CreateCommand())
         {
             command.CommandText = LocalStoreSchema.Sql;
             command.ExecuteNonQuery();
         }
 
-        using (var command = connection.CreateCommand())
+        var fromVersion = isNewDatabase ? LocalStoreSchema.Version : CurrentVersion(connection);
+
+        if (isNewDatabase)
         {
-            command.CommandText = """
-                INSERT INTO schema_info (version, applied_utc)
-                SELECT $version, $now
-                WHERE NOT EXISTS (SELECT 1 FROM schema_info WHERE version = $version);
-                """;
-            command.Parameters.AddWithValue("$version", LocalStoreSchema.Version);
-            command.Parameters.AddWithValue("$now", SqlTime.Now());
-            command.ExecuteNonQuery();
+            StampVersion(connection, LocalStoreSchema.Version, transaction: null);
+        }
+        else
+        {
+            foreach (var migration in LocalStoreSchema.Migrations.Where(m => m.Version > fromVersion)
+                                                                 .OrderBy(m => m.Version))
+            {
+                // One transaction per step: an upgrade interrupted by a power loss - the reason
+                // this agent exists - leaves the database at a version it fully reached, never
+                // half way through one.
+                using var transaction = connection.BeginTransaction();
+
+                using (var command = connection.CreateCommand())
+                {
+                    command.Transaction = transaction;
+                    command.CommandText = migration.Sql;
+                    command.ExecuteNonQuery();
+                }
+
+                StampVersion(connection, migration.Version, transaction);
+                transaction.Commit();
+
+                _logger.LogInformation("Local store upgraded to schema v{Version}", migration.Version);
+            }
         }
 
         _logger.LogInformation("Local store ready at {Path} (schema v{Version})",
             AgentPaths.DatabasePath, LocalStoreSchema.Version);
+    }
+
+    private static bool TableExists(SqliteConnection connection, string tableName)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = $name;";
+        command.Parameters.AddWithValue("$name", tableName);
+        return Convert.ToInt32(command.ExecuteScalar()) > 0;
+    }
+
+    /// <summary>
+    /// The highest version this database has been stamped with. A database written before
+    /// schema_info was populated reads as version 1, which is what it is.
+    /// </summary>
+    private static int CurrentVersion(SqliteConnection connection)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COALESCE(MAX(version), 1) FROM schema_info;";
+        return Convert.ToInt32(command.ExecuteScalar());
+    }
+
+    private static void StampVersion(SqliteConnection connection, int version, SqliteTransaction? transaction)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            INSERT INTO schema_info (version, applied_utc)
+            SELECT $version, $now
+            WHERE NOT EXISTS (SELECT 1 FROM schema_info WHERE version = $version);
+            """;
+        command.Parameters.AddWithValue("$version", version);
+        command.Parameters.AddWithValue("$now", SqlTime.Now());
+        command.ExecuteNonQuery();
     }
 
     // -------------------------------------------------------------------------

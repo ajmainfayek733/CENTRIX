@@ -663,6 +663,78 @@ async function main() {
       { logoutTime: collapsedRow?.logoutTime, endReason: collapsedRow?.endReason }
     );
 
+    // A session reports itself many times while it is open, and the reports are not delivered in
+    // the order they were written. Nothing about the *contents* of two open refreshes says which
+    // the workstation wrote first - both carry a null logout - so before `revision` the later
+    // arrival simply won and a redelivered old refresh rolled the day's totals backwards.
+    const revisionSessionId = randomUUID();
+    const revisionBase = {
+      sessionId: revisionSessionId,
+      userSid: 'S-1-5-21-smoke',
+      loginTime: earlier.toISOString(),
+      logoutTime: null,
+      workDate: now.toISOString().slice(0, 10),
+      totalIdleSeconds: 0,
+    };
+
+    await push('attendance', [
+      { ...revisionBase, clientEventId: randomUUID(), revision: 5, totalActiveSeconds: 300 },
+    ]);
+    const staleRevision = await push('attendance', [
+      { ...revisionBase, clientEventId: randomUUID(), revision: 4, totalActiveSeconds: 200 },
+    ]);
+    const afterStaleRevision = await prisma.attendanceSession.findUnique({
+      where: { sessionId: revisionSessionId },
+    });
+    check('an older revision delivered late cannot roll back a newer one',
+      staleRevision.status === 200 &&
+        afterStaleRevision?.totalActiveSeconds === 300 &&
+        afterStaleRevision?.revision === 5,
+      { totalActiveSeconds: afterStaleRevision?.totalActiveSeconds, revision: afterStaleRevision?.revision }
+    );
+
+    const newerRevision = await push('attendance', [
+      { ...revisionBase, clientEventId: randomUUID(), revision: 6, totalActiveSeconds: 360 },
+    ]);
+    const afterNewerRevision = await prisma.attendanceSession.findUnique({
+      where: { sessionId: revisionSessionId },
+    });
+    check('a newer revision is applied',
+      newerRevision.status === 200 &&
+        afterNewerRevision?.totalActiveSeconds === 360 &&
+        afterNewerRevision?.revision === 6,
+      { totalActiveSeconds: afterNewerRevision?.totalActiveSeconds, revision: afterNewerRevision?.revision }
+    );
+
+    // The same question inside one batch, where array order is the only thing distinguishing the
+    // two events and the wire protocol does not promise it means anything.
+    const batchRevisionSessionId = randomUUID();
+    const batchRevision = await push('attendance', [
+      {
+        ...revisionBase,
+        sessionId: batchRevisionSessionId,
+        clientEventId: randomUUID(),
+        revision: 2,
+        totalActiveSeconds: 50,
+      },
+      {
+        ...revisionBase,
+        sessionId: batchRevisionSessionId,
+        clientEventId: randomUUID(),
+        revision: 1,
+        totalActiveSeconds: 10,
+      },
+    ]);
+    const batchRevisionRow = await prisma.attendanceSession.findUnique({
+      where: { sessionId: batchRevisionSessionId },
+    });
+    check('two revisions of one session in a batch collapse to the highest',
+      batchRevision.status === 200 &&
+        batchRevisionRow?.totalActiveSeconds === 50 &&
+        batchRevisionRow?.revision === 2,
+      { totalActiveSeconds: batchRevisionRow?.totalActiveSeconds, revision: batchRevisionRow?.revision }
+    );
+
     // -- Abandoned sessions: the load-shedding path --------------------------
     //
     // A workstation that loses power stamps no logout and its agent's recovery pass only runs if

@@ -89,8 +89,21 @@ liveness tracking must never fail the request it rides on.
 Two upserts, and both have a reason:
 
 - **Attendance** is re-sent by an open session every couple of minutes as its running totals grow,
-  so later writes overwrite earlier ones - **until the agent stamps `logoutTime`, after which the
-  row is final and further writes are dropped**. The agent closes a session once and sends a new
+  so later writes overwrite earlier ones - where **"later" is the agent's `revision`, not the shape
+  of the report**. One session produces a stream of snapshots (open at 0s, open at 120s, closed at
+  215s) and the queue is at-least-once over a link that can be down for hours, so they do not
+  arrive in the order they were written. The agent stamps a counter per session, starting at 1 and
+  bumped on every rewrite of the row; ingest drops any report whose revision is below the one
+  stored (`revision: { lte }` on the guarded `updateMany`). Equal revisions still apply, because a
+  redelivered batch carries the same values.
+
+  Revision `0` means the agent predates the counter. Those reports are unordered and fall back to
+  the rules below, which is why the rules are still enforced. The **reaper never touches
+  `revision`** - raising it would make the next genuine agent report look stale against a number
+  the agent never issued.
+
+  Ordering aside, the row is **final once the agent stamps `logoutTime`, after which further
+  writes are dropped**. The agent closes a session once and sends a new
   `sessionId` when presence resumes, so a write against a closed row is stale by definition.
   Enforced here as well as on the agent because sync is at-least-once over an offline queue: a
   retried batch, or one from an agent still on the old build, must not be able to blank a logout
@@ -103,9 +116,10 @@ Two upserts, and both have a reason:
   refresh, which reopens the row. Only `logoutSource = Agent` closes the door. A row closed before
   that column existed has a null source and is treated as final.
 
-  Duplicate `sessionId`s **within one batch** are collapsed before the write, the close winning over
-  a refresh. Array order is not part of the wire contract, and applying two events for one session
-  in arrival order would reintroduce the same bug from inside a single push.
+  Duplicate `sessionId`s **within one batch** are collapsed before the write, the highest revision
+  winning - or, when the revisions are equal, the close winning over a refresh. Array order is not
+  part of the wire contract, and applying two events for one session in arrival order would
+  reintroduce the same bug from inside a single push.
 - **Alerts** escalate (idle 30 -> 45 -> 60 min) reusing one `clientEventId` rather than creating
   a row per escalation. Every alert is written; only first sightings are **counted**, or an
   escalation would inflate the day's alert total on every re-send.

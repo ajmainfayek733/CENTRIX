@@ -121,8 +121,15 @@ across them. The store and the ingest layer both enforce this, because the perio
 null `LogoutTime` to mean "still open" and letting one land on a closed row blanks a logout that has
 already been reported.
 
-`ClientEventId`, `SessionId`, `UserSid`, `LoginTime`, `LogoutTime?`, `EndReason?`, `WorkDate`,
-`TotalActiveSeconds`, `TotalIdleSeconds`.
+`ClientEventId`, `SessionId`, `Revision`, `UserSid`, `LoginTime`, `LogoutTime?`, `EndReason?`,
+`WorkDate`, `TotalActiveSeconds`, `TotalIdleSeconds`.
+
+`Revision` says **which snapshot of the session this is** - 1 for the row as first written, bumped
+on every rewrite. One session is reported many times (open with no seconds on it, open with two
+minutes, closed) and the queue is at-least-once over a link that can be down for hours, so the
+server sees these out of order and cannot tell a newer report from a redelivered older one by
+looking at it. This states the answer instead of leaving it to be inferred. Assigned by
+`TelemetryQueue` on write, **never by a caller**.
 
 `WorkDate` is a local calendar date (`yyyy-MM-dd`) sent by the agent because only the workstation
 knows its own timezone - a late shift would otherwise land on the wrong date.
@@ -320,8 +327,23 @@ its answer wins for reporting; this exists so the desktop notification is immedi
 
 ### `LocalStoreSchema` - `Storage/LocalStoreSchema.cs`
 
-Internal static class holding `Version` (currently `1`) and the entire schema as one `Sql` string,
-executed as a batch.
+Internal static class holding `Version` (currently `2`), the entire schema as one `Sql` string
+executed as a batch, and `Migrations` - the ordered upgrade steps for a database created by an
+earlier agent.
+
+`Sql` is what a database created **today** looks like, and every statement in it is
+`IF NOT EXISTS`, so running it against an existing file adds what is missing and touches nothing
+else. What it cannot do is change a table that already exists: SQLite matches
+`CREATE TABLE IF NOT EXISTS` **by name, not by shape**, so a column added there is invisible to
+every agent installed before it. `Migrations` is the other half - each entry is the version it
+produces plus the statements that get there, applied once and tracked in `schema_info`. Adding a
+column means editing both and bumping `Version`. A shipped migration is **never rewritten**: a
+workstation that has already run it will not run it again.
+
+| Version | Change |
+|---|---|
+| 1 | Initial schema |
+| 2 | `attendance_sessions.revision` - the per-session snapshot counter the server orders reports by. Existing rows start at `0`, matching the server default, so the first refresh after the upgrade lands as revision `1` |
 
 Pragmas: `journal_mode = WAL` (so the sync worker reads pending rows while collectors write new
 ones without either blocking), `synchronous = NORMAL`, `foreign_keys = ON`.
@@ -358,7 +380,7 @@ Combined with WAL, readers and writers do not block each other.
 |---|---|
 | `LocalStore(ILogger<LocalStore>, string? databasePath = null)` | Calls `AgentPaths.EnsureCreated()` and builds the connection string (`ReadWriteCreate`, shared cache, pooling). The optional path override exists for tests. |
 | `Open()` (internal) | Opens and returns a new pooled connection. |
-| `Initialize()` | Executes `LocalStoreSchema.Sql`, then inserts the schema version if absent. Called eagerly at service startup so a schema failure surfaces there rather than on the first collector message. |
+| `Initialize()` | Brings the database up to `LocalStoreSchema.Version`. Decides **before creating anything** whether this is a first run (no `schema_info` table): a fresh file gets `Sql` and is stamped at the current version, an existing one gets only the migrations above its stored version, one transaction each. Deciding afterwards would re-run v2's `ALTER TABLE` against a table just created with the column, which SQLite rejects - every new install would fail to start. Called eagerly at service startup so a schema failure surfaces there rather than on the first collector message. |
 | `SavePolicy(AgentPolicy)` | Upserts the single `policy_cache` row and replaces the working-day and category rows - **all in one transaction**, so a crash mid-write can never leave the agent running half of one policy version and half of another. |
 | `ReplaceWorkingDays` / `ReplaceCategories` (private static) | Delete-then-insert helpers, executed inside the caller's transaction. |
 | `LoadPolicy()` | Rehydrates the full `AgentPolicy`, including working days and categories. Returns `null` if the agent has never fetched one - callers then fall back to `new AgentPolicy()`. |
@@ -383,7 +405,7 @@ semantics; the rest are insert-once:
 
 | Method | Semantics |
 |---|---|
-| `Enqueue(AttendanceEvent)` | Upsert on `session_id`, **resetting `sent_utc` to NULL and `attempts` to 0**, so each refresh of an open session's running totals reaches the server. The conflict clause carries `WHERE attendance_sessions.logout_time IS NULL`: **a stamped logout is final**, and a write arriving after it is dropped rather than merged. This is the layer where getting it wrong is unrecoverable - a null logout time means "still open", and one landing on a closed row blanked a logout that had already been reported. |
+| `Enqueue(AttendanceEvent)` | Upsert on `session_id`, **resetting `sent_utc` to NULL and `attempts` to 0**, so each refresh of an open session's running totals reaches the server. The conflict clause carries `WHERE attendance_sessions.logout_time IS NULL`: **a stamped logout is final**, and a write arriving after it is dropped rather than merged. This is the layer where getting it wrong is unrecoverable - a null logout time means "still open", and one landing on a closed row blanked a logout that had already been reported. **Every write bumps `revision`** (1 on insert, `revision + 1` on conflict), which is the number the server orders these reports by. Assigned here because this statement is the only place that knows whether a write created the row or rewrote it, and because a counter held by the collectors would restart at 1 whenever the host process did. |
 | `Enqueue(AlertEvent)` | Upsert on `client_event_id`, also requeuing. An escalating incident reuses one id and each escalation must reach the server. |
 | `Enqueue(ActivityMetricEvent)` | `INSERT OR IGNORE` on `client_event_id` |
 | `Enqueue(ActivitySessionEvent)` | `INSERT OR IGNORE` on `activity_session_id` |
@@ -409,8 +431,8 @@ semantics; the rest are insert-once:
 | `RecordRejection(channel, clientEventIds)` | Increments `attempts` on **exactly the ids the server refused**. Only rejections count - never a transient network or 5xx failure - because `attempts` is what eventually causes `DropExhausted` to discard a row, and counting an unreachable server would age out perfectly good data during an outage, the precise opposite of what the offline queue exists for. Scoped to the failed ids rather than every pending row, so one malformed event cannot push a whole channel toward being dropped. |
 | `DropExhausted(maxAttempts)` | Deletes pending rows whose `attempts` has reached the limit, across every channel, in one transaction. Returns the count per channel so the caller can log what was lost - **losing data is the point here, so it must never happen quietly.** Without this, an event the server will never accept is resent every sync cycle until the retention window expires weeks later. |
 | `PendingCount(channel)` | Count of unsent rows. |
-| `Purge(undeliveredRetentionDays)` | Deletes rows that are either already sent **or** older than the cutoff, across all seven telemetry tables plus sent consent records, in one transaction. **Returns the screenshot file paths that were dropped** so the caller can delete them from disk. |
-| `RecoverOpenAttendanceSessions()` | At startup, closes rows abandoned by a power loss, a killed host or an upgrade, stamping `end_reason = 'Recovered'` and requeuing them. Without it the day's attendance would stay open forever. Returns the row count and logs a warning when non-zero. **Two rules, both of which this got wrong before** - see below. |
+| `Purge(undeliveredRetentionDays)` | Deletes rows that are either already sent **or** older than the cutoff, across all seven telemetry tables plus sent consent records, in one transaction. **Returns the screenshot file paths that were dropped** so the caller can delete them from disk. **`attendance_sessions` is the exception**: an acknowledged row is deleted only once its session has *closed*. Every other table holds finished observations, so delivery ends the row's life; an attendance row is the live state of a session still running - acknowledged and then rewritten, over and over. Deleting it at the first acknowledgement would restart the session on the next refresh as a fresh row at revision 1, which the server reads as older than what it holds and discards, and would also lose the row `RecoverOpenAttendanceSessions` reads. The age clause still applies, as a disk-space backstop. |
+| `RecoverOpenAttendanceSessions()` | At startup, closes rows abandoned by a power loss, a killed host or an upgrade, stamping `end_reason = 'Recovered'`, bumping `revision` and requeuing them. Without it the day's attendance would stay open forever. Returns the row count and logs a warning when non-zero. **Two rules, both of which this got wrong before** - see below. |
 
 **Recovery has to answer two questions, and the obvious answer is wrong to both.**
 

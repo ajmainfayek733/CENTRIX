@@ -34,6 +34,13 @@ public sealed class TelemetryQueue(LocalStore store, ILogger<TelemetryQueue> log
     /// open", and letting one land on a closed row blanked a logout that had already been reported,
     /// leaving a day of logins with no logouts. A late write is dropped here rather than merged,
     /// because a row that has ended has nothing left to revise.
+    ///
+    /// EVERY WRITE BUMPS <c>revision</c>, which is the number the server orders these reports by.
+    /// It is assigned here rather than by the caller because this statement is the only place that
+    /// knows whether a write created the row or rewrote it, and because a counter the collectors
+    /// held would restart at 1 whenever the host process did. It is not reset by anything: the row
+    /// carries it for as long as the session is open, and <see cref="Purge"/> is what deletes the
+    /// row, only once the session has closed and the server has acknowledged it.
     /// </summary>
     public void Enqueue(AttendanceEvent e)
     {
@@ -41,13 +48,14 @@ public sealed class TelemetryQueue(LocalStore store, ILogger<TelemetryQueue> log
         using var command = connection.CreateCommand();
         command.CommandText = """
             INSERT INTO attendance_sessions (
-                session_id, client_event_id, user_sid, login_time, logout_time, end_reason,
+                session_id, client_event_id, revision, user_sid, login_time, logout_time, end_reason,
                 work_date, total_active_seconds, total_idle_seconds, created_utc, sent_utc, attempts
             ) VALUES (
-                $sessionId, $clientEventId, $userSid, $loginTime, $logoutTime, $endReason,
+                $sessionId, $clientEventId, 1, $userSid, $loginTime, $logoutTime, $endReason,
                 $workDate, $activeSeconds, $idleSeconds, $now, NULL, 0
             )
             ON CONFLICT(session_id) DO UPDATE SET
+                revision             = attendance_sessions.revision + 1,
                 logout_time          = excluded.logout_time,
                 end_reason           = excluded.end_reason,
                 total_active_seconds = excluded.total_active_seconds,
@@ -291,6 +299,7 @@ public sealed class TelemetryQueue(LocalStore store, ILogger<TelemetryQueue> log
         {
             ClientEventId = Guid.Parse(r.GetString(r.GetOrdinal("client_event_id"))),
             SessionId = Guid.Parse(r.GetString(r.GetOrdinal("session_id"))),
+            Revision = r.GetInt32(r.GetOrdinal("revision")),
             UserSid = r.GetString(r.GetOrdinal("user_sid")),
             LoginTime = SqlTime.Parse(r.GetString(r.GetOrdinal("login_time"))),
             LogoutTime = SqlTime.ParseNullable(r.GetNullableString("logout_time")),
@@ -607,7 +616,7 @@ public sealed class TelemetryQueue(LocalStore store, ILogger<TelemetryQueue> log
 
         foreach (var table in new[]
                  {
-                     "attendance_sessions", "activity_metrics", "activity_sessions",
+                     "activity_metrics", "activity_sessions",
                      "browser_activity", "usb_events", "alerts", "screenshots"
                  })
         {
@@ -615,6 +624,31 @@ public sealed class TelemetryQueue(LocalStore store, ILogger<TelemetryQueue> log
             command.Transaction = transaction;
             command.CommandText =
                 $"DELETE FROM {table} WHERE sent_utc IS NOT NULL OR created_utc < $cutoff;";
+            command.Parameters.AddWithValue("$cutoff", cutoff);
+            command.ExecuteNonQuery();
+        }
+
+        // Attendance is swept on the same terms with one addition: an OPEN session is never
+        // deleted just because it has been acknowledged. Every other table holds finished
+        // observations, so delivery is the end of the row's life. An attendance row is the live
+        // state of a session that is still running - it is acknowledged and then rewritten, over
+        // and over, until the session ends. Deleting it at the first acknowledgement would restart
+        // the session from scratch on the next refresh: a fresh row with revision 1, which the
+        // server reads as older than everything it already holds for that session and discards.
+        // It would also lose the row the startup recovery pass reads to close sessions an unclean
+        // shutdown left open.
+        //
+        // The age clause still applies. A row open past the undelivered-retention horizon is days
+        // stale and the server's own reaper has long since closed its counterpart; keeping it on
+        // disk forever to preserve a counter nothing will consult again is the worse trade.
+        using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = """
+                DELETE FROM attendance_sessions
+                WHERE (sent_utc IS NOT NULL AND logout_time IS NOT NULL)
+                   OR created_utc < $cutoff;
+                """;
             command.Parameters.AddWithValue("$cutoff", cutoff);
             command.ExecuteNonQuery();
         }
@@ -693,6 +727,7 @@ public sealed class TelemetryQueue(LocalStore store, ILogger<TelemetryQueue> log
                 UPDATE attendance_sessions
                 SET logout_time = $logoutTime,
                     end_reason  = 'Recovered',
+                    revision    = revision + 1,
                     sent_utc    = NULL,
                     attempts    = 0
                 WHERE session_id = $sessionId AND logout_time IS NULL;

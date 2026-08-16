@@ -353,6 +353,14 @@ model DailyActivityRollup {
 // that machine boots again. On a site with scheduled load shedding that can be days, so
 // the server closes abandoned rows itself (attendanceReaper) from the last evidence it
 // holds. That estimate must stay correctable, which is what the source column buys.
+//
+// WHICH REPORT IS NEWER - see `revision`. The same session arrives many times, and until
+// this column existed the server had to infer their order from their contents: a report
+// carrying a logout was treated as later than one without. That reads a *property* of a
+// snapshot as its *age*, and the two come apart the moment delivery is out of order - a
+// still-open refresh queued before a close but delivered after it looked like the newer
+// report of the pair. The agent now stamps a per-session counter it bumps on every write,
+// so the ordering is carried explicitly rather than reconstructed.
 // ---------------------------------------------------------------------------
 
 /// Who stamped an attendance session's `logoutTime`, and therefore how much it is worth.
@@ -384,6 +392,17 @@ model AttendanceSession {
   /// this column existed, which are read as final: they predate the reaper, so an agent is the
   /// only thing that can have written them.
   logoutSource LogoutSource?
+
+  /// The agent's own revision number of the snapshot this row was last written from. Starts at
+  /// 1 and is bumped by the workstation on every rewrite of the session, so a report is stale if
+  /// and only if its revision is below the one already stored - no guessing from logout times.
+  /// Zero means the report predates the counter (an agent still on an older build), which the
+  /// ingest guard reads as "unordered" and falls back to the logout-based rules for.
+  ///
+  /// Only ingest advances it. The reaper writes an inferred logout without touching it, because
+  /// a server-side guess is not a new agent snapshot and must not raise the bar that the next
+  /// genuine one has to clear.
+  revision Int @default(0)
 
   /// Local calendar date the session belongs to, for day-grained attendance reporting.
   workDate DateTime @db.Date
