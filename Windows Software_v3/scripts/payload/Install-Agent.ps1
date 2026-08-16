@@ -286,6 +286,11 @@ function Get-AgentService {
 .DESCRIPTION
     The service supervises the host, so the host has to be stopped explicitly - otherwise it keeps
     running in the employee's session until logoff and holds its own executable open.
+
+    Stop-Process only signals termination; it returns before Windows has torn the process down and
+    released its image. Deleting or overwriting the host executable in that window fails with
+    "Access is denied" (an UnauthorizedAccessException, not a sharing violation), which is exactly
+    the uninstall failure this waits out with Wait-Process.
 #>
 function Stop-AgentProcess {
     $service = Get-AgentService
@@ -305,8 +310,42 @@ function Stop-AgentProcess {
         }
     }
 
-    Get-Process -Name $HostProcessName -ErrorAction SilentlyContinue |
-        Stop-Process -Force -ErrorAction SilentlyContinue
+    # One host per interactive session, so on a multi-user machine this is a set, not a single
+    # process. Wait on all of them by Id after signalling, so every image lock is gone before the
+    # caller touches Program Files.
+    $hostProcesses = @(Get-Process -Name $HostProcessName -ErrorAction SilentlyContinue)
+    if ($hostProcesses.Count -gt 0) {
+        Write-Step 'Stopping the user-session host...'
+        $hostProcesses | Stop-Process -Force -ErrorAction SilentlyContinue
+        Wait-Process -Id $hostProcesses.Id -Timeout $ServiceStopTimeoutSeconds -ErrorAction SilentlyContinue
+    }
+}
+
+<#
+.SYNOPSIS
+    Deletes a directory tree, retrying while a just-terminated process still holds a file in it.
+.DESCRIPTION
+    A killed process releases its image asynchronously, so a delete immediately afterwards fails
+    with "Access is denied". Retrying is what turns that race into a short wait, and matches how
+    Copy-PayloadFile handles the same asynchrony on the write side.
+#>
+function Remove-DirectoryTree {
+    param([Parameter(Mandatory)][string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) { return }
+
+    for ($attempt = 1; $attempt -le $FileLockRetryCount; $attempt++) {
+        try {
+            Remove-Item -LiteralPath $Path -Recurse -Force
+            return
+        }
+        catch [System.UnauthorizedAccessException], [System.IO.IOException] {
+            if ($attempt -eq $FileLockRetryCount) {
+                throw "'$Path' is still in use after $FileLockRetryCount attempts. Reboot the workstation and try again."
+            }
+            Start-Sleep -Milliseconds $FileLockRetryMilliseconds
+        }
+    }
 }
 
 <#
@@ -509,7 +548,7 @@ function Invoke-Uninstall {
 
     if (Test-Path -LiteralPath $InstallDir) {
         Write-Step "Deleting $InstallDir..."
-        Remove-Item -LiteralPath $InstallDir -Recurse -Force
+        Remove-DirectoryTree -Path $InstallDir
     }
 
     Unregister-UninstallEntry
@@ -517,7 +556,7 @@ function Invoke-Uninstall {
     if ($PurgeData) {
         if (Test-Path -LiteralPath $DataDir) {
             Write-Step "Deleting $DataDir..."
-            Remove-Item -LiteralPath $DataDir -Recurse -Force
+            Remove-DirectoryTree -Path $DataDir
         }
         Write-Ok 'Collected data and stored credentials deleted.'
     }
@@ -566,7 +605,7 @@ function Invoke-Reinstall {
     }
 
     if (Test-Path -LiteralPath $InstallDir) {
-        Remove-Item -LiteralPath $InstallDir -Recurse -Force
+        Remove-DirectoryTree -Path $InstallDir
     }
 
     $installedBytes = Copy-Payload -PayloadDir $payloadDir
