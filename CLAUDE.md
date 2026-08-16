@@ -5,6 +5,7 @@
 - Code Delivery: Return complete, production-ready code blocks. Do not use placeholders (e.g., // TODO: implement later).
 - Optimization: Prioritize type safety, performance, and readability.
 - Error Handling: Always include robust error handling, logging, and edge-case validation.
+- Windows Software: Always go through the microsoft-learn MCP then develop. After each modification increment Windows Software minor version. After major feature update increment software version.
 
 ---
 
