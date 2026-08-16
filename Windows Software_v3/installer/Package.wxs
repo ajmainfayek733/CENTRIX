@@ -43,18 +43,22 @@
             Message="[ProductName] requires 64-bit Windows." />
 
     <!--
-      Required configuration, enforced for both install modes.
+      Required configuration, enforced only when there is no wizard to collect it.
 
-      In the UI these are filled in on AgentConfigDlg, whose Next button stays disabled until they
-      are valid. In a silent install there is no dialog to enforce anything, so these conditions
-      are what turn a forgotten property into an immediate, named failure instead of a service
-      that installs and then cannot enroll.
+      LaunchConditions run at the very start of the sequence - before AgentConfigDlg, where these
+      values are typed. Requiring them unconditionally therefore aborted the interactive install on
+      the Welcome page, because SERVERURL is necessarily empty that early. The gate is UILevel: a
+      full UI install (UILevel = 5) shows AgentConfigDlg, whose Next button stays disabled until
+      the same three rules are satisfied, so the launch conditions must stand aside for it. A
+      silent or reduced-UI install (UILevel &lt; 5) shows no such dialog, so here the conditions are
+      what turn a forgotten property into an immediate, named failure rather than a service that
+      installs and then cannot enroll.
     -->
-    <Launch Condition="Installed OR SERVERURL"
+    <Launch Condition="Installed OR SERVERURL OR UILevel = 5"
             Message="SERVERURL is required, for example SERVERURL=https://monitoring.example.com" />
-    <Launch Condition="Installed OR ENROLLMENTTOKEN"
+    <Launch Condition="Installed OR ENROLLMENTTOKEN OR UILevel = 5"
             Message="ENROLLMENTTOKEN is required. Take it from the dashboard under Settings - Organization." />
-    <Launch Condition="Installed OR SERVERURL ~&lt;&lt; &quot;https://&quot; OR ALLOWINSECUREHTTP = &quot;1&quot;"
+    <Launch Condition="Installed OR UILevel = 5 OR SERVERURL ~&lt;&lt; &quot;https://&quot; OR ALLOWINSECUREHTTP = &quot;1&quot;"
             Message="SERVERURL must be HTTPS. Pass ALLOWINSECUREHTTP=1 only for a local test server." />
 
     <Feature Id="AgentFeature" Title="Employee Monitor Agent" Level="1">
