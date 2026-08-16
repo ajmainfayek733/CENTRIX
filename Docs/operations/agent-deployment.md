@@ -2,20 +2,77 @@
 
 Installing, updating and removing the Windows agent across a fleet.
 
-There are two supported paths, and they are not alternatives to each other:
+There are three paths, and they are not alternatives to each other:
 
 | | Use for | Artifact |
 |---|---|---|
-| **MSI** | Fleet rollout - GPO, Intune, ConfigMgr - and any install performed by someone who is not the developer | `artifacts/installer/EmployeeMonitorAgent.msi` |
-| **`Deploy-Agent.ps1`** | Development and single-machine work, where publishing and installing in one step is the point | none, installs from `artifacts/agent` |
+| **Bundle** | Fleet rollout - copied to a workstation and installed by double-clicking `install.bat`, or driven unattended from GPO/Intune/PDQ. **No .NET runtime or SDK on the target.** | `artifacts/deploy/EmployeeMonitorAgent-<version>/` (and `.zip`) |
+| **MSI** | GPO/Intune/ConfigMgr where a native MSI is required. **Currently under repair** - the configuration page does not surface its fields; use the bundle until this is fixed | `artifacts/installer/EmployeeMonitorAgent.msi` |
+| **`Deploy-Agent.ps1`** | Development and single-machine work on the build box, where publishing and installing in one step is the point | none, installs from `artifacts/agent` |
 
-Both write their configuration through the **same** entry point in the agent
-(`EmployeeMonitor.Service.exe --configure`), so a machine installed either way ends up with an
-identical layout. Both require **elevation**.
+All three write their configuration through the **same** entry point in the agent
+(`EmployeeMonitor.Service.exe --configure`), so a machine installed any way ends up with an
+identical layout. All require **elevation**.
+
+The bundle is the recommended fleet artifact: it is fully self-contained, so the 30+ target
+workstations need nothing installed beforehand, and installing only copies files and configures the
+service - it never builds anything.
 
 ---
 
-## 1. The MSI
+## 1. The bundle (recommended)
+
+Built by `.\scripts\Deploy-Agent.ps1 -Action Bundle -Compress`, which publishes both executables
+self-contained and then assembles a redistributable folder:
+
+```
+EmployeeMonitorAgent-<version>/
+    install.bat                     start here - double-click it
+    Install-Agent.ps1               the installer; install.bat calls it
+    EmployeeMonitor.Service.exe     the SYSTEM service (carries its own .NET runtime)
+    EmployeeMonitor.Host.exe        the per-user session process
+    appsettings.json                logging configuration
+    README.txt                      operator instructions
+```
+
+`-Compress` also writes `EmployeeMonitorAgent-<version>.zip`. The build filters out `*.pdb` and
+`appsettings.Development.json`, so nothing developer-only reaches a workstation.
+
+### On one machine
+
+Copy the whole folder to the workstation (USB stick or file share), double-click `install.bat`,
+approve the elevation prompt, choose **[1] Install**, and type the server address and enrollment
+token when asked. The menu also offers reinstall, uninstall, uninstall-with-purge, status and quit.
+
+`install.bat` self-elevates: launched without administrator rights it re-launches itself through
+UAC rather than failing. The prompts for server URL, token and insecure-HTTP live in the PowerShell
+half, so a pasted token containing `&`, `^` or `%` is not mangled by `cmd`.
+
+### Across the fleet, unattended
+
+Put the folder on a share and run, elevated, on each machine:
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass ^
+  -File "\\fileserver\deploy\EmployeeMonitorAgent-<version>\Install-Agent.ps1" ^
+  -Action Install ^
+  -ServerUrl https://monitoring.example.com ^
+  -EnrollmentToken %ENROLL_TOKEN%
+```
+
+That form prompts for nothing; exit code 0 means success. `install.bat <action>` (one of `install`,
+`reinstall`, `uninstall`, `uninstall-purge`, `status`) does the same after self-elevating.
+
+The install registers an **Add/Remove Programs** entry (spec section 3: the agent must be
+discoverable, never disguised), whose uninstall command points at a copy of `install.bat` placed
+beside the binaries. Uninstall from there leaves `%ProgramData%\EmployeeMonitor` in place unless
+launched with the purge option.
+
+## 2. The MSI
+
+> **Status:** under repair. The interactive configuration page does not currently render the server
+> address, token and insecure-HTTP fields. Use the bundle for rollouts until this is fixed. The
+> reference below describes the intended behaviour.
 
 Built by `.\scripts\Deploy-Agent.ps1 -Action Package`, which publishes the agent and then builds
 `installer\EmployeeMonitor.Installer.wixproj` around the published output.
@@ -56,15 +113,20 @@ if that is what you want.
 Upgrades are major upgrades: install the new MSI over the old one and it replaces it, keeping
 `%ProgramData%` - so no re-enrollment and nothing queued is lost.
 
-## 2. The script
+## 3. The build script
+
+Runs on the build box, where the .NET SDK is. Its `Install`, `Uninstall` and `Status` actions call
+`scripts\payload\Install-Agent.ps1` - the same script the bundle ships - so a developer machine and
+a workstation follow one code path.
 
 | Action | Does |
 |---|---|
 | `-Action Publish` | Builds both executables self-contained into `artifacts/agent` |
+| `-Action Bundle [-Compress]` | Publishes, then assembles the redistributable folder (and `.zip`) into `artifacts/deploy` |
 | `-Action Package` | Publishes, then builds the MSI into `artifacts/installer` |
-| `-Action Install` | Publishes, copies to Program Files, writes config, sets ACLs, registers the service with recovery options, starts it |
+| `-Action Install` | Publishes, then installs on this machine from the fresh output |
 | `-Action Uninstall [-PurgeData]` | Stops and removes the service; `-PurgeData` also deletes `%ProgramData%\EmployeeMonitor` |
-| `-Action Status` | Reports service state and installed version |
+| `-Action Status` | Reports service state, version, server, enrollment and queue depth |
 
 ```powershell
 cd "Windows Software_v3"
@@ -73,14 +135,10 @@ cd "Windows Software_v3"
     -EnrollmentToken $env:ENROLL_TOKEN
 ```
 
-The script is **unattended-safe and idempotent**, so it can be pushed via GPO startup script,
-Intune or PDQ - though for a fleet the MSI is the better artifact, because it gives Windows a
-supported uninstall and upgrade path that a file copy does not.
-
 `-AllowInsecureHttp` permits a plain-HTTP server address. Local testing only - the service refuses
 one otherwise, because the spec requires TLS in production.
 
-## 3. Fleet rollout order
+## 4. Fleet rollout order
 
 1. **Create the organization.** `POST /v1/dashboard/organizations` returns the enrollment token
    **once**. Store it; only its HMAC is persisted.
@@ -94,7 +152,7 @@ one otherwise, because the spec requires TLS in production.
 **Step 4 is not cosmetic.** Until a device is assigned it sits on the hidden "Unassigned Devices"
 placeholder employee: its telemetry is stored but never reaches per-employee reports.
 
-## 4. What happens on the wire
+## 5. What happens on the wire
 
 Each agent trades the org token for its **own** 32-byte API key, stored DPAPI-protected at
 `LocalMachine` scope so the SYSTEM service can read it at boot before any user logs on. Only the
@@ -107,7 +165,7 @@ Two properties worth knowing:
 - **The kill switch survives reinstall.** A deactivated device gets 403 at enrollment, so
   reinstalling is not a way around deactivation.
 
-## 5. Token rotation
+## 6. Token rotation
 
 `POST /v1/dashboard/organizations/:id/enrollment-token` issues a new token. Already-issued device
 keys keep working.
@@ -116,7 +174,7 @@ keys keep working.
 later loses `device.key` cannot re-enroll until you push a new config. Rotate after rollout if you
 want to limit the shared secret's exposure, but plan to redistribute config.
 
-## 6. Installed layout
+## 7. Installed layout
 
 ```
 %ProgramFiles%\Employee Monitor\        both executables, published side by side
@@ -128,8 +186,9 @@ want to limit the shared secret's exposure, but plan to redistribute config.
     logs\                               service-<date>.log, host-s<session>-<date>.log
 ```
 
-The layout and its ACLs are applied by `EmployeeMonitor.Service.exe --configure`, which both
-install paths call - the MSI from a deferred custom action, the script directly. It is in the agent
+The layout and its ACLs are applied by `EmployeeMonitor.Service.exe --configure`, which every
+install path calls - the bundle and `Deploy-Agent.ps1` through `Install-Agent.ps1`, the MSI from a
+deferred custom action. It is in the agent
 rather than in either installer because the service depends on this layout at runtime, so there is
 one definition of it, in the codebase that has to agree with it. Identities are resolved from
 well-known SIDs rather than names like `BUILTIN\Users`, which do not exist on a localized Windows.
@@ -147,15 +206,15 @@ ACLs applied:
 Both executables must land in the **same folder** - the supervisor resolves
 `EmployeeMonitor.Host.exe` next to the service executable.
 
-## 7. Service recovery
+## 8. Service recovery
 
-Restart on failure, with the failure counter reset daily. **The two install paths differ slightly**
-in the delay, because they configure the SCM through different mechanisms:
+Restart on failure, with the failure counter reset daily. **The install paths differ slightly** in
+the delay, because they configure the SCM through different mechanisms:
 
 | Path | Recovery actions |
 |---|---|
 | MSI (`util:ServiceConfig`) | restart after 5 s on each of the first three failures |
-| `Deploy-Agent.ps1` (`sc.exe failure`) | restart after 5 s twice, then 60 s |
+| Bundle / `Deploy-Agent.ps1` (`sc.exe failure`) | restart after 5 s twice, then 60 s |
 
 The daily reset is the part that matters either way: a machine that crashes once a week never
 accumulates enough failures to stop being restarted, while a genuine crash loop stops after the
@@ -165,7 +224,7 @@ Separately, `HostSupervisorWorker` keeps the user-session host alive, checking e
 reacting to `SessionSwitch` events so a new user's host comes up in about a second. After 5 fast
 failures it widens to a 5-minute backoff rather than spamming the Event Log.
 
-## 8. Build constraints
+## 9. Build constraints
 
 Both executables publish self-contained, `win-x64`, single-file, **untrimmed**.
 
@@ -191,13 +250,17 @@ Two WiX behaviours worth knowing before editing the authoring, because both fail
 - **`ICE61` is suppressed**, and only that one, because `AllowSameVersionUpgrades` necessarily
   puts the product's own version in its upgrade range.
 
-## 9. Updating
+## 10. Updating
+
+**Bundle:** copy the newer bundle to the machine and choose **[2] Reinstall** (or run
+`install.bat reinstall`). It stops the service, replaces the binaries and settings, and restarts,
+leaving `%ProgramData%` untouched.
 
 **MSI:** install the newer package over the installed one. `MajorUpgrade` removes the old version
 first, and `ServiceControl` stops the service so the executable lock is released before the new
 file is written.
 
-**Script:** re-run `-Action Install`. It stops the service, replaces the binaries and restarts.
+**Build script:** re-run `-Action Install`. It stops the service, replaces the binaries and restarts.
 
 Either way the device credential, queue and configuration in `%ProgramData%` are untouched, so no
 re-enrollment occurs and nothing queued is lost.

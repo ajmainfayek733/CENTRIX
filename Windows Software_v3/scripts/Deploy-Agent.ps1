@@ -1,24 +1,26 @@
 <#
 .SYNOPSIS
-    Publishes, installs, and manages the Employee Monitor agent on a workstation.
+    Builds the Employee Monitor agent and the package that installs it on a workstation.
 
 .DESCRIPTION
-    Covers the deployment steps in spec section 11: a scripted install that can be run
-    unattended across the fleet, a config file written at install time carrying the server
-    address and enrollment token, and a documented uninstall/rollback path.
+    The build-machine half of the deployment story (spec section 11). It needs the .NET SDK, so
+    it runs where the source is - never on a workstation.
 
-    Must be run elevated: it registers a Windows service and writes under ProgramData.
+    The machine-side half is scripts\payload\Install-Agent.ps1, which needs nothing but Windows.
+    This script's Install, Uninstall and Status actions call that script rather than reimplementing
+    it, so a developer machine and a workstation follow one code path.
 
 .PARAMETER Action
     Publish   - build both executables self-contained into .\artifacts\agent
+    Bundle    - publish, then assemble the redistributable folder in .\artifacts\deploy
     Package   - publish, then build the MSI into .\artifacts\installer
-    Install   - publish, copy to Program Files, write config, register and start the service
+    Install   - publish, then install on this machine from the freshly published output
     Uninstall - stop and remove the service, and optionally delete collected data
     Status    - show the service state and what the agent has queued locally
 
-    Package produces the artifact for a fleet rollout; Install is the scripted path for a single
-    machine and for development. Both end up with the same layout on disk, because both write
-    their configuration through the agent's own --configure step.
+    Bundle is the artifact for a fleet rollout: a folder that is copied to a workstation and
+    installed by double-clicking install.bat, with no build step and no .NET prerequisite on the
+    target. Install is the scripted path for development on this machine.
 
 .PARAMETER ServerUrl
     Base URL of the monitoring server, e.g. https://monitoring.example.com
@@ -34,56 +36,128 @@
 .PARAMETER PurgeData
     With Uninstall, also delete the local database, screenshot spool and stored credential.
 
-.EXAMPLE
-    .\Deploy-Agent.ps1 -Action Install -ServerUrl https://monitoring.example.com -EnrollmentToken abc123...
+.PARAMETER Compress
+    With Bundle, also produce a .zip of the bundle folder for copying to workstations.
 
 .EXAMPLE
-    # Unattended rollout, e.g. from a GPO startup script
-    .\Deploy-Agent.ps1 -Action Install -ServerUrl https://monitoring.example.com -EnrollmentToken $env:ENROLL_TOKEN
+    # Produce the folder that gets copied to all 30 workstations
+    .\Deploy-Agent.ps1 -Action Bundle -Compress
+
+.EXAMPLE
+    .\Deploy-Agent.ps1 -Action Install -ServerUrl https://monitoring.example.com -EnrollmentToken abc123...
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('Publish', 'Package', 'Install', 'Uninstall', 'Status')]
+    [ValidateSet('Publish', 'Bundle', 'Package', 'Install', 'Uninstall', 'Status')]
     [string]$Action,
 
     [string]$ServerUrl,
     [string]$EnrollmentToken,
     [switch]$AllowInsecureHttp,
-    [switch]$PurgeData
+    [switch]$PurgeData,
+    [switch]$Compress
 )
 
 $ErrorActionPreference = 'Stop'
 
-$ServiceName  = 'EmployeeMonitorAgent'
-$DisplayName  = 'Employee Monitor Agent'
-$InstallDir   = Join-Path $env:ProgramFiles 'Employee Monitor'
-$DataDir      = Join-Path $env:ProgramData 'EmployeeMonitor'
 $RepoRoot     = Split-Path -Parent $PSScriptRoot
 $ArtifactDir  = Join-Path $RepoRoot 'artifacts\agent'
 $InstallerDir = Join-Path $RepoRoot 'artifacts\installer'
-$InstallerProject = Join-Path $RepoRoot 'installer\EmployeeMonitor.Installer.wixproj'
+$DeployRoot   = Join-Path $RepoRoot 'artifacts\deploy'
+$PayloadDir   = Join-Path $PSScriptRoot 'payload'
 
-function Assert-Elevated {
-    $identity  = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = [Security.Principal.WindowsPrincipal]::new($identity)
-    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        throw 'This script must be run from an elevated PowerShell session.'
-    }
-}
+$InstallerProject = Join-Path $RepoRoot 'installer\EmployeeMonitor.Installer.wixproj'
+$ServiceProject   = Join-Path $RepoRoot 'src\Agent.Service\Agent.Service.csproj'
+$HostProject      = Join-Path $RepoRoot 'src\Agent.Host\Agent.Host.csproj'
+
+$ServiceExeName = 'EmployeeMonitor.Service.exe'
+$HostExeName    = 'EmployeeMonitor.Host.exe'
+$BundleNamePrefix = 'EmployeeMonitorAgent'
+
+# The installer script is the single implementation of "install on a machine"; this script only
+# decides which copy of it to run.
+$MachineInstaller = Join-Path $PayloadDir 'Install-Agent.ps1'
+
+# Build output and developer-only settings, which must never reach a workstation.
+$ExcludedPayloadPatterns = @('*.pdb', 'appsettings.Development.json')
+
+$BytesPerMegabyte = 1MB
 
 function Invoke-Publish {
     Write-Host 'Publishing agent (self-contained, win-x64)...' -ForegroundColor Cyan
 
     # Both executables publish into the same folder on purpose: HostSupervisorWorker resolves
     # EmployeeMonitor.Host.exe relative to the service's own directory.
-    dotnet publish (Join-Path $RepoRoot 'src\Agent.Service\Agent.Service.csproj') -c Release -o $ArtifactDir --nologo
+    dotnet publish $ServiceProject -c Release -o $ArtifactDir --nologo
     if ($LASTEXITCODE -ne 0) { throw 'Service publish failed.' }
 
-    dotnet publish (Join-Path $RepoRoot 'src\Agent.Host\Agent.Host.csproj') -c Release -o $ArtifactDir --nologo
+    dotnet publish $HostProject -c Release -o $ArtifactDir --nologo
     if ($LASTEXITCODE -ne 0) { throw 'Host publish failed.' }
 
     Write-Host "Published to $ArtifactDir" -ForegroundColor Green
+}
+
+<#
+.SYNOPSIS
+    Assembles the redistributable folder: the runtime files plus the installer that drives them.
+.DESCRIPTION
+    Everything a workstation needs and nothing it does not. The published output is already
+    self-contained and single-file, so this is a copy and a filter rather than a second build -
+    which is the point: the machine that runs install.bat has no SDK, no runtime and, often, no
+    network access to get either.
+#>
+function Invoke-Bundle {
+    Invoke-Publish
+
+    $version = (Get-Item -LiteralPath (Join-Path $ArtifactDir $ServiceExeName)).VersionInfo.ProductVersion
+    $version = ($version -split '\+')[0].Trim()
+    if ([string]::IsNullOrWhiteSpace($version)) { throw 'The published service carries no product version.' }
+
+    $bundleName = "$BundleNamePrefix-$version"
+    $bundleDir  = Join-Path $DeployRoot $bundleName
+
+    Write-Host "Assembling the deployment bundle for $version..." -ForegroundColor Cyan
+
+    # Rebuilt from scratch each time: a stale executable left behind by a previous version is
+    # exactly the file that would get shipped and never noticed.
+    if (Test-Path -LiteralPath $bundleDir) { Remove-Item -LiteralPath $bundleDir -Recurse -Force }
+    New-Item -ItemType Directory -Path $bundleDir -Force | Out-Null
+
+    $runtimeFiles = Get-ChildItem -LiteralPath $ArtifactDir -File | Where-Object {
+        $name = $_.Name
+        -not ($ExcludedPayloadPatterns | Where-Object { $name -like $_ })
+    }
+
+    foreach ($file in $runtimeFiles) {
+        Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $bundleDir $file.Name) -Force
+    }
+
+    foreach ($file in (Get-ChildItem -LiteralPath $PayloadDir -File)) {
+        Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $bundleDir $file.Name) -Force
+    }
+
+    foreach ($required in @($ServiceExeName, $HostExeName, 'install.bat', 'Install-Agent.ps1')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $bundleDir $required))) {
+            throw "The bundle is missing '$required'. Check scripts\payload."
+        }
+    }
+
+    $sizeMb = [math]::Round((Get-ChildItem -LiteralPath $bundleDir -File | Measure-Object -Property Length -Sum).Sum / $BytesPerMegabyte, 1)
+    Write-Host "Bundle: $bundleDir ($sizeMb MB)" -ForegroundColor Green
+
+    if ($Compress) {
+        $zipPath = Join-Path $DeployRoot "$bundleName.zip"
+        Write-Host 'Compressing (this takes a while - the runtime is bundled in)...' -ForegroundColor Cyan
+        if (Test-Path -LiteralPath $zipPath) { Remove-Item -LiteralPath $zipPath -Force }
+        Compress-Archive -Path (Join-Path $bundleDir '*') -DestinationPath $zipPath -CompressionLevel Optimal
+        $zipMb = [math]::Round((Get-Item -LiteralPath $zipPath).Length / $BytesPerMegabyte, 1)
+        Write-Host "Archive: $zipPath ($zipMb MB)" -ForegroundColor Green
+    }
+
+    Write-Host ''
+    Write-Host 'Copy the bundle folder to a workstation and run install.bat as administrator.' -ForegroundColor Gray
+    Write-Host 'No .NET runtime or SDK is required on the target machine.' -ForegroundColor Gray
 }
 
 function Invoke-Package {
@@ -105,132 +179,44 @@ function Invoke-Package {
     Write-Host "  msiexec /i `"$msi`" /qn SERVERURL=https://monitoring.example.com ENROLLMENTTOKEN=<token>" -ForegroundColor Gray
 }
 
-function Write-AgentConfig {
-    # Delegated to the agent's own configure step rather than reimplemented here.
-    #
-    # This used to write the JSON and set the ACLs inline, which made it a second definition of a
-    # layout the service depends on - and one that resolved identities by name ("BUILTIN\Users"),
-    # so it threw on a non-English Windows. The MSI calls the same entry point, so a scripted
-    # install and a packaged install cannot diverge.
-    $serviceExe = Join-Path $InstallDir 'EmployeeMonitor.Service.exe'
+<#
+.SYNOPSIS
+    Runs the machine-side installer against a directory of published binaries.
+#>
+function Invoke-MachineInstaller {
+    param([Parameter(Mandatory)][string[]]$Arguments)
 
-    $arguments = @('--configure', '--server-url', $ServerUrl, '--enrollment-token', $EnrollmentToken)
-    if ($AllowInsecureHttp) { $arguments += '--allow-insecure-http' }
+    if (-not (Test-Path -LiteralPath $MachineInstaller)) {
+        throw "The machine installer is missing from $PayloadDir."
+    }
 
-    & $serviceExe @arguments
-    if ($LASTEXITCODE -ne 0) { throw "Agent configuration failed with exit code $LASTEXITCODE." }
+    & $MachineInstaller @Arguments
+    if ($LASTEXITCODE -ne 0) { throw "The installer exited with code $LASTEXITCODE." }
 }
 
 function Invoke-Install {
-    Assert-Elevated
-
-    if (-not $ServerUrl)       { throw 'Install requires -ServerUrl.' }
-    if (-not $EnrollmentToken) { throw 'Install requires -EnrollmentToken.' }
-
-    if ($ServerUrl -notmatch '^https://' -and -not $AllowInsecureHttp) {
-        throw "ServerUrl must be HTTPS (spec section 9). Pass -AllowInsecureHttp only for a local test server."
-    }
-
     Invoke-Publish
 
-    $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-    if ($existing) {
-        Write-Host 'Stopping the existing service for upgrade...' -ForegroundColor Yellow
-        Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
-        # The SCM releases the executable lock asynchronously; copying too early fails.
-        Start-Sleep -Seconds 2
-    }
+    $arguments = @('-Action', 'Install', '-SourceDir', $ArtifactDir)
+    if ($ServerUrl)         { $arguments += @('-ServerUrl', $ServerUrl) }
+    if ($EnrollmentToken)   { $arguments += @('-EnrollmentToken', $EnrollmentToken) }
+    if ($AllowInsecureHttp) { $arguments += '-AllowInsecureHttp' }
 
-    if (-not (Test-Path $InstallDir)) { New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null }
-    Copy-Item -Path (Join-Path $ArtifactDir '*') -Destination $InstallDir -Recurse -Force
-
-    Write-AgentConfig
-
-    $binaryPath = Join-Path $InstallDir 'EmployeeMonitor.Service.exe'
-
-    if (-not $existing) {
-        Write-Host 'Registering the service...' -ForegroundColor Cyan
-        New-Service -Name $ServiceName `
-                    -BinaryPathName "`"$binaryPath`"" `
-                    -DisplayName $DisplayName `
-                    -Description 'Collects workplace productivity telemetry under company monitoring policy. See the notice in the system tray.' `
-                    -StartupType Automatic | Out-Null
-
-        # Spec section 10: the agent must auto-recover if it crashes. Restart after 5s on the
-        # first two failures, 60s thereafter, and reset the counter daily.
-        & sc.exe failure $ServiceName reset= 86400 actions= restart/5000/restart/5000/restart/60000 | Out-Null
-    }
-
-    Start-Service -Name $ServiceName
-    Write-Host "$DisplayName installed and started." -ForegroundColor Green
-    Write-Host 'The agent will enroll with the server and begin collecting on the next logon.' -ForegroundColor Green
+    Invoke-MachineInstaller -Arguments $arguments
 }
 
 function Invoke-Uninstall {
-    Assert-Elevated
+    $arguments = @('-Action', 'Uninstall')
+    if ($PurgeData) { $arguments += '-PurgeData' }
 
-    $service = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-    if ($service) {
-        Write-Host 'Stopping and removing the service...' -ForegroundColor Cyan
-        Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
-        & sc.exe delete $ServiceName | Out-Null
-        Start-Sleep -Seconds 2
-    }
-    else {
-        Write-Host 'Service is not installed.' -ForegroundColor Yellow
-    }
-
-    # The service supervises the host, so the host has to be stopped explicitly - otherwise
-    # it keeps running in the user's session until logoff.
-    Get-Process -Name 'EmployeeMonitor.Host' -ErrorAction SilentlyContinue |
-        Stop-Process -Force -ErrorAction SilentlyContinue
-
-    if (Test-Path $InstallDir) { Remove-Item -Path $InstallDir -Recurse -Force }
-
-    if ($PurgeData) {
-        if (Test-Path $DataDir) { Remove-Item -Path $DataDir -Recurse -Force }
-        Write-Host 'Collected data and stored credentials deleted.' -ForegroundColor Green
-    }
-    else {
-        Write-Host "Collected data left in $DataDir. Re-run with -PurgeData to remove it." -ForegroundColor Yellow
-    }
-
-    Write-Host 'Uninstall complete.' -ForegroundColor Green
-}
-
-function Invoke-Status {
-    $service = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-    if ($service) {
-        Write-Host "Service : $($service.Status)" -ForegroundColor Cyan
-    }
-    else {
-        Write-Host 'Service : not installed' -ForegroundColor Yellow
-    }
-
-    # Not $host - that is a reserved PowerShell automatic variable and assigning to it throws.
-    $hostProcess = Get-Process -Name 'EmployeeMonitor.Host' -ErrorAction SilentlyContinue
-    Write-Host "Host    : $(if ($hostProcess) { "running (pid $($hostProcess.Id))" } else { 'not running' })" -ForegroundColor Cyan
-
-    $configPath = Join-Path $DataDir 'agent.config.json'
-    if (Test-Path $configPath) {
-        $config = Get-Content $configPath -Raw | ConvertFrom-Json
-        Write-Host "Server  : $($config.serverUrl)" -ForegroundColor Cyan
-    }
-
-    $dbPath = Join-Path $DataDir 'agent.db'
-    if (Test-Path $dbPath) {
-        $size = [math]::Round((Get-Item $dbPath).Length / 1KB, 1)
-        Write-Host "Local DB: $dbPath ($size KB)" -ForegroundColor Cyan
-    }
-
-    $credPath = Join-Path $DataDir 'device.key'
-    Write-Host "Enrolled: $(if (Test-Path $credPath) { 'yes' } else { 'no' })" -ForegroundColor Cyan
+    Invoke-MachineInstaller -Arguments $arguments
 }
 
 switch ($Action) {
     'Publish'   { Invoke-Publish }
+    'Bundle'    { Invoke-Bundle }
     'Package'   { Invoke-Package }
     'Install'   { Invoke-Install }
     'Uninstall' { Invoke-Uninstall }
-    'Status'    { Invoke-Status }
+    'Status'    { Invoke-MachineInstaller -Arguments @('-Action', 'Status') }
 }

@@ -14,8 +14,8 @@
 
     <!-- Product identity. AgentVersion is reported to the backend on every enrollment and
          shows up in the dashboard's device inventory, so bump it with each release. -->
-    <Version>3.0.0</Version>
-    <AgentVersion>3.0.0</AgentVersion>
+    <Version>3.2.0</Version>
+    <AgentVersion>3.2.0</AgentVersion>
     <Company>Employee Monitor</Company>
     <Product>Employee Monitor Agent</Product>
 
