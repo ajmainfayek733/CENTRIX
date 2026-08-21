@@ -2,7 +2,18 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutGrid, Users, Bell, Monitor, Settings, type LucideIcon } from 'lucide-react';
+import {
+  LayoutGrid,
+  Users,
+  Building2,
+  CalendarDays,
+  ChartColumn,
+  Monitor,
+  Bell,
+  FileText,
+  Settings,
+  type LucideIcon,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { UserRole } from '@/lib/session';
 
@@ -12,11 +23,22 @@ import type { UserRole } from '@/lib/session';
  * horizontal variant keeps its text label too, rather than collapsing to icons on small screens
  * where a bare glyph is hardest to interpret.
  */
-const LINKS: readonly { href: string; label: string; icon: LucideIcon; adminOnly?: boolean }[] = [
+const LINKS: readonly {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  adminOnly?: boolean;
+  /** Laid out from the blueprint but not yet wired to an endpoint - see the note below. */
+  template?: boolean;
+}[] = [
   { href: '/overview', label: 'Overview', icon: LayoutGrid },
   { href: '/employees', label: 'Employees', icon: Users },
-  { href: '/alerts', label: 'Alerts', icon: Bell },
+  { href: '/departments', label: 'Departments', icon: Building2, template: true },
+  { href: '/attendance', label: 'Attendance', icon: CalendarDays, template: true },
+  { href: '/performance', label: 'Performance', icon: ChartColumn, template: true },
   { href: '/devices', label: 'Devices', icon: Monitor },
+  { href: '/alerts', label: 'Alerts', icon: Bell },
+  { href: '/reports', label: 'Reports', icon: FileText, template: true },
   // Only a super_admin can change what the agents do; the backend enforces the same rule.
   { href: '/settings', label: 'Settings', icon: Settings, adminOnly: true },
 ];
@@ -61,6 +83,20 @@ export function NavLinks({
               aria-hidden
             />
             {link.label}
+            {/*
+              A visible marker, not just a tooltip: these screens are laid out but carry no live
+              data, and on a monitoring tool an operator has to be able to tell that from the
+              navigation rather than after reading a screen of placeholders. Dropped in the
+              compact bar, where there is no room for it.
+            */}
+            {link.template && isVertical && (
+              <span
+                className="ml-auto rounded-full bg-surface-muted px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-wider text-text-tertiary"
+                title="Laid out from the design blueprint; not yet connected to the API"
+              >
+                WIP
+              </span>
+            )}
           </Link>
         );
       })}

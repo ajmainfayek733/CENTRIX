@@ -133,14 +133,32 @@ topbar instead - dropping navigation on a phone leaves no way between screens. E
 the two navs is in the accessibility tree at any width, since `hidden`/`md:hidden` resolve to
 `display: none`.
 
-### Navigation is five items, not nine
+### Navigation is nine items, four of them templates
 
-The prototype's rail lists Departments, Attendance, Performance and Reports. The API behind this
-dashboard exposes `overview`, `roster`, `employees/:id`, `employees/:id/activity`, `alerts`,
-`usb-events` and `screenshots` - and nothing else (`Backend/src/modules/report/`). Departments
-and Performance would be derivable from the roster; Attendance exists only inside employee
-detail; Reports ("generate and download") has no endpoint at all. None were built, because a
-monitoring tool that offers controls which do nothing is worse than one that offers fewer.
+The rail follows the blueprint: Overview, Employees, Departments, Attendance, Performance,
+Devices, Alerts, Reports, Settings.
+
+Four of those have no endpoint behind them. `Backend/src/modules/report/` exposes `overview`,
+`roster`, `employees/:id`, `employees/:id/activity`, `alerts`, `usb-events` and `screenshots`,
+and nothing else. Departments, Attendance, Performance and Reports are therefore **laid out but
+not connected**, and they are marked as such in two places:
+
+- a `WIP` chip beside the label in the rail, so the state is visible before the click;
+- a `TemplateNotice` banner at the top of the screen, above the content.
+
+Every placeholder on those screens names `Department A` / `Employee A`, never a real person or
+team. These screens carry attendance and productivity readings, and a screenshot of one is
+exactly the kind of artefact that ends up in a conversation about a real employee - so no
+invented reading is ever attached to a real name. Status cells read `No data` rather than
+`Present` or `Absent`, because asserting either with nothing behind it would be inventing an
+attendance record.
+
+The Reports screen's download buttons are genuinely `disabled` with a title explaining why. A
+button that looks live and silently does nothing is worse here than elsewhere: someone will
+click it, assume a file is coming, and act on its absence.
+
+When an endpoint lands, the screen becomes an async server component reading through `apiGet`,
+and its `PLACEHOLDER_*` constant and `TemplateNotice` are deleted in the same commit.
 
 ---
 
@@ -148,7 +166,7 @@ monitoring tool that offers controls which do nothing is worse than one that off
 
 | Prototype feature | Why not |
 |---|---|
-| Chart.js via CDN | Not a dependency here, and the two charts belong to screens that have no endpoint |
+| Chart.js via CDN | ~200KB plus a third-party request for two figures that do not animate or hit-test. `components/charts.tsx` draws the same bar and doughnut shapes with CSS and inline SVG, on the server |
 | Search pill in the topbar | There is no search endpoint - it would be a dead control |
 | Notification bell + badge | No notification store exists to count |
 | `[data-theme='dark']` | This app keys dark mode off a `.dark` class on `<html>` with a no-flash inline script; only the palette values changed |

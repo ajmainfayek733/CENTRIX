@@ -81,9 +81,9 @@ function Shell({ user, children }: { user?: SessionUser; children: ReactNode }) 
             className="grid size-7 shrink-0 place-items-center rounded-md bg-linear-135 from-brand-strong to-brand-vivid text-[13px] font-bold text-white shadow-[0_4px_14px_rgba(14,165,233,0.35)]"
             aria-hidden
           >
-            EM
+            C
           </span>
-          Employee Monitor
+          C E N T R I X
         </Link>
 
         {/* No role means no session was resolved, and a nav that cannot honour RBAC is worse
@@ -119,7 +119,7 @@ function Shell({ user, children }: { user?: SessionUser; children: ReactNode }) 
               <NavLinks role={user.role} orientation="horizontal" />
             ) : (
               <Link href="/overview" className="text-sm font-semibold text-text-primary">
-                Employee Monitor
+                C E N T R I X
               </Link>
             )}
           </div>
