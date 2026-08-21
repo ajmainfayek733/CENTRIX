@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { apiGet } from '@/lib/api-client';
 import { getSessionUser } from '@/lib/session';
-import { Card, EmptyState } from '@/components/ui';
+import { Card, PageHeader, Notice, EmptyState } from '@/components/ui';
 import type { CategoryRow, Organization, Policy } from '@/types/api';
 import { PolicyForm } from './PolicyForm';
 import { CategoryEditor } from './CategoryEditor';
@@ -39,20 +39,16 @@ export default async function SettingsPage() {
   ]);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold">Settings</h1>
-        <p className="mt-0.5 text-sm text-text-secondary">
-          {organization.name} - policy version {policy.version}
-        </p>
-      </div>
+    <div className="space-y-3.5">
+      <PageHeader
+        title="Settings"
+        subtitle={`${organization.name} - policy version ${policy.version}`}
+      />
 
-      <div className="rounded-lg border border-border bg-surface-muted px-5 py-3.5">
-        <p className="text-sm text-text-secondary">
-          Saving any change increments the policy version. Agents apply it on their next
-          heartbeat, and employees are asked to acknowledge the updated monitoring notice.
-        </p>
-      </div>
+      <Notice>
+        Saving any change increments the policy version. Agents apply it on their next heartbeat,
+        and employees are asked to acknowledge the updated monitoring notice.
+      </Notice>
 
       <PolicyForm organizationId={organization.id} policy={policy} />
       <CategoryEditor organizationId={organization.id} categories={categories} />

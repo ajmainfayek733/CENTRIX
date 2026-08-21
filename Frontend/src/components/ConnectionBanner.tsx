@@ -37,7 +37,7 @@ export function ConnectionBanner() {
 
   return (
     <div
-      className="mb-6 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3"
+      className="mb-3.5 rounded-lg border border-warning/40 bg-warning/10 px-[18px] py-3.5"
       // Polite rather than assertive: this is a status change, not something demanding an
       // immediate response, and it must not interrupt whatever a screen reader is mid-sentence on.
       role="status"

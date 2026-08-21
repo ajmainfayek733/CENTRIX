@@ -1,6 +1,7 @@
 'use client';
 
 import { useTransition, useState } from 'react';
+import { Button } from '@/components/ui';
 import { setDeviceActive } from './actions';
 
 /**
@@ -26,18 +27,18 @@ export function DeviceActions({ deviceId, isActive }: { deviceId: string; isActi
   return (
     <div className="flex items-center justify-end gap-2">
       {error && <span className="text-xs text-danger">{error}</span>}
-      <button
+      <Button
         type="button"
+        size="sm"
+        variant="secondary"
         onClick={toggle}
         disabled={pending}
-        className={`rounded-md border px-2.5 py-1 text-xs transition-colors disabled:opacity-50 ${
-          isActive
-            ? 'border-border text-text-secondary hover:border-danger hover:text-danger'
-            : 'border-brand text-brand hover:bg-brand/10'
-        }`}
+        className={
+          isActive ? 'hover:border-danger/60 hover:text-danger' : 'border-brand/60 text-brand'
+        }
       >
-        {pending ? '...' : isActive ? 'Deactivate' : 'Reactivate'}
-      </button>
+        {pending ? 'Working...' : isActive ? 'Deactivate' : 'Reactivate'}
+      </Button>
     </div>
   );
 }

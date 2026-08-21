@@ -3,7 +3,7 @@
 import { useCallback } from 'react';
 import { LogScroller, type LogPage } from '@/components/LogScroller';
 import { formatDuration, formatTime } from '@/lib/format';
-import { TableWrap, Th, Td, TagBadge } from '@/components/ui';
+import { TableWrap, TABLE_CLASS, Th, Td, TagBadge } from '@/components/ui';
 import type { ActivityType, TimelineRow } from '@/types/api';
 
 /** Types that are not foreground work; rendered dimmed and without a productivity tag. */
@@ -30,7 +30,7 @@ export function TimelineTable({
 
   return (
     <TableWrap>
-      <table className="w-full min-w-[720px] border-collapse">
+      <table className={`${TABLE_CLASS} min-w-[720px]`}>
         <thead>
           <tr>
             <Th>Time</Th>
@@ -50,7 +50,7 @@ export function TimelineTable({
         emptyMessage="No activity recorded in this period."
       >
         {(rows) => (
-          <table className="w-full min-w-[720px] border-collapse">
+          <table className={`${TABLE_CLASS} min-w-[720px]`}>
             <tbody>
               {rows.map((row) => {
                 const isIdle = NON_WORKING.includes(row.type);
@@ -76,7 +76,7 @@ export function TimelineTable({
                     <tr key={visit.id} className="text-xs">
                       <Td />
                       <Td muted>
-                        <span className="pl-4 text-text-secondary">{'->'} {visit.domain}</span>
+                        <span className="pl-4 text-text-tertiary">{'->'} {visit.domain}</span>
                       </Td>
                       <Td muted>
                         <span className="block max-w-[26rem] truncate">

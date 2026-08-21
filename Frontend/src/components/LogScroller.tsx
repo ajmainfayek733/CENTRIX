@@ -61,26 +61,26 @@ export function LogScroller<T>({
       aria-busy={loading}
     >
       {rows.length === 0 ? (
-        <p className="py-8 text-center text-sm text-text-secondary">{emptyMessage}</p>
+        <p className="py-10 text-center text-sm text-text-secondary">{emptyMessage}</p>
       ) : (
         children(rows)
       )}
 
       <div ref={sentinelRef} aria-hidden />
 
-      {loading && <p className="py-3 text-center text-xs text-text-secondary">Loading more...</p>}
+      {loading && <p className="py-3 text-center text-xs text-text-tertiary">Loading more...</p>}
 
       {error && (
         <p className="py-3 text-center text-xs text-danger">
           {error}{' '}
-          <button type="button" onClick={() => void loadMore()} className="underline">
+          <button type="button" onClick={() => void loadMore()} className="font-medium underline">
             Retry
           </button>
         </p>
       )}
 
       {!hasMore && rows.length > 0 && (
-        <p className="py-3 text-center text-xs text-text-secondary">End of log.</p>
+        <p className="py-3 text-center text-xs text-text-tertiary">End of log.</p>
       )}
     </div>
   );

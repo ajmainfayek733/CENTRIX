@@ -129,6 +129,7 @@ That is how the degraded-mode behaviour in [resilience.md](resilience.md) was ve
 
 - [session-and-auth.md](session-and-auth.md) - the cookie rule and its consequences
 - [live-updates.md](live-updates.md) - sockets and scroll windows
+- [design-system.md](design-system.md) - surfaces, palette, type and the component vocabulary
 - [resilience.md](resilience.md) - behaviour when the backend is down
 - [spec.md](spec.md) - the original governing specification
 - [../backend/reporting.md](../backend/reporting.md) - the endpoints behind these screens

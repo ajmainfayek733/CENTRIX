@@ -50,44 +50,92 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   );
 }
 
+/** The first letter of whatever we can address this person by, for the sidebar avatar. */
+function initialOf(user: SessionUser): string {
+  return (user.name || user.email || '?').trim().charAt(0).toUpperCase();
+}
+
 /**
  * The chrome, rendered with or without a resolved session.
  *
  * Shared so an outage keeps the header, the theme and a way out of the page. A degraded screen
  * that also strips the navigation traps whoever hits it on the one screen that is broken.
+ *
+ * Both the rail and the topbar are `sticky` against the document scroll rather than wrapping the
+ * content in its own scroll container. An inner scroller looks the same until you use it: it
+ * breaks scroll restoration between navigations, and it hides the page from the browser's own
+ * find-in-page scrolling.
  */
 function Shell({ user, children }: { user?: SessionUser; children: ReactNode }) {
   return (
-    <div className="min-h-dvh">
-      <header className="sticky top-0 z-10 border-b border-border bg-background/85 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center gap-6 px-6 py-3">
-          <Link href="/overview" className="text-sm font-semibold whitespace-nowrap">
-            Employee Monitor
-          </Link>
+    <div className="flex min-h-dvh gap-3 p-3.5">
+      {/* The rail. Hidden below md, where the same links render inside the topbar instead -
+          the blueprint drops the navigation entirely at that width, which leaves a phone with
+          no way between screens. */}
+      <aside className="glass glass-heavy sticky top-3.5 hidden h-[calc(100dvh-1.75rem)] w-[230px] shrink-0 flex-col gap-[3px] rounded-lg px-2.5 py-[18px] md:flex">
+        <Link
+          href="/overview"
+          className="flex items-center gap-2.5 px-3 pb-5 pt-1.5 text-[14.5px] font-semibold tracking-[-0.3px] text-text-primary"
+        >
+          <span
+            className="grid size-7 shrink-0 place-items-center rounded-md bg-linear-135 from-brand-strong to-brand-vivid text-[13px] font-bold text-white shadow-[0_4px_14px_rgba(14,165,233,0.35)]"
+            aria-hidden
+          >
+            EM
+          </span>
+          Employee Monitor
+        </Link>
 
-          {/* No role means no session was resolved, and a nav that cannot honour RBAC is worse
-              than none - it would offer links that 403 on arrival. */}
-          {user && <NavLinks role={user.role} />}
+        {/* No role means no session was resolved, and a nav that cannot honour RBAC is worse
+            than none - it would offer links that 403 on arrival. */}
+        {user && <NavLinks role={user.role} />}
 
-          <div className="ml-auto flex items-center gap-3">
-            {user && (
-              <div className="hidden text-right sm:block">
-                <p className="text-xs font-medium leading-tight">{user.name || user.email}</p>
-                <p className="text-[11px] leading-tight text-text-secondary">
-                  {user.role.replace('_', ' ')}
+        {user && (
+          <div className="mt-auto border-t border-border px-1.5 pb-0.5 pt-3">
+            <div className="flex items-center gap-2.5 rounded-md p-2">
+              <span
+                className="grid size-8 shrink-0 place-items-center rounded-full bg-linear-135 from-brand-strong to-violet-500 text-xs font-semibold text-white"
+                aria-hidden
+              >
+                {initialOf(user)}
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-[13px] font-medium text-text-primary">
+                  {user.name || user.email}
                 </p>
+                <p className="text-[11.5px] text-text-tertiary">{user.role.replace('_', ' ')}</p>
               </div>
+            </div>
+          </div>
+        )}
+      </aside>
+
+      <div className="flex min-w-0 flex-1 flex-col gap-3">
+        <header className="glass sticky top-3.5 z-20 flex min-h-[54px] items-center justify-between gap-4 rounded-lg px-[18px] py-2">
+          {/* Below md this carries the navigation; above it, the brand lives in the rail and
+              this side stays empty so the topbar reads as a quiet strip. */}
+          <div className="flex min-w-0 items-center gap-3 md:hidden">
+            {user ? (
+              <NavLinks role={user.role} orientation="horizontal" />
+            ) : (
+              <Link href="/overview" className="text-sm font-semibold text-text-primary">
+                Employee Monitor
+              </Link>
             )}
+          </div>
+          <div className="hidden md:block" />
+
+          <div className="flex shrink-0 items-center gap-2.5">
             <ThemeToggle />
             {user && <SignOutButton />}
           </div>
-        </div>
-      </header>
+        </header>
 
-      <main className="mx-auto max-w-7xl px-6 py-8">
-        {user && <ConnectionBanner />}
-        {children}
-      </main>
+        <main className="flex-1 pb-2">
+          {user && <ConnectionBanner />}
+          {children}
+        </main>
+      </div>
     </div>
   );
 }

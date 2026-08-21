@@ -1,6 +1,6 @@
 import { apiGet } from '@/lib/api-client';
 import { getSessionUser } from '@/lib/session';
-import { Card, TableWrap, Th, Td, Badge, EmptyState } from '@/components/ui';
+import { Card, PageHeader, Notice, TableWrap, TABLE_CLASS, Th, Td, Badge, EmptyState } from '@/components/ui';
 import { LiveDeviceStatus, LiveStatusDot } from '@/components/LiveDeviceStatus';
 import type { DeviceRow, EmployeeSummary } from '@/types/api';
 import { DeviceActions } from './DeviceActions';
@@ -30,22 +30,22 @@ export default async function DevicesPage() {
   const isAdmin = user?.role === 'super_admin';
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold">Devices</h1>
-        <p className="mt-0.5 text-sm text-text-secondary">
-          {devices.length} enrolled - {unassigned.length} awaiting assignment
-        </p>
-      </div>
+    <div className="space-y-3.5">
+      <PageHeader
+        title="Devices"
+        subtitle={`${devices.length} enrolled - ${unassigned.length} awaiting assignment`}
+      />
 
       {unassigned.length > 0 && (
         <Card title="Awaiting assignment">
-          <p className="mb-4 text-sm text-text-secondary">
+          <Notice tone="warning">
             These workstations enrolled with the org token but are not attached to an employee yet.
             Their telemetry is being stored, but it will not appear in reports until assigned.
             {employees.length === 0 && ' Create employees first - import a roster from the Employees screen.'}
-          </p>
-          <DeviceTable devices={unassigned} employees={assignable} isAdmin={isAdmin} />
+          </Notice>
+          <div className="mt-3.5">
+            <DeviceTable devices={unassigned} employees={assignable} isAdmin={isAdmin} />
+          </div>
         </Card>
       )}
 
@@ -71,7 +71,7 @@ function DeviceTable({
 }) {
   return (
     <TableWrap>
-      <table className="w-full min-w-[860px] border-collapse">
+      <table className={`${TABLE_CLASS} min-w-[900px]`}>
         <thead>
           <tr>
             <Th>Device</Th>
@@ -96,7 +96,7 @@ function DeviceTable({
                     />
                     {device.deviceName}
                   </span>
-                  <span className="block pl-4 font-mono text-[11px] text-text-secondary">
+                  <span className="mt-0.5 block pl-4 font-mono text-[11px] text-text-tertiary">
                     {device.deviceId}
                   </span>
                 </Td>

@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
+import { Button } from '@/components/ui';
 
 /**
  * Retries the current page against the server.
@@ -21,8 +22,9 @@ export function RetryButton({ onRetry }: { onRetry?: () => void }) {
 
   return (
     <div className="flex items-center gap-3">
-      <button
+      <Button
         type="button"
+        variant="primary"
         disabled={pending}
         onClick={() => {
           setAttempted(true);
@@ -31,17 +33,16 @@ export function RetryButton({ onRetry }: { onRetry?: () => void }) {
             onRetry?.();
           });
         }}
-        className="rounded-md bg-brand px-3 py-1.5 text-sm font-semibold text-brand-contrast transition-opacity hover:opacity-90 disabled:opacity-50"
       >
         {pending ? 'Retrying...' : 'Try again'}
-      </button>
+      </Button>
 
       {/*
         Shown only after a retry has actually been attempted and finished. Saying "still
         unreachable" before anyone has tried would be asserting something we have not checked.
       */}
       {attempted && !pending && (
-        <span className="text-xs text-text-secondary">Still unreachable - the service may be restarting.</span>
+        <span className="text-xs text-text-tertiary">Still unreachable - the service may be restarting.</span>
       )}
     </div>
   );

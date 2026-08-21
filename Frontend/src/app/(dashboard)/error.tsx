@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { Card } from '@/components/ui';
+import { Card, Notice } from '@/components/ui';
 import { RetryButton } from '@/components/RetryButton';
 
 /**
@@ -43,12 +43,10 @@ export default function DashboardError({
             This screen could not load because the monitoring service did not respond.
           </p>
 
-          <div className="rounded-md border border-border bg-surface-muted px-4 py-3">
-            <p className="text-sm text-text-secondary">
-              <span className="font-medium text-text-primary">No data is being lost.</span> Agents
-              keep recording locally and upload what they queued once the service returns.
-            </p>
-          </div>
+          <Notice>
+            <span className="font-medium text-text-primary">No data is being lost.</span> Agents
+            keep recording locally and upload what they queued once the service returns.
+          </Notice>
 
           <RetryButton onRetry={reset} />
         </div>
@@ -69,7 +67,7 @@ export default function DashboardError({
           unlike the message, which for a server error is deliberately redacted anyway.
         */}
         {error.digest && (
-          <p className="font-mono text-xs text-text-secondary">Reference: {error.digest}</p>
+          <p className="font-mono text-xs text-text-tertiary">Reference: {error.digest}</p>
         )}
 
         <RetryButton onRetry={reset} />

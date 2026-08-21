@@ -57,6 +57,7 @@ Applies to more than one tier. Read before making a structural change.
 | [README.md](frontend/README.md) | Route groups, server vs client components, where data comes from |
 | [session-and-auth.md](frontend/session-and-auth.md) | The httpOnly cookie rule and every proxy route that exists because of it |
 | [live-updates.md](frontend/live-updates.md) | Socket-driven updates and the bounded log scroll windows |
+| [design-system.md](frontend/design-system.md) | Visual language: surfaces, palette, type, components |
 | [resilience.md](frontend/resilience.md) | What the dashboard does when the backend is unreachable |
 | [spec.md](frontend/spec.md) | Original governing specification for this tier |
 

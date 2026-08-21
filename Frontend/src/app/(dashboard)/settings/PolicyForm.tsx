@@ -388,14 +388,14 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
         than a screen and one group is collapsed, so a button that scrolled away with the first card
         would strand changes made in the last one.
       */}
-      <div className="sticky bottom-0 flex flex-wrap items-center justify-end gap-3 border-t border-border bg-background/90 px-1 py-3 backdrop-blur">
+      <div className="glass sticky bottom-3.5 z-10 flex flex-wrap items-center justify-end gap-3 rounded-lg px-[18px] py-3">
         {status && <span className="mr-auto text-xs text-text-secondary">{status}</span>}
         {!status && dirty && <span className="mr-auto text-xs text-warning">Unsaved changes</span>}
         <button
           type="button"
           onClick={save}
           disabled={pending || !dirty}
-          className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-brand-contrast transition-opacity hover:opacity-90 disabled:opacity-50"
+          className="rounded-md bg-linear-135 from-brand-strong to-brand-strong-2 px-4 py-2 text-[13px] font-medium text-brand-contrast shadow-[0_4px_12px_rgba(14,120,200,0.3)] transition-opacity hover:opacity-90 disabled:opacity-50"
         >
           {pending ? 'Saving...' : 'Save changes'}
         </button>
@@ -406,7 +406,7 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
 
 /** One line under a card's heading saying who the settings inside it act on. */
 function GroupNote({ children }: { children: React.ReactNode }) {
-  return <p className="mb-5 text-xs text-text-secondary">{children}</p>;
+  return <p className="mb-5 text-[12.5px] leading-relaxed text-text-secondary">{children}</p>;
 }
 
 /**
@@ -418,9 +418,9 @@ function GroupNote({ children }: { children: React.ReactNode }) {
  */
 function AdvancedGroup({ children }: { children: React.ReactNode }) {
   return (
-    <details className="group rounded-lg border border-border bg-surface">
-      <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-3.5">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
+    <details className="group overflow-hidden rounded-lg border border-glass-border bg-surface shadow-glass-sm">
+      <summary className="flex cursor-pointer list-none items-center gap-3 bg-surface-muted px-[18px] py-[13px] transition-colors hover:bg-row-hover">
+        <h2 className="text-[11px] font-medium uppercase tracking-[0.06em] text-text-secondary">
           Advanced
         </h2>
         <span className="hidden text-xs text-text-secondary sm:block">
@@ -438,7 +438,7 @@ function AdvancedGroup({ children }: { children: React.ReactNode }) {
           <path d="M6 9l6 6 6-6" />
         </svg>
       </summary>
-      <div className="space-y-6 border-t border-border p-5">{children}</div>
+      <div className="space-y-6 border-t border-border p-[18px]">{children}</div>
     </details>
   );
 }
@@ -446,7 +446,7 @@ function AdvancedGroup({ children }: { children: React.ReactNode }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
+      <h3 className="mb-3 text-[11px] font-medium uppercase tracking-[0.06em] text-text-tertiary">
         {title}
       </h3>
       <div className="grid gap-3 sm:grid-cols-2">{children}</div>
@@ -466,16 +466,16 @@ function Toggle({
   onChange: (value: boolean) => void;
 }) {
   return (
-    <label className="flex cursor-pointer items-start gap-3 rounded-md border border-border px-3 py-2.5 transition-colors hover:bg-surface-muted">
+    <label className="flex cursor-pointer items-start gap-3 rounded-md border border-glass-border bg-surface-strong px-3.5 py-3 transition-colors hover:border-border-strong">
       <input
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="mt-0.5 size-4 accent-[var(--brand)]"
+        className="mt-0.5 size-[15px] shrink-0 accent-[var(--brand)]"
       />
       <span className="min-w-0">
-        <span className="block text-sm font-medium">{label}</span>
-        {hint && <span className="block text-xs text-text-secondary">{hint}</span>}
+        <span className="block text-[13px] font-medium text-text-primary">{label}</span>
+        {hint && <span className="mt-0.5 block text-xs leading-snug text-text-secondary">{hint}</span>}
       </span>
     </label>
   );
@@ -503,8 +503,8 @@ function NumberField({
 }) {
   return (
     <label className={`block ${disabled ? 'opacity-50' : ''}`}>
-      <span className="mb-1 block text-xs text-text-secondary">{label}</span>
-      {hint && <span className="mb-1 block text-xs text-text-secondary/80">{hint}</span>}
+      <span className="mb-1.5 block text-[12.5px] font-medium text-text-secondary">{label}</span>
+      {hint && <span className="mb-1.5 block text-xs text-text-tertiary">{hint}</span>}
       <span className="flex items-center gap-2">
         <input
           type="number"
@@ -517,9 +517,9 @@ function NumberField({
             // An empty input parses to NaN, which would post garbage to the API.
             if (Number.isFinite(next)) onChange(next);
           }}
-          className="tnum w-24 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-brand"
+          className="tnum w-24 rounded-md border border-border-strong bg-surface-strong px-3 py-1.5 text-[13.5px] text-text-primary outline-none transition-colors focus:border-brand"
         />
-        <span className="text-xs text-text-secondary">{unit}</span>
+        <span className="text-[13px] text-text-secondary">{unit}</span>
       </span>
     </label>
   );
@@ -536,12 +536,12 @@ function TimeField({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs text-text-secondary">{label}</span>
+      <span className="mb-1.5 block text-[12.5px] font-medium text-text-secondary">{label}</span>
       <input
         type="time"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="tnum rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-brand"
+        className="tnum rounded-md border border-border-strong bg-surface-strong px-3 py-1.5 text-[13.5px] text-text-primary outline-none transition-colors focus:border-brand"
       />
     </label>
   );

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Card } from '@/components/ui';
+import { Card, Notice } from '@/components/ui';
 import { RetryButton } from '@/components/RetryButton';
 
 /**
@@ -33,15 +33,13 @@ export function ServiceUnavailable({
           The dashboard could not reach the monitoring service, so it has nothing current to show.
         </p>
 
-        <div className="rounded-md border border-border bg-surface-muted px-4 py-3">
-          <p className="text-sm text-text-secondary">
-            <span className="font-medium text-text-primary">No data is being lost.</span> Agents
-            keep recording locally while the service is unreachable and upload everything they
-            queued once it returns.
-          </p>
-        </div>
+        <Notice>
+          <span className="font-medium text-text-primary">No data is being lost.</span> Agents keep
+          recording locally while the service is unreachable and upload everything they queued
+          once it returns.
+        </Notice>
 
-        {detail && <p className="text-xs text-text-secondary">{detail}</p>}
+        {detail && <p className="text-xs text-text-tertiary">{detail}</p>}
 
         <div className="flex items-center gap-3">
           <RetryButton />

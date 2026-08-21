@@ -55,7 +55,7 @@ export function LiveProductivityTile({
       label="Productive share"
       value={formatPercent(percent)}
       hint="Of active time"
-      tone={percent >= PRODUCTIVE_TARGET_PERCENT ? 'brand' : 'default'}
+      tone={percent >= PRODUCTIVE_TARGET_PERCENT ? 'success' : 'default'}
     />
   );
 }

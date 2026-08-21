@@ -1,5 +1,5 @@
 import { apiGet } from '@/lib/api-client';
-import { Card } from '@/components/ui';
+import { Card, PageHeader } from '@/components/ui';
 import type { LogPage } from '@/components/LogScroller';
 import type { AlertRow, UsbEventRow } from '@/types/api';
 import { AlertsTable } from './AlertsTable';
@@ -22,13 +22,11 @@ export default async function AlertsPage() {
   ]);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold">Alerts &amp; device activity</h1>
-        <p className="mt-0.5 text-sm text-text-secondary">
-          Unresolved alerts and the removable-device audit trail. Both update as they happen.
-        </p>
-      </div>
+    <div className="space-y-3.5">
+      <PageHeader
+        title="Alerts &amp; device activity"
+        subtitle="Unresolved alerts and the removable-device audit trail. Both update as they happen."
+      />
 
       {/*
         The count is deliberately phrased as "showing N", not "N open alerts". Only the first

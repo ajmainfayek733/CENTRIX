@@ -1,7 +1,20 @@
 import Link from 'next/link';
 import { apiGet } from '@/lib/api-client';
 import { formatDuration, formatPercent, formatRelative } from '@/lib/format';
-import { Card, StatTile, ProductivityBar, TableWrap, Th, Td, StatusDot, EmptyState } from '@/components/ui';
+import {
+  Card,
+  PageHeader,
+  StatTile,
+  HeroPercent,
+  ProductivityBar,
+  Legend,
+  TableWrap,
+  TABLE_CLASS,
+  Th,
+  Td,
+  EntityCell,
+  EmptyState,
+} from '@/components/ui';
 import { LiveOnlineTile } from '@/components/LiveOnlineTile';
 import { LiveActiveTimeTile } from '@/components/LiveTotals';
 import type { Overview, Roster } from '@/types/api';
@@ -25,15 +38,13 @@ export default async function OverviewPage() {
   const topEmployees = [...roster.employees].sort((a, b) => b.activeSeconds - a.activeSeconds).slice(0, 8);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold">Overview</h1>
-        <p className="mt-0.5 text-sm text-text-secondary">
-          Last 7 days - {overview.employeesTracked} of {overview.headcount} employees reporting
-        </p>
-      </div>
+    <div>
+      <PageHeader
+        title="Overview"
+        subtitle={`Last 7 days - ${overview.employeesTracked} of ${overview.headcount} employees reporting`}
+      />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-3.5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <LiveOnlineTile fallback={overview.onlineNow} />
         <StatTile
           label="Checked in today"
@@ -49,42 +60,36 @@ export default async function OverviewPage() {
         />
       </div>
 
-      <Card title="Productivity mix">
-        <div className="mb-4 flex items-baseline gap-3">
-          <span className="tnum text-3xl font-semibold">{formatPercent(totals.productivityPercent)}</span>
-          <span className="text-sm text-text-secondary">of active time tagged productive</span>
-        </div>
-
-        <ProductivityBar
-          productive={totals.productiveSeconds}
-          unproductive={totals.unproductiveSeconds}
-          neutral={totals.neutralSeconds}
-          blacklisted={totals.blacklistedSeconds}
+      <Card title="Productivity mix" className="mb-3.5">
+        <HeroPercent
+          value={formatPercent(totals.productivityPercent)}
+          caption="of active time tagged productive"
         />
 
-        <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-5">
-          {[
-            { label: 'Productive', value: totals.productiveSeconds, dot: 'bg-brand' },
-            { label: 'Neutral', value: totals.neutralSeconds, dot: 'bg-text-secondary/40' },
-            { label: 'Unproductive', value: totals.unproductiveSeconds, dot: 'bg-warning' },
-            { label: 'Blacklisted', value: totals.blacklistedSeconds, dot: 'bg-danger' },
-            { label: 'Idle', value: totals.idleSeconds, dot: 'bg-border' },
-          ].map((item) => (
-            <div key={item.label}>
-              <dt className="flex items-center gap-1.5 text-xs text-text-secondary">
-                <span className={`inline-block size-2 rounded-full ${item.dot}`} aria-hidden />
-                {item.label}
-              </dt>
-              <dd className="tnum mt-0.5 text-sm font-medium">{formatDuration(item.value)}</dd>
-            </div>
-          ))}
-        </dl>
+        <div className="my-3.5">
+          <ProductivityBar
+            productive={totals.productiveSeconds}
+            unproductive={totals.unproductiveSeconds}
+            neutral={totals.neutralSeconds}
+            blacklisted={totals.blacklistedSeconds}
+          />
+        </div>
+
+        <Legend
+          items={[
+            { key: 'productive', label: 'Productive', value: formatDuration(totals.productiveSeconds) },
+            { key: 'neutral', label: 'Neutral', value: formatDuration(totals.neutralSeconds) },
+            { key: 'unproductive', label: 'Unproductive', value: formatDuration(totals.unproductiveSeconds) },
+            { key: 'blacklisted', label: 'Blacklisted', value: formatDuration(totals.blacklistedSeconds) },
+            { key: 'idle', label: 'Idle', value: formatDuration(totals.idleSeconds) },
+          ]}
+        />
       </Card>
 
       <Card
         title="Most active"
         action={
-          <Link href="/employees" className="text-xs text-text-secondary hover:text-text-primary">
+          <Link href="/employees" className="text-[13px] font-medium text-brand hover:underline">
             View all {'->'}
           </Link>
         }
@@ -93,7 +98,7 @@ export default async function OverviewPage() {
           <EmptyState message="No activity recorded yet. Once an agent enrolls and an employee signs in, their time appears here." />
         ) : (
           <TableWrap>
-            <table className="w-full min-w-[560px] border-collapse">
+            <table className={`${TABLE_CLASS} min-w-[620px]`}>
               <thead>
                 <tr>
                   <Th>Employee</Th>
@@ -106,15 +111,13 @@ export default async function OverviewPage() {
               </thead>
               <tbody>
                 {topEmployees.map((employee) => (
-                  <tr key={employee.id} className="group">
+                  <tr key={employee.id}>
                     <Td>
-                      <Link
+                      <EntityCell
+                        online={employee.isOnline}
+                        name={employee.name}
                         href={`/employees/${employee.id}`}
-                        className="flex items-center gap-2 font-medium group-hover:text-brand"
-                      >
-                        <StatusDot online={employee.isOnline} />
-                        {employee.name}
-                      </Link>
+                      />
                     </Td>
                     <Td muted>{employee.department ?? '-'}</Td>
                     <Td align="right" numeric>

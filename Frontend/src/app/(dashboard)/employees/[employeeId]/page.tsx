@@ -2,10 +2,13 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { apiGet, ApiError } from '@/lib/api-client';
 import { formatDuration, formatPercent, formatTime } from '@/lib/format';
+import { ArrowLeft } from 'lucide-react';
 import {
   Card,
+  PageHeader,
   StatTile,
   TableWrap,
+  TABLE_CLASS,
   Th,
   Td,
   TagBadge,
@@ -67,25 +70,26 @@ export default async function EmployeeDetailPage({
       : null;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <Link href="/employees" className="text-xs text-text-secondary hover:text-text-primary">
+    <div className="space-y-3.5">
+      <PageHeader
+        title={employee.name}
+        subtitle={`${employee.email}${employee.department ? ` - ${employee.department}` : ''}`}
+        back={
+          <Link
+            href="/employees"
+            className="mb-2.5 inline-flex items-center gap-1.5 text-[13px] text-text-secondary transition-colors hover:text-brand"
+          >
+            <ArrowLeft className="size-4" strokeWidth={1.75} aria-hidden />
             Back to employees
           </Link>
-          <h1 className="mt-1 text-lg font-semibold">{employee.name}</h1>
-          <p className="mt-0.5 text-sm text-text-secondary">
-            {employee.email}
-            {employee.department ? ` - ${employee.department}` : ''}
-          </p>
-        </div>
-        <DateRangePicker startDate={range.startDate} endDate={range.endDate} />
-      </div>
+        }
+        action={<DateRangePicker startDate={range.startDate} endDate={range.endDate} />}
+      />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile label="Active" value={formatDuration(totals.activeSeconds)} />
         <StatTile label="Idle" value={formatDuration(totals.idleSeconds)} />
-        <StatTile label="Productive" value={formatPercent(totals.productivityPercent)} tone="brand" />
+        <StatTile label="Productive" value={formatPercent(totals.productivityPercent)} tone="success" />
         <StatTile
           label="Blacklisted"
           value={formatDuration(totals.blacklistedSeconds)}
@@ -102,17 +106,20 @@ export default async function EmployeeDetailPage({
         />
       </Card>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-3.5 lg:grid-cols-2">
         <Card title="Top applications">
           {topApps.length === 0 ? (
             <EmptyState message="No application time recorded in this period." />
           ) : (
-            <ul className="space-y-2.5">
+            <ul className="-my-2 divide-y divide-border">
               {topApps.map((app) => (
-                <li key={`${app.appName}-${app.productivityTag}`} className="flex items-center gap-3">
-                  <span className="min-w-0 flex-1 truncate text-sm">{app.appName ?? 'Unknown'}</span>
+                <li
+                  key={`${app.appName}-${app.productivityTag}`}
+                  className="flex items-center gap-2.5 py-2.5 text-[13.5px]"
+                >
+                  <span className="min-w-0 flex-1 truncate font-medium">{app.appName ?? 'Unknown'}</span>
                   <TagBadge tag={app.productivityTag} />
-                  <span className="tnum w-16 text-right text-sm text-text-secondary">
+                  <span className="tnum min-w-[42px] text-right text-[13px] text-text-secondary">
                     {formatDuration(app.seconds)}
                   </span>
                 </li>
@@ -125,12 +132,15 @@ export default async function EmployeeDetailPage({
           {topDomains.length === 0 ? (
             <EmptyState message="No browsing recorded in this period." />
           ) : (
-            <ul className="space-y-2.5">
+            <ul className="-my-2 divide-y divide-border">
               {topDomains.map((site) => (
-                <li key={`${site.domain}-${site.productivityTag}`} className="flex items-center gap-3">
-                  <span className="min-w-0 flex-1 truncate text-sm">{site.domain}</span>
+                <li
+                  key={`${site.domain}-${site.productivityTag}`}
+                  className="flex items-center gap-2.5 py-2.5 text-[13.5px]"
+                >
+                  <span className="min-w-0 flex-1 truncate font-medium">{site.domain}</span>
                   <TagBadge tag={site.productivityTag} />
-                  <span className="tnum w-16 text-right text-sm text-text-secondary">
+                  <span className="tnum min-w-[42px] text-right text-[13px] text-text-secondary">
                     {formatDuration(site.seconds)}
                   </span>
                 </li>
@@ -152,12 +162,11 @@ export default async function EmployeeDetailPage({
         ) : (
           <TableWrap>
             {/*
-              Column gutters, which the other tables on this screen get away without: this one puts
-              a right-aligned number (Idle) straight before a left-aligned badge (Status), and with
-              no padding between cells the two read as one column. The last cell keeps its flush
-              right edge.
+              This table puts a right-aligned number (Idle) straight before a left-aligned badge
+              (Status), which used to need a hand-rolled column gutter to stop the two reading as
+              one column. Td now carries that padding itself, so the override is gone.
             */}
-            <table className="w-full min-w-[680px] border-collapse [&_td]:pr-6 [&_th]:pr-6 [&_td:last-child]:pr-0 [&_th:last-child]:pr-0">
+            <table className={`${TABLE_CLASS} min-w-[720px]`}>
               <thead>
                 <tr>
                   <Th>Date</Th>
@@ -207,7 +216,7 @@ export default async function EmployeeDetailPage({
                     </Td>
                     <Td>
                       {day.status === 'present' ? (
-                        <Badge tone="brand">Present</Badge>
+                        <Badge tone="success">Present</Badge>
                       ) : day.status === 'unknown' ? (
                         // An open session on a workstation that stopped reporting. Saying "present"
                         // here would show a crashed machine as somebody at their desk.
@@ -234,7 +243,7 @@ export default async function EmployeeDetailPage({
           <EmptyState message="No sign-in recorded in this period." />
         ) : (
           <TableWrap>
-            <table className="w-full min-w-[440px] border-collapse">
+            <table className={`${TABLE_CLASS} min-w-[480px]`}>
               <thead>
                 <tr>
                   <Th>Date</Th>
@@ -249,7 +258,7 @@ export default async function EmployeeDetailPage({
                     <Td>{new Date(row.workDate).toLocaleDateString()}</Td>
                     <Td numeric>{formatTime(row.loginTime)}</Td>
                     <Td numeric>
-                      {row.logoutTime ? formatTime(row.logoutTime) : <Badge tone="brand">Still signed in</Badge>}
+                      {row.logoutTime ? formatTime(row.logoutTime) : <Badge tone="success">Still signed in</Badge>}
                     </Td>
                     {/*
                       Per session the end reason and its provenance answer one question together:

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useCallback } from 'react';
 import { LogScroller, type LogPage } from '@/components/LogScroller';
 import { formatDateTime, formatDuration } from '@/lib/format';
-import { TableWrap, Th, Td, SeverityBadge, Badge } from '@/components/ui';
+import { TableWrap, TABLE_CLASS, Th, Td, SeverityBadge, Badge } from '@/components/ui';
 import type { AlertRow } from '@/types/api';
 
 /** Turns the typed context columns back into one readable line per alert type. */
@@ -27,7 +27,7 @@ export function AlertsTable({ initial }: { initial: LogPage<AlertRow> }) {
 
   return (
     <TableWrap>
-      <table className="w-full min-w-[720px] border-collapse">
+      <table className={`${TABLE_CLASS} min-w-[720px]`}>
         <thead>
           <tr>
             <Th>Triggered</Th>
@@ -46,7 +46,7 @@ export function AlertsTable({ initial }: { initial: LogPage<AlertRow> }) {
         emptyMessage="No open alerts. Idle escalations and blacklist hits appear here as they happen."
       >
         {(rows) => (
-          <table className="w-full min-w-[720px] border-collapse">
+          <table className={`${TABLE_CLASS} min-w-[720px]`}>
             <tbody>
               {rows.map((alert) => (
                 <tr key={alert.id}>
@@ -56,11 +56,11 @@ export function AlertsTable({ initial }: { initial: LogPage<AlertRow> }) {
                   <Td>
                     <Link
                       href={`/employees/${alert.device.employee.id}`}
-                      className="font-medium hover:text-brand"
+                      className="font-medium text-brand hover:underline"
                     >
                       {alert.device.employee.name}
                     </Link>
-                    <span className="block text-xs text-text-secondary">{alert.device.deviceName}</span>
+                    <span className="mt-px block text-xs text-text-tertiary">{alert.device.deviceName}</span>
                   </Td>
                   <Td>
                     {alert.title}

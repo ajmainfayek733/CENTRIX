@@ -62,7 +62,7 @@ export function DeviceAssignment({
         disabled={pending}
         onChange={(e) => onChange(e.target.value)}
         aria-label="Assign this device to an employee"
-        className="w-full min-w-40 rounded-md border border-border bg-surface px-2 py-1 text-xs outline-none focus:border-brand disabled:opacity-50"
+        className="w-full min-w-44 rounded-md border border-border-strong bg-surface-strong px-2.5 py-1.5 text-xs text-text-primary outline-none transition-colors focus:border-brand disabled:opacity-50"
       >
         <option value="" disabled>
           {pending ? 'Assigning...' : 'Unassigned - pick an employee'}

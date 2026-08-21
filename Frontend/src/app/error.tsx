@@ -23,7 +23,9 @@ export default function RootError({
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6">
-      <h1 className="text-lg font-semibold">Employee Monitor is temporarily unavailable</h1>
+      <h1 className="text-2xl font-semibold tracking-[-0.5px] text-text-primary">
+        Employee Monitor is temporarily unavailable
+      </h1>
 
       <p className="mt-2 text-sm text-text-secondary">
         The dashboard could not finish loading. This is usually the monitoring service restarting;
@@ -31,13 +33,13 @@ export default function RootError({
       </p>
 
       {error.digest && (
-        <p className="mt-3 font-mono text-xs text-text-secondary">Reference: {error.digest}</p>
+        <p className="mt-3 font-mono text-xs text-text-tertiary">Reference: {error.digest}</p>
       )}
 
       <button
         type="button"
         onClick={reset}
-        className="mt-5 self-start rounded-md bg-brand px-4 py-2 text-sm font-semibold text-brand-contrast transition-opacity hover:opacity-90"
+        className="mt-5 self-start rounded-md bg-linear-135 from-brand-strong to-brand-strong-2 px-4 py-2 text-[13px] font-medium text-brand-contrast shadow-[0_4px_12px_rgba(14,120,200,0.3)] transition-opacity hover:opacity-90"
       >
         Try again
       </button>

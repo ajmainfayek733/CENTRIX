@@ -1,8 +1,13 @@
 import type { Metadata } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { Inter, Geist_Mono } from 'next/font/google';
 import './globals.css';
 
-const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
+/*
+ * Inter is the blueprint's typeface. It is loaded through next/font rather than the
+ * @import url(fonts.googleapis.com) the prototype used: next/font self-hosts the file, so
+ * there is no render-blocking request to a third party and no layout shift when it lands.
+ */
+const inter = Inter({ variable: '--font-inter', subsets: ['latin'] });
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
 
 export const metadata: Metadata = {
@@ -37,11 +42,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
      * The font variables go on <html>, not <body>: globals.css resolves the `font-sans`
      * utility on the html element, and a variable defined only on body is out of scope there.
      */
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`} suppressHydrationWarning>
+    <html lang="en" className={`${inter.variable} ${geistMono.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
-      <body className={`${geistSans.variable} ${geistMono.variable}`}>{children}</body>
+      <body className={`${inter.variable} ${geistMono.variable}`}>
+        {/* The ambient ground every surface floats on. Rendered once here so the login screen
+            and the dashboard share it, and so it never repaints on navigation. */}
+        <div className="spatial-bg" aria-hidden />
+        <div className="relative z-10">{children}</div>
+      </body>
     </html>
   );
 }

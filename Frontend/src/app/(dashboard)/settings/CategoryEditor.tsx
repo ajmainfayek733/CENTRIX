@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Card, TableWrap, Th, Td, TagBadge, Badge, EmptyState } from '@/components/ui';
+import { Card, TableWrap, TABLE_CLASS, Th, Td, TagBadge, Badge, Button, EmptyState } from '@/components/ui';
 import type { CategoryRow, CategoryTarget, ProductivityTag } from '@/types/api';
 import { deleteCategory, upsertCategory } from './actions';
 
@@ -61,13 +61,13 @@ export function CategoryEditor({
   }
 
   const inputClass =
-    'rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-brand';
+    'rounded-md border border-border-strong bg-surface-strong px-3 py-1.5 text-[13.5px] text-text-primary outline-none transition-colors placeholder:text-text-tertiary focus:border-brand';
 
   return (
     <Card title={`Productivity rules - ${categories.length}`}>
       <div className="mb-5 flex flex-wrap items-end gap-2">
         <label className="block">
-          <span className="mb-1 block text-xs text-text-secondary">Matches</span>
+          <span className="mb-1.5 block text-[12.5px] font-medium text-text-secondary">Matches</span>
           <select
             value={target}
             onChange={(e) => setTarget(e.target.value as CategoryTarget)}
@@ -79,7 +79,7 @@ export function CategoryEditor({
         </label>
 
         <label className="block flex-1 min-w-48">
-          <span className="mb-1 block text-xs text-text-secondary">
+          <span className="mb-1.5 block text-[12.5px] font-medium text-text-secondary">
             {target === 'Domain' ? 'Domain (suffix match)' : 'App or process name (contains)'}
           </span>
           <input
@@ -94,7 +94,7 @@ export function CategoryEditor({
         </label>
 
         <label className="block">
-          <span className="mb-1 block text-xs text-text-secondary">Tag as</span>
+          <span className="mb-1.5 block text-[12.5px] font-medium text-text-secondary">Tag as</span>
           <select
             value={tag}
             onChange={(e) => setTag(e.target.value as ProductivityTag)}
@@ -108,19 +108,19 @@ export function CategoryEditor({
           </select>
         </label>
 
-        <button
+        <Button
           type="button"
+          variant="primary"
           onClick={add}
           disabled={pending || pattern.trim().length === 0}
-          className="rounded-md bg-brand px-3 py-1.5 text-sm font-semibold text-brand-contrast transition-opacity hover:opacity-90 disabled:opacity-50"
         >
           Add rule
-        </button>
+        </Button>
       </div>
 
       {error && <p className="mb-3 text-xs text-danger">{error}</p>}
 
-      <p className="mb-4 text-xs text-text-secondary">
+      <p className="mb-4 text-[12.5px] leading-relaxed text-text-secondary">
         Domains match by suffix, so <span className="font-mono">facebook.com</span> also covers{' '}
         <span className="font-mono">m.facebook.com</span>. Applications match if the name,
         process or executable path contains the pattern.
@@ -130,7 +130,7 @@ export function CategoryEditor({
         <EmptyState message="No rules yet. Without them everything is tagged Neutral." />
       ) : (
         <TableWrap>
-          <table className="w-full min-w-[520px] border-collapse">
+          <table className={`${TABLE_CLASS} min-w-[560px]`}>
             <thead>
               <tr>
                 <Th>Pattern</Th>
@@ -159,7 +159,7 @@ export function CategoryEditor({
                       type="button"
                       onClick={() => remove(rule.id)}
                       disabled={pending || !rule.id}
-                      className="rounded-md border border-border px-2 py-1 text-xs text-text-secondary transition-colors hover:border-danger hover:text-danger disabled:opacity-50"
+                      className="rounded-md border border-border-strong px-2.5 py-1 text-xs text-text-secondary transition-colors hover:border-danger hover:text-danger disabled:opacity-50"
                     >
                       Remove
                     </button>

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useCallback } from 'react';
 import { LogScroller, type LogPage } from '@/components/LogScroller';
 import { formatDateTime, formatBytes } from '@/lib/format';
-import { TableWrap, Th, Td, Badge } from '@/components/ui';
+import { TableWrap, TABLE_CLASS, Th, Td, Badge } from '@/components/ui';
 import type { UsbEventRow } from '@/types/api';
 
 /** Removable-device audit trail, paged the same way as the alert feed. */
@@ -13,7 +13,7 @@ export function UsbTable({ initial }: { initial: LogPage<UsbEventRow> }) {
 
   return (
     <TableWrap>
-      <table className="w-full min-w-[820px] border-collapse">
+      <table className={`${TABLE_CLASS} min-w-[820px]`}>
         <thead>
           <tr>
             <Th>When</Th>
@@ -33,7 +33,7 @@ export function UsbTable({ initial }: { initial: LogPage<UsbEventRow> }) {
         emptyMessage="No removable devices connected in this period."
       >
         {(rows) => (
-          <table className="w-full min-w-[820px] border-collapse">
+          <table className={`${TABLE_CLASS} min-w-[820px]`}>
             <tbody>
               {rows.map((event) => (
                 <tr key={event.id}>
@@ -43,7 +43,7 @@ export function UsbTable({ initial }: { initial: LogPage<UsbEventRow> }) {
                   <Td>
                     <Link
                       href={`/employees/${event.device.employee.id}`}
-                      className="font-medium hover:text-brand"
+                      className="font-medium text-brand hover:underline"
                     >
                       {event.device.employee.name}
                     </Link>
@@ -55,7 +55,7 @@ export function UsbTable({ initial }: { initial: LogPage<UsbEventRow> }) {
                   </Td>
                   <Td>
                     {event.friendlyName ?? 'Unknown device'}
-                    <span className="block text-xs text-text-secondary">
+                    <span className="mt-px block text-xs text-text-tertiary">
                       {event.deviceType}
                       {event.driveLetter ? ` - ${event.driveLetter}` : ''}
                       {event.volumeLabel ? ` ${event.volumeLabel}` : ''}

@@ -26,7 +26,7 @@ export function LiveOnlineTile({ fallback }: { fallback: number }) {
       label="Online now"
       value={count}
       hint={connected ? 'Live - agents heartbeating' : 'Agents seen in the last 5 minutes'}
-      tone={count > 0 ? 'brand' : 'default'}
+      tone={count > 0 ? 'success' : 'default'}
     />
   );
 }

@@ -10,6 +10,7 @@ Express API in `Backend/`.
 | [../Docs/frontend/README.md](../Docs/frontend/README.md) | Layout, server vs client components, data flow |
 | [../Docs/frontend/session-and-auth.md](../Docs/frontend/session-and-auth.md) | The httpOnly cookie rule and the proxy routes |
 | [../Docs/frontend/live-updates.md](../Docs/frontend/live-updates.md) | Sockets and bounded log scroll windows |
+| [../Docs/frontend/design-system.md](../Docs/frontend/design-system.md) | Surfaces, palette, type and the component vocabulary |
 | [../Docs/frontend/resilience.md](../Docs/frontend/resilience.md) | Behaviour when the backend is unreachable |
 | [../Docs/README.md](../Docs/README.md) | Documentation index for the whole system |
 

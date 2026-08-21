@@ -31,7 +31,7 @@ export function DateRangePicker({ startDate, endDate }: { startDate?: string; en
   }
 
   const inputClass =
-    'rounded-md border border-border bg-surface px-2 py-1.5 text-xs outline-none focus:border-brand';
+    'glass-control rounded-md px-2.5 py-1.5 text-[12.5px] text-text-primary outline-none transition-colors focus:border-brand';
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -44,7 +44,7 @@ export function DateRangePicker({ startDate, endDate }: { startDate?: string; en
           key={preset.label}
           type="button"
           onClick={() => applyPreset(preset.days)}
-          className="rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary transition-colors hover:bg-surface-muted hover:text-text-primary"
+          className="glass-control rounded-md px-3 py-1.5 text-[12.5px] font-medium text-text-secondary transition-colors hover:text-brand"
         >
           {preset.label}
         </button>
@@ -57,7 +57,7 @@ export function DateRangePicker({ startDate, endDate }: { startDate?: string; en
         onChange={(e) => apply({ startDate: e.target.value, endDate })}
         className={inputClass}
       />
-      <span className="text-xs text-text-secondary">to</span>
+      <span className="text-[12.5px] text-text-tertiary">to</span>
       <input
         type="date"
         aria-label="End date"

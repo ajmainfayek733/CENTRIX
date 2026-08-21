@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Card, Badge } from '@/components/ui';
+import { Upload } from 'lucide-react';
+import { Card, Badge, Button } from '@/components/ui';
 import { importEmployees, type ImportResult, type ImportRow } from './actions';
 
 /** Rows past this are rejected by the server anyway; catching it here gives a better message. */
@@ -43,13 +44,10 @@ export function EmployeeImport({ organizationId }: { organizationId: string }) {
 
   if (!open) {
     return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="rounded-md bg-brand px-3 py-1.5 text-sm font-semibold text-brand-contrast transition-opacity hover:opacity-90"
-      >
+      <Button type="button" variant="primary" onClick={() => setOpen(true)}>
+        <Upload className="size-4" strokeWidth={1.75} aria-hidden />
         Import roster
-      </button>
+      </Button>
     );
   }
 
@@ -68,30 +66,30 @@ export function EmployeeImport({ organizationId }: { organizationId: string }) {
         rows={10}
         spellCheck={false}
         placeholder={'Ada Lovelace, ada@example.com, Engineering\nGrace Hopper, grace@example.com, Engineering'}
-        className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-xs outline-none focus:border-brand"
+        className="w-full rounded-md border border-border-strong bg-surface-strong px-3 py-2 font-mono text-xs text-text-primary outline-none transition-colors placeholder:text-text-tertiary focus:border-brand"
       />
 
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        <button
+        <Button
           type="button"
+          variant="primary"
           onClick={submit}
           disabled={pending || parsed.rows.length === 0 || parsed.rows.length > MAX_ROWS}
-          className="rounded-md bg-brand px-3 py-1.5 text-sm font-semibold text-brand-contrast transition-opacity hover:opacity-90 disabled:opacity-50"
         >
           {pending ? 'Importing...' : `Import ${parsed.rows.length || ''} employee${parsed.rows.length === 1 ? '' : 's'}`}
-        </button>
+        </Button>
 
-        <button
+        <Button
           type="button"
+          variant="secondary"
           onClick={() => {
             setOpen(false);
             setResult(null);
             setError(null);
           }}
-          className="rounded-md border border-border px-3 py-1.5 text-sm text-text-secondary transition-colors hover:border-brand hover:text-brand"
         >
           Close
-        </button>
+        </Button>
 
         {parsed.rows.length > MAX_ROWS && (
           <span className="text-xs text-danger">
@@ -120,9 +118,9 @@ export function EmployeeImport({ organizationId }: { organizationId: string }) {
       {error && <p className="mt-3 text-xs text-danger">{error}</p>}
 
       {result && (
-        <div className="mt-4 rounded-lg border border-border bg-surface-muted px-4 py-3">
+        <div className="mt-4 rounded-md border border-border-strong bg-surface-muted px-4 py-3">
           <p className="text-sm">
-            <Badge tone="brand">{result.created} created</Badge>{' '}
+            <Badge tone="success">{result.created} created</Badge>{' '}
             {result.skipped > 0 && <Badge tone="warning">{result.skipped} skipped</Badge>}
           </p>
 

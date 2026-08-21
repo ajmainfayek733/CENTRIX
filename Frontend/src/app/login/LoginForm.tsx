@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { Button, Field, Input } from '@/components/ui';
 
 export function LoginForm() {
   const router = useRouter();
@@ -47,40 +48,29 @@ export function LoginForm() {
     }
   }
 
-  const inputClass =
-    'w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none transition-colors placeholder:text-text-secondary/60 focus:border-brand';
-
   return (
-    <form onSubmit={onSubmit} className="space-y-4 rounded-lg border border-border bg-surface p-6">
-      <div>
-        <label htmlFor="email" className="mb-1.5 block text-xs font-medium text-text-secondary">
-          Work email
-        </label>
-        <input
+    <form onSubmit={onSubmit} className="glass space-y-4 rounded-lg p-6">
+      <Field label="Work email" htmlFor="email">
+        <Input
           id="email"
           type="email"
           required
           autoComplete="username"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className={inputClass}
         />
-      </div>
+      </Field>
 
-      <div>
-        <label htmlFor="password" className="mb-1.5 block text-xs font-medium text-text-secondary">
-          Password
-        </label>
-        <input
+      <Field label="Password" htmlFor="password">
+        <Input
           id="password"
           type="password"
           required
           autoComplete="current-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className={inputClass}
         />
-      </div>
+      </Field>
 
       {error && (
         <p role="alert" className="rounded-md bg-danger/10 px-3 py-2 text-xs text-danger">
@@ -88,13 +78,9 @@ export function LoginForm() {
         </p>
       )}
 
-      <button
-        type="submit"
-        disabled={pending}
-        className="w-full rounded-md bg-brand px-4 py-2 text-sm font-semibold text-brand-contrast transition-opacity hover:opacity-90 disabled:opacity-50"
-      >
+      <Button type="submit" variant="primary" disabled={pending} className="w-full">
         {pending ? 'Signing in...' : 'Sign in'}
-      </button>
+      </Button>
     </form>
   );
 }

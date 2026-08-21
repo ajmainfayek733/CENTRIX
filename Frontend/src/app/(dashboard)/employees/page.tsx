@@ -1,8 +1,17 @@
-import Link from 'next/link';
 import { apiGet } from '@/lib/api-client';
 import { formatDuration, formatPercent, formatRelative } from '@/lib/format';
 import { getSessionUser } from '@/lib/session';
-import { Card, TableWrap, Th, Td, StatusDot, EmptyState, ProductivityBar } from '@/components/ui';
+import {
+  Card,
+  PageHeader,
+  TableWrap,
+  TABLE_CLASS,
+  Th,
+  Td,
+  EntityCell,
+  EmptyState,
+  ProductivityBar,
+} from '@/components/ui';
 import type { Organization, Roster } from '@/types/api';
 import { EmployeeImport } from './EmployeeImport';
 
@@ -34,24 +43,21 @@ export default async function EmployeesPage({
   const organizationId = organizations[0]?.id;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold">Employees</h1>
-          <p className="mt-0.5 text-sm text-text-secondary">
-            {roster.employees.length} tracked - {new Date(roster.period.start).toLocaleDateString()} to{' '}
-            {new Date(roster.period.end).toLocaleDateString()}
-          </p>
-        </div>
-        {organizationId && <EmployeeImport organizationId={organizationId} />}
-      </div>
+    <div>
+      <PageHeader
+        title="Employees"
+        subtitle={`${roster.employees.length} tracked - ${new Date(
+          roster.period.start
+        ).toLocaleDateString()} to ${new Date(roster.period.end).toLocaleDateString()}`}
+        action={organizationId ? <EmployeeImport organizationId={organizationId} /> : undefined}
+      />
 
       <Card>
         {roster.employees.length === 0 ? (
           <EmptyState message="No employees yet. Use 'Import roster' to add them, then assign each enrolled device to a person on the Devices screen." />
         ) : (
           <TableWrap>
-            <table className="w-full min-w-[760px] border-collapse">
+            <table className={`${TABLE_CLASS} min-w-[820px]`}>
               <thead>
                 <tr>
                   <Th>Employee</Th>
@@ -66,18 +72,14 @@ export default async function EmployeesPage({
               </thead>
               <tbody>
                 {roster.employees.map((employee) => (
-                  <tr key={employee.id} className="group">
+                  <tr key={employee.id}>
                     <Td>
-                      <Link
+                      <EntityCell
+                        online={employee.isOnline}
+                        name={employee.name}
+                        sub={employee.email}
                         href={`/employees/${employee.id}`}
-                        className="flex items-center gap-2 font-medium group-hover:text-brand"
-                      >
-                        <StatusDot online={employee.isOnline} />
-                        <span>
-                          {employee.name}
-                          <span className="block text-xs font-normal text-text-secondary">{employee.email}</span>
-                        </span>
-                      </Link>
+                      />
                     </Td>
                     <Td muted>{employee.department ?? '-'}</Td>
                     <Td align="right" numeric muted>
@@ -99,6 +101,7 @@ export default async function EmployeesPage({
                           unproductive={employee.unproductiveSeconds}
                           neutral={employee.neutralSeconds}
                           blacklisted={employee.blacklistedSeconds}
+                          size="sm"
                         />
                       </div>
                     </Td>

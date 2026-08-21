@@ -83,7 +83,7 @@ export function ScreenshotGallery({ initial, employeeId, startDate, endDate }: S
         aria-busy={loading}
       >
         {rows.length === 0 ? (
-          <p className="py-8 text-center text-sm text-text-secondary">
+          <p className="py-10 text-center text-sm text-text-secondary">
             No screenshots for this period. Captures are optional and off by default - check the
             screenshot setting on the Settings screen if you expected some.
           </p>
@@ -101,7 +101,7 @@ export function ScreenshotGallery({ initial, employeeId, startDate, endDate }: S
                 <button
                   type="button"
                   onClick={() => setOpenId(capture.id)}
-                  className="group flex size-full flex-col overflow-hidden rounded-md border border-border bg-surface-muted text-left transition-colors hover:border-brand focus-visible:border-brand focus-visible:outline-none"
+                  className="group flex size-full flex-col overflow-hidden rounded-md border border-glass-border bg-surface-strong text-left transition-[transform,box-shadow,border-color] duration-150 hover:-translate-y-0.5 hover:border-brand hover:shadow-glass-sm"
                   aria-label={`Open screenshot from ${formatTime(capture.capturedAt)}${
                     capture.deviceName ? ` on ${capture.deviceName}` : ''
                   }`}
@@ -119,12 +119,12 @@ export function ScreenshotGallery({ initial, employeeId, startDate, endDate }: S
                     draggable={false}
                     className="min-h-0 w-full flex-1 bg-surface object-cover"
                   />
-                  <span className="flex items-baseline justify-between gap-2 px-2 py-1.5">
-                    <span className="tnum text-[11px] text-text-primary">
+                  <span className="flex items-baseline justify-between gap-2 px-2.5 py-2">
+                    <span className="tnum text-[11.5px] font-medium text-text-primary">
                       {formatTime(capture.capturedAt)}
                     </span>
                     {capture.deviceName && (
-                      <span className="min-w-0 truncate text-[11px] text-text-secondary">
+                      <span className="min-w-0 truncate text-[11px] text-text-tertiary">
                         {capture.deviceName}
                       </span>
                     )}
@@ -137,19 +137,19 @@ export function ScreenshotGallery({ initial, employeeId, startDate, endDate }: S
 
         <div ref={sentinelRef} aria-hidden />
 
-        {loading && <p className="py-3 text-center text-xs text-text-secondary">Loading more...</p>}
+        {loading && <p className="py-3 text-center text-xs text-text-tertiary">Loading more...</p>}
 
         {error && (
           <p className="py-3 text-center text-xs text-danger">
             {error}{' '}
-            <button type="button" onClick={() => void loadMore()} className="underline">
+            <button type="button" onClick={() => void loadMore()} className="font-medium underline">
               Retry
             </button>
           </p>
         )}
 
         {!hasMore && rows.length > 0 && (
-          <p className="py-3 text-center text-xs text-text-secondary">End of screenshots.</p>
+          <p className="py-3 text-center text-xs text-text-tertiary">End of screenshots.</p>
         )}
       </div>
 
