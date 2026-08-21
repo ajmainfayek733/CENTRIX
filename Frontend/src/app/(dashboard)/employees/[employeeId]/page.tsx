@@ -7,6 +7,8 @@ import {
   Card,
   PageHeader,
   StatTile,
+  HeroPercent,
+  Legend,
   TableWrap,
   TABLE_CLASS,
   Th,
@@ -86,10 +88,9 @@ export default async function EmployeeDetailPage({
         action={<DateRangePicker startDate={range.startDate} endDate={range.endDate} />}
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-3">
         <StatTile label="Active" value={formatDuration(totals.activeSeconds)} />
         <StatTile label="Idle" value={formatDuration(totals.idleSeconds)} />
-        <StatTile label="Productive" value={formatPercent(totals.productivityPercent)} tone="success" />
         <StatTile
           label="Blacklisted"
           value={formatDuration(totals.blacklistedSeconds)}
@@ -97,12 +98,34 @@ export default async function EmployeeDetailPage({
         />
       </div>
 
+      {/*
+        Productive time and the mix it comes from are one card, not two. Split across a tile and
+        a bare bar, the percentage was a number with nothing to read it against and the bar was a
+        shape with no figure on it - each was the other's missing half.
+      */}
       <Card title="Productivity mix">
-        <ProductivityBar
-          productive={totals.productiveSeconds}
-          unproductive={totals.unproductiveSeconds}
-          neutral={totals.neutralSeconds}
-          blacklisted={totals.blacklistedSeconds}
+        <HeroPercent
+          value={formatPercent(totals.productivityPercent)}
+          caption="of active time tagged productive"
+        />
+
+        <div className="my-3.5">
+          <ProductivityBar
+            productive={totals.productiveSeconds}
+            unproductive={totals.unproductiveSeconds}
+            neutral={totals.neutralSeconds}
+            blacklisted={totals.blacklistedSeconds}
+          />
+        </div>
+
+        <Legend
+          items={[
+            { key: 'productive', label: 'Productive', value: formatDuration(totals.productiveSeconds) },
+            { key: 'neutral', label: 'Neutral', value: formatDuration(totals.neutralSeconds) },
+            { key: 'unproductive', label: 'Unproductive', value: formatDuration(totals.unproductiveSeconds) },
+            { key: 'blacklisted', label: 'Blacklisted', value: formatDuration(totals.blacklistedSeconds) },
+            { key: 'idle', label: 'Idle', value: formatDuration(totals.idleSeconds) },
+          ]}
         />
       </Card>
 
