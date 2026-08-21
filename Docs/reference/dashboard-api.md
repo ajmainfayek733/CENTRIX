@@ -90,6 +90,7 @@ around it. It also emits `device:deactivated` so the agent stops pushing without
 | GET | `/employees/:employeeId/activity` | A M U | Keyset | `VIEW_EMPLOYEE_ACTIVITY_LOG` |
 | GET | `/alerts` | A M U | Keyset | `VIEW_ALERTS` |
 | GET | `/usb-events` | A M U | Keyset | `VIEW_USB_EVENTS` |
+| GET | `/employees/:employeeId/usb-events` | A M U | Keyset | `VIEW_EMPLOYEE_USB_EVENTS` |
 | GET | `/employees/:employeeId/screenshots` | **A M** | Keyset | `VIEW_SCREENSHOT_INDEX` |
 | GET | `/screenshots/:deviceId/:file` | **A M** | Filesystem | `VIEW_SCREENSHOT` |
 

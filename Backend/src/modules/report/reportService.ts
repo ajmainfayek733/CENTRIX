@@ -642,9 +642,24 @@ export class ReportService {
     return toPage(rows, pageSize, (r) => r.triggeredAt);
   }
 
-  /** USB device audit trail (Features.md "USB Logs"). */
+  /**
+   * USB device audit trail (Features.md "USB Logs").
+   *
+   * `employeeId` narrows the trail to the machines assigned to one person, which is what the
+   * employee detail screen asks for. The filter is applied in the query rather than by the
+   * caller: paging is keyset over eventTime, so a page filtered after the fact would return
+   * between zero and `pageSize` rows and the scroll window would stall on a page that looked
+   * empty but was not the end. Filtering here also keeps one employee's screen from being sent
+   * every other employee's removable-device history.
+   */
   async getUsbEvents(
-    options: { startDate?: string; endDate?: string; cursor?: string; limit?: number } = {}
+    options: {
+      employeeId?: string;
+      startDate?: string;
+      endDate?: string;
+      cursor?: string;
+      limit?: number;
+    } = {}
   ) {
     const { start, end } = resolveRange(options.startDate, options.endDate);
 
@@ -655,6 +670,7 @@ export class ReportService {
     const rows = await prisma.usbEvent.findMany({
       where: {
         eventTime: { gte: start, lte: end },
+        ...(options.employeeId ? { device: { employeeId: options.employeeId } } : {}),
         ...olderThan('eventTime', cursor),
       },
       orderBy: newestFirst('eventTime'),

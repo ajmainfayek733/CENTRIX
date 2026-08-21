@@ -47,6 +47,15 @@ router.get(
   reportController.getUsbEvents
 );
 
+// Per-employee slice of the same trail, behind the detail screen's scroll window. Audited
+// against the employee so the log answers whose history was read, not merely that some was.
+router.get(
+  '/employees/:employeeId/usb-events',
+  requireRole('super_admin', 'manager', 'auditor'),
+  auditLogger('VIEW_EMPLOYEE_USB_EVENTS', (req) => `Employee:${req.params.employeeId}`),
+  reportController.getEmployeeUsbEvents
+);
+
 // Screenshots are the most invasive surface in the product, so per spec section 6 the Auditor role
 // is deliberately excluded from both the index and the image itself - they get aggregate
 // reports and the audit log, never a picture of someone's desktop.

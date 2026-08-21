@@ -21,6 +21,13 @@ const FEEDS = {
   },
   alerts: () => '/v1/dashboard/reports/alerts',
   usb: () => '/v1/dashboard/reports/usb-events',
+  // The same trail narrowed to one employee. A distinct feed rather than an employeeId parameter
+  // on `usb` above, because the upstream route differs and the API audits the two separately.
+  'employee-usb': (params: URLSearchParams) => {
+    const employeeId = params.get('employeeId');
+    if (!employeeId) return null;
+    return `/v1/dashboard/reports/employees/${encodeURIComponent(employeeId)}/usb-events`;
+  },
   // Index only - never the image bytes, which have their own route so each view is audited
   // individually. The API restricts this to super_admin/manager; an Auditor gets a 403 here,
   // which is the same answer they get for the first page rendered on the server.

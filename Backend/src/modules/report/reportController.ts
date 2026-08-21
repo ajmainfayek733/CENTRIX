@@ -98,6 +98,29 @@ export class ReportController {
   }
 
   /**
+   * GET /v1/dashboard/reports/employees/:employeeId/usb-events
+   *
+   * The same trail as above, narrowed to one person's machines. A separate route rather than a
+   * query parameter on the org-wide feed, so the audit log records *whose* removable-device
+   * history was read - "someone listed USB events" and "someone read this employee's USB
+   * history" are different acts, and only the second is answerable from the route.
+   */
+  async getEmployeeUsbEvents(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await reportService.getUsbEvents({
+        employeeId: req.params.employeeId as string,
+        startDate: req.query.startDate as string | undefined,
+        endDate: req.query.endDate as string | undefined,
+        cursor: req.query.cursor as string | undefined,
+        limit: parseLimit(req.query.limit),
+      });
+      return res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * GET /v1/dashboard/reports/employees/:employeeId/screenshots
    *
    * Index only - the images themselves come from getScreenshotFile, one audited request each.

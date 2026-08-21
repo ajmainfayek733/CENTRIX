@@ -99,7 +99,8 @@ disagreeing about what "a page" means.
 | `GET /employees/:id` | Rollup + one page | Totals, active/idle split, top apps and domains, first timeline page, attendance by day and by session |
 | `GET /employees/:id/activity` | Raw, keyset | Timeline pages behind the scroll window |
 | `GET /alerts` | Raw, keyset | `includeResolved` filter |
-| `GET /usb-events` | Raw, keyset | Audit trail |
+| `GET /usb-events` | Raw, keyset | Audit trail, org-wide |
+| `GET /employees/:id/usb-events` | Raw, keyset | The same trail, one employee's machines |
 | `GET /employees/:id/screenshots` | Raw, keyset | Index only, never bytes |
 | `GET /screenshots/:deviceId/:file` | Filesystem | One image, audited individually |
 

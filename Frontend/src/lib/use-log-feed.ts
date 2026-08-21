@@ -23,7 +23,7 @@ export interface LogPage<T> {
 }
 
 /** Feed names resolved by /api/logs/[feed]. Must stay in step with that route's allowlist. */
-export type LogFeedName = 'activity' | 'alerts' | 'usb' | 'screenshots';
+export type LogFeedName = 'activity' | 'alerts' | 'usb' | 'employee-usb' | 'screenshots';
 
 interface UseLogFeedOptions<T> {
   /** First page, fetched on the server so the window is populated before any JavaScript runs. */

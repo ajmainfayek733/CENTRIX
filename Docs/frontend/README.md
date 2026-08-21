@@ -82,7 +82,7 @@ purpose; none is a general-purpose passthrough.
 | Route | Why it exists |
 |---|---|
 | `api/auth/login` | Must set the httpOnly cookie |
-| `api/logs/[feed]` | Scroll paging; feeds are **allowlisted** so it cannot become an open proxy |
+| `api/logs/[feed]` | Scroll paging; feeds (`activity`, `alerts`, `usb`, `employee-usb`, `screenshots`) are **allowlisted** so it cannot become an open proxy |
 | `api/realtime/ticket` | Mints a socket credential that is not the session token |
 | `api/screenshots/[deviceId]/[file]` | An `<img>` tag cannot send an Authorization header |
 

@@ -22,7 +22,7 @@ interface LogScrollerProps<T> {
   /** First page, rendered on the server so the table is populated before any JavaScript runs. */
   initial: LogPage<T>;
   /** Feed name, resolved by /api/logs/[feed]. */
-  feed: Extract<LogFeedName, 'activity' | 'alerts' | 'usb'>;
+  feed: Extract<LogFeedName, 'activity' | 'alerts' | 'usb' | 'employee-usb'>;
   /** Extra query parameters (employeeId, date range, ...). */
   params?: Record<string, string | undefined>;
   /** Stable identity for a row, used as the React key and to drop duplicates. */

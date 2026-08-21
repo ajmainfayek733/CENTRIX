@@ -18,12 +18,13 @@ import {
   EmptyState,
   ProductivityBar,
 } from '@/components/ui';
-import type { EmployeeDetail, ScreenshotRow } from '@/types/api';
+import type { EmployeeDetail, ScreenshotRow, UsbEventRow } from '@/types/api';
 import type { LogPage } from '@/lib/use-log-feed';
 import { getSessionUser, canViewScreenshots } from '@/lib/session';
 import { DateRangePicker } from '@/components/DateRangePicker';
 import { ScreenshotGallery } from '@/components/ScreenshotGallery';
 import { TimelineTable } from './TimelineTable';
+import { EmployeeUsbTable } from './EmployeeUsbTable';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,12 +65,22 @@ export default async function EmployeeDetailPage({
     page at all would just earn a 403. The API remains the enforcement point; this is the UI
     agreeing with it.
   */
-  const screenshots =
+  /*
+    Fetched in parallel: neither depends on the other, and awaiting them in sequence would put
+    two round trips on the critical path of a screen that has already made one.
+
+    The USB trail needs no role gate of its own. Its endpoint admits the same three roles that
+    can reach this page at all, unlike screenshots - so gating it here would only hide a section
+    from people the API is willing to answer.
+  */
+  const [usbEvents, screenshots] = await Promise.all([
+    apiGet<LogPage<UsbEventRow>>(`/v1/dashboard/reports/employees/${employeeId}/usb-events${suffix}`),
     user && canViewScreenshots(user.role)
-      ? await apiGet<LogPage<ScreenshotRow>>(
+      ? apiGet<LogPage<ScreenshotRow>>(
           `/v1/dashboard/reports/employees/${employeeId}/screenshots${suffix}`
         )
-      : null;
+      : Promise.resolve(null),
+  ]);
 
   return (
     <div className="space-y-3.5">
@@ -310,6 +321,22 @@ export default async function EmployeeDetailPage({
       <Card title={`Timeline - showing ${timeline.rows.length}${timeline.hasMore ? '+' : ''}`}>
         <TimelineTable
           initial={timeline}
+          employeeId={employee.id}
+          startDate={startDate}
+          endDate={endDate}
+        />
+      </Card>
+
+      {/*
+        The removable-device trail for this person. Sits after the timeline and before the
+        captures: the timeline says what they were doing, this says what could have left the
+        machine while they did it.
+      */}
+      <Card
+        title={`USB devices - showing ${usbEvents.rows.length}${usbEvents.hasMore ? '+' : ''}`}
+      >
+        <EmployeeUsbTable
+          initial={usbEvents}
           employeeId={employee.id}
           startDate={startDate}
           endDate={endDate}
