@@ -9,6 +9,9 @@ import { SignOutButton } from '@/components/SignOutButton';
 import { RealtimeProvider } from '@/components/RealtimeProvider';
 import { ConnectionBanner } from '@/components/ConnectionBanner';
 import { ServiceUnavailable } from '@/components/ServiceUnavailable';
+import { TopbarSearch } from '@/components/TopbarSearch';
+import { NotificationBell } from '@/components/NotificationBell';
+import { RefreshButton } from '@/components/RefreshButton';
 
 /**
  * The RBAC-protected shell. Resolves the session server-side once per navigation and passes
@@ -61,18 +64,30 @@ function initialOf(user: SessionUser): string {
  * Shared so an outage keeps the header, the theme and a way out of the page. A degraded screen
  * that also strips the navigation traps whoever hits it on the one screen that is broken.
  *
- * Both the rail and the topbar are `sticky` against the document scroll rather than wrapping the
- * content in its own scroll container. An inner scroller looks the same until you use it: it
- * breaks scroll restoration between navigations, and it hides the page from the browser's own
- * find-in-page scrolling.
+ * SCROLLING. The shell fills the viewport and does not scroll; the content region does, and it
+ * is the only thing that does. The rail and the topbar sit outside it.
+ *
+ * This replaces a `sticky` topbar over a scrolling document. Sticky kept the bar in place but
+ * left the content passing underneath it, which through a translucent, blurred bar reads as
+ * smeared text sliding behind the controls. Taking the content out of the document's scroll and
+ * giving it its own region means there is nothing to pass under: the bar is a sibling of the
+ * scroller, not a layer over it.
+ *
+ * The cost is that browser scroll restoration no longer applies to the content region between
+ * navigations - the document itself never scrolls, so there is no document scroll position to
+ * restore. Every screen here opens at the top, which is where they were opened anyway.
  */
 function Shell({ user, children }: { user?: SessionUser; children: ReactNode }) {
   return (
-    <div className="flex min-h-dvh gap-3 p-3.5">
+    /*
+     * h-dvh + overflow-hidden, not min-h-dvh: this element is the viewport frame, and the only
+     * scrollbar on the screen belongs to <main> below.
+     */
+    <div className="flex h-dvh gap-3 overflow-hidden p-3.5">
       {/* The rail. Hidden below md, where the same links render inside the topbar instead -
           the blueprint drops the navigation entirely at that width, which leaves a phone with
           no way between screens. */}
-      <aside className="glass glass-heavy sticky top-3.5 hidden h-[calc(100dvh-1.75rem)] w-[230px] shrink-0 flex-col gap-[3px] rounded-lg px-2.5 py-[18px] md:flex">
+      <aside className="glass glass-heavy hidden h-full w-[230px] shrink-0 flex-col gap-[3px] overflow-y-auto rounded-lg px-2.5 py-[18px] md:flex">
         <Link
           href="/overview"
           className="flex items-center gap-2.5 px-3 pb-5 pt-1.5 text-[14.5px] font-semibold tracking-[-0.3px] text-text-primary"
@@ -81,9 +96,9 @@ function Shell({ user, children }: { user?: SessionUser; children: ReactNode }) 
             className="grid size-7 shrink-0 place-items-center rounded-md bg-linear-135 from-brand-strong to-brand-vivid text-[13px] font-bold text-white shadow-[0_4px_14px_rgba(14,165,233,0.35)]"
             aria-hidden
           >
-            C
+            EM
           </span>
-          C E N T R I X
+          Employee Monitor
         </Link>
 
         {/* No role means no session was resolved, and a nav that cannot honour RBAC is worse
@@ -110,28 +125,36 @@ function Shell({ user, children }: { user?: SessionUser; children: ReactNode }) 
         )}
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col gap-3">
-        <header className="glass sticky top-3.5 z-20 flex min-h-[54px] items-center justify-between gap-4 rounded-lg px-[18px] py-2">
+      {/* min-h-0 so this column may be shorter than its content, which is what lets the scroll
+          region below actually scroll instead of stretching the shell past the viewport. */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+        <header className="glass flex min-h-[54px] shrink-0 items-center justify-between gap-4 rounded-lg px-[18px] py-2">
           {/* Below md this carries the navigation; above it, the brand lives in the rail and
-              this side stays empty so the topbar reads as a quiet strip. */}
-          <div className="flex min-w-0 items-center gap-3 md:hidden">
-            {user ? (
-              <NavLinks role={user.role} orientation="horizontal" />
-            ) : (
-              <Link href="/overview" className="text-sm font-semibold text-text-primary">
-                C E N T R I X
-              </Link>
-            )}
+              this side holds the search pill. */}
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="md:hidden">
+              {user ? (
+                <NavLinks role={user.role} orientation="horizontal" />
+              ) : (
+                <Link href="/overview" className="text-sm font-semibold text-text-primary">
+                  Employee Monitor
+                </Link>
+              )}
+            </div>
+            <TopbarSearch />
           </div>
-          <div className="hidden md:block" />
 
           <div className="flex shrink-0 items-center gap-2.5">
             <ThemeToggle />
+            {/* Both need the realtime context and the router, so they only exist for a resolved
+                session - the degraded shell renders without a RealtimeProvider around it. */}
+            {user && <NotificationBell />}
+            {user && <RefreshButton />}
             {user && <SignOutButton />}
           </div>
         </header>
 
-        <main className="flex-1 pb-2">
+        <main className="min-h-0 flex-1 overflow-y-auto pb-2 pr-0.5">
           {user && <ConnectionBanner />}
           {children}
         </main>

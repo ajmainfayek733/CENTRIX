@@ -121,17 +121,52 @@ descendant selectors, because a `<tr>` cannot reliably paint a background across
 
 ## Shell
 
-A 230px sticky rail plus a floating topbar, replacing the previous full-width top header.
+A 230px rail plus a floating topbar, replacing the previous full-width top header.
 
-Both the rail and the topbar are `sticky` against the **document** scroll. The prototype wraps
-its content in an inner `overflow-y: auto` container; that looks identical until used, then
-breaks scroll restoration between navigations and hides the page from the browser's own
-find-in-page scrolling.
+### The shell does not scroll
+
+`h-dvh` + `overflow-hidden` on the shell; the content region (`<main>`) is the only scroller on
+the screen. The rail and the topbar are its siblings, not layers over it.
+
+This was first built as a `sticky` topbar over a scrolling document. Sticky holds the bar in
+place, but the content keeps passing *underneath* it - and through a translucent, backdrop-blurred
+bar that reads as smeared text sliding behind the controls. Taking the content out of the
+document's scroll removes the problem rather than masking it: there is nothing left to pass
+under.
+
+The trade is browser scroll restoration. The document never scrolls, so there is no document
+scroll position to restore between navigations, and every screen opens at the top - which is
+where they were being opened anyway.
+
+Two consequences worth remembering when adding to this shell:
+
+- `min-h-0` is required on the main column. Without it a flex child refuses to be shorter than
+  its content, the shell grows past the viewport, and the scroll region never scrolls.
+- `position: fixed` overlays still work (`ScreenshotViewer` is `fixed inset-0`), because no
+  ancestor of `<main>` carries a transform or filter that would make it a containing block.
+  Adding one to the shell would silently trap every modal inside the content region.
+
+### Below md
 
 The prototype hides its sidebar entirely below 768px. Here the same links render inside the
 topbar instead - dropping navigation on a phone leaves no way between screens. Exactly one of
 the two navs is in the accessibility tree at any width, since `hidden`/`md:hidden` resolve to
 `display: none`.
+
+### Topbar controls
+
+| Control | State |
+|---|---|
+| Search pill | **Disabled.** No search endpoint. Holds its width so the bar does not shift when it is wired up |
+| Notifications | **Real.** Counts alerts and USB events from the socket's live delta |
+| Refresh | **Real.** `router.refresh()` - re-runs the server components, keeping the shell and socket |
+| Theme toggle, Sign out | Real |
+
+The bell is scoped to *"since this page loaded"*, not *"unread"*. There is no read-state anywhere
+in the system, so an unread count would mean inventing a per-user marker the backend does not
+keep - and it would be wrong the moment two people looked at the same alert. When the socket is
+down the panel says so rather than showing a zero, which would read as "nothing is happening" at
+exactly the moment it cannot know.
 
 ### Navigation is nine items, four of them templates
 
@@ -167,8 +202,7 @@ and its `PLACEHOLDER_*` constant and `TemplateNotice` are deleted in the same co
 | Prototype feature | Why not |
 |---|---|
 | Chart.js via CDN | ~200KB plus a third-party request for two figures that do not animate or hit-test. `components/charts.tsx` draws the same bar and doughnut shapes with CSS and inline SVG, on the server |
-| Search pill in the topbar | There is no search endpoint - it would be a dead control |
-| Notification bell + badge | No notification store exists to count |
+| Chart.js's live behaviours | Nothing here animates, zooms or hit-tests, so none was needed |
 | `[data-theme='dark']` | This app keys dark mode off a `.dark` class on `<html>` with a no-flash inline script; only the palette values changed |
 | Nine-page SPA routing | Real App Router routes already exist |
 
