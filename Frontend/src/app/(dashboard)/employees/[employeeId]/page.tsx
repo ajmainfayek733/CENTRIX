@@ -25,6 +25,7 @@ import { DateRangePicker } from '@/components/DateRangePicker';
 import { ScreenshotGallery } from '@/components/ScreenshotGallery';
 import { TimelineTable } from './TimelineTable';
 import { EmployeeUsbTable } from './EmployeeUsbTable';
+import { WeeklyAttendance } from './WeeklyAttendance';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,7 +56,8 @@ export default async function EmployeeDetailPage({
     throw error;
   }
 
-  const { employee, totals, timeline, topApps, topDomains, attendance, attendanceDays } = detail;
+  const { employee, period, totals, timeline, topApps, topDomains, attendance, attendanceDays } =
+    detail;
   const { startDate, endDate } = range;
 
   /*
@@ -137,6 +139,19 @@ export default async function EmployeeDetailPage({
             { key: 'blacklisted', label: 'Blacklisted', value: formatDuration(totals.blacklistedSeconds) },
             { key: 'idle', label: 'Idle', value: formatDuration(totals.idleSeconds) },
           ]}
+        />
+      </Card>
+
+      {/*
+        The week strip sits directly under the mix because the two are read together: the mix says
+        how the time was spent, this says which days it was spent on. Both are folded from data the
+        page already holds, so neither costs a request.
+      */}
+      <Card title="Weekly attendance">
+        <WeeklyAttendance
+          attendanceDays={attendanceDays}
+          periodStart={period.start}
+          periodEnd={period.end}
         />
       </Card>
 

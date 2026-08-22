@@ -554,3 +554,37 @@ undifferentiated list, where the only way to tell them apart was to already know
 - Input bounds are mirrored from the backend's Zod schema so a bad value is caught at the input
   rather than as a 400 after a round trip. The server remains the enforcement point; a change there
   must be made here too, or a stricter server bound shows up as an unexplained save failure.
+
+## 16. Weekly attendance on the employee detail screen
+
+`WeeklyAttendance` sits directly under the productivity mix card, before the top applications and
+websites. The order is the reading order: the mix says how the time was spent, the week strip says
+which days it was spent on, and the attendance tables further down give the timestamps behind both.
+
+**No endpoint of its own.** It is folded from `attendanceDays` on the response the page has already
+awaited (`GET /v1/dashboard/reports/employees/:id`). A regrouping of data the page is holding does
+not justify a second round trip on the critical path, and a separate request could also disagree
+with the table below it after a range change.
+
+| Day state | Source | Rendered as |
+|---|---|---|
+| `present` | `AttendanceDay.status` | Green cell - still signed in |
+| `ended` | `AttendanceDay.status` | Neutral cell, brand bar - attended |
+| `unknown` | `AttendanceDay.status` | Amber cell - open session on a device that stopped reporting |
+| `absent` | in-period date with no row | Dashed cell, "Absent" |
+| `outside` | date outside the range, or after today | Muted, `-` |
+
+- **`absent` and `outside` are deliberately distinct.** A day the range never covered, and a Friday
+  that has not happened yet, are not absences - the default range ends at "now" and a picked one can
+  end later still, so the strip clamps its visible end to today rather than manufacturing an
+  accusation the data does not make.
+- **Weeks are ISO (Monday-start) and computed in UTC.** `workDate` is a `@db.Date` the backend keys
+  as UTC midnight (`reportService.workDateKey`), so bucketing through a local-timezone `Date` would
+  move a day across the week boundary for any operator west of Greenwich - precisely at the
+  Sunday/Monday edge the component exists to draw.
+- **Bars scale against the longest day on screen**, not a fixed working day. A team on six-hour
+  shifts would otherwise read as permanently half-empty against an eight-hour constant that appears
+  nowhere in the data. The bar is decoration over the duration printed beneath it, never the only
+  signal.
+- **Newest week first, capped at 12.** A year-long range would otherwise render fifty-two strips;
+  when the cap bites, the legend row says so.
