@@ -7,6 +7,10 @@ import { deleteCategory, upsertCategory } from './actions';
 
 const TAGS: ProductivityTag[] = ['Productive', 'Neutral', 'Unproductive', 'Blacklisted'];
 
+/** Solid fill so the control stays readable over the page gradient in both themes. */
+const ADD_RULE_CLASS =
+  'border border-brand-strong bg-brand-strong text-brand-contrast shadow-none hover:bg-brand hover:text-brand-contrast';
+
 /**
  * Productivity and blacklist rules (spec section 4, "Productivity categorization").
  *
@@ -110,7 +114,8 @@ export function CategoryEditor({
 
         <Button
           type="button"
-          variant="primary"
+          variant="ghost"
+          className={ADD_RULE_CLASS}
           onClick={add}
           disabled={pending || pattern.trim().length === 0}
         >

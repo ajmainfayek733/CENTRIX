@@ -20,6 +20,9 @@ import { RefreshButton } from '@/components/RefreshButton';
  * RealtimeProvider wraps the whole dashboard so every screen updates as telemetry lands, without
  * the operator refreshing. Totals move from the aggregates pushed with each ingest event; the
  * server components are re-run only for what a delta cannot express.
+ * 
+ *  Is it possible to apply this method to send message to a specific employee(while monitoring after founding something suspicious we want to give the employee a warning message and the employee only can read
+  the message, he can't send any reply and it also shows when the message was sent and after 24 hr automatically will vanished after read but admin can see the message whenever want)
  */
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   let user: SessionUser | null;
@@ -96,9 +99,9 @@ function Shell({ user, children }: { user?: SessionUser; children: ReactNode }) 
             className="grid size-7 shrink-0 place-items-center rounded-md bg-linear-135 from-brand-strong to-brand-vivid text-[13px] font-bold text-white shadow-[0_4px_14px_rgba(14,165,233,0.35)]"
             aria-hidden
           >
-            EM
+            C
           </span>
-          Employee Monitor
+          C E N T R I X
         </Link>
 
         {/* No role means no session was resolved, and a nav that cannot honour RBAC is worse
@@ -137,7 +140,7 @@ function Shell({ user, children }: { user?: SessionUser; children: ReactNode }) 
                 <NavLinks role={user.role} orientation="horizontal" />
               ) : (
                 <Link href="/overview" className="text-sm font-semibold text-text-primary">
-                  Employee Monitor
+                  C E N T R I X
                 </Link>
               )}
             </div>

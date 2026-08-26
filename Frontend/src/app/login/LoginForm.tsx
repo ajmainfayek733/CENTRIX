@@ -4,6 +4,10 @@ import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button, Field, Input } from '@/components/ui';
 
+/** Solid fill so the control stays readable over the page gradient in both themes. */
+const SIGN_IN_CLASS =
+  'w-full border border-brand-strong bg-brand-strong text-brand-contrast shadow-none hover:bg-brand hover:text-brand-contrast';
+
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -78,7 +82,7 @@ export function LoginForm() {
         </p>
       )}
 
-      <Button type="submit" variant="primary" disabled={pending} className="w-full">
+      <Button type="submit" variant="ghost" disabled={pending} className={SIGN_IN_CLASS}>
         {pending ? 'Signing in...' : 'Sign in'}
       </Button>
     </form>

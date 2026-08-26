@@ -1,9 +1,16 @@
 'use client';
 
-import { useState, useTransition } from 'react';
-import { Card } from '@/components/ui';
+import { useEffect, useRef, useState, useTransition } from 'react';
+import { Button, Card } from '@/components/ui';
+import { cn } from '@/lib/utils';
 import type { Policy } from '@/types/api';
 import { updatePolicy, type PolicyFormValues } from './actions';
+
+/** Solid fill so the control stays readable over the page gradient in both themes. */
+const SAVE_PRIMARY_CLASS =
+  'border border-brand-strong bg-brand-strong text-brand-contrast shadow-none hover:bg-brand hover:text-brand-contrast';
+
+type FormStatus = { tone: 'success' | 'danger'; message: string };
 
 /**
  * The settings screen, split by who a setting acts on.
@@ -76,15 +83,22 @@ const LIMITS = {
 const SECONDS_PER_MINUTE = 60;
 
 export function PolicyForm({ organizationId, policy }: { organizationId: string; policy: Policy }) {
-  const saved = toFormValues(policy);
-  const [values, setValues] = useState<PolicyFormValues>(saved);
+  const initial = toFormValues(policy);
+  const [values, setValues] = useState<PolicyFormValues>(initial);
+  const [committed, setCommitted] = useState<PolicyFormValues>(initial);
   const [pending, startTransition] = useTransition();
-  const [status, setStatus] = useState<string | null>(null);
+  const [status, setStatus] = useState<FormStatus | null>(null);
+  const statusRef = useRef<HTMLDivElement>(null);
 
   // Whether anything is unsaved. Worth showing now that the form is three groups deep with one of
   // them collapsed: a changed value scrolled out of view is a changed value forgotten, and this
   // form reprograms every agent in the building.
-  const dirty = JSON.stringify(values) !== JSON.stringify(saved);
+  const dirty = JSON.stringify(values) !== JSON.stringify(committed);
+
+  useEffect(() => {
+    if (!status) return;
+    statusRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [status]);
 
   function set<K extends keyof PolicyFormValues>(key: K, value: PolicyFormValues[K]) {
     setValues((current) => ({ ...current, [key]: value }));
@@ -98,24 +112,48 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
       values.alertIdleNormalSeconds >= values.alertIdleModerateSeconds ||
       values.alertIdleModerateSeconds >= values.alertIdleSevereSeconds
     ) {
-      setStatus('Idle thresholds must increase: normal < moderate < severe.');
+      setStatus({
+        tone: 'danger',
+        message: 'Idle thresholds must increase: normal < moderate < severe.',
+      });
       return;
     }
 
     startTransition(async () => {
       try {
         await updatePolicy(organizationId, values);
+        setCommitted(values);
         // Connected agents are signalled immediately; the heartbeat is the fallback for any
         // that were offline, so the message describes the guarantee rather than the fast path.
-        setStatus('Saved. Connected agents apply this now; others on their next heartbeat.');
+        setStatus({
+          tone: 'success',
+          message: 'Saved. Connected agents apply this now; others on their next heartbeat.',
+        });
       } catch {
-        setStatus('Could not save. Check that the API is reachable.');
+        setStatus({
+          tone: 'danger',
+          message: 'Could not save. Check that the API is reachable.',
+        });
       }
     });
   }
 
   return (
     <div className="space-y-6">
+      {status && (
+        <div
+          ref={statusRef}
+          role="status"
+          className={cn(
+            'rounded-md border px-4 py-3 text-sm leading-relaxed',
+            status.tone === 'success'
+              ? 'border-success/40 bg-success/10 text-success'
+              : 'border-danger/40 bg-danger/10 text-danger'
+          )}
+        >
+          {status.message}
+        </div>
+      )}
       <Card title="Agent policy">
         <GroupNote>
           What the software on employee machines collects and does. Changes here alter what is
@@ -383,22 +421,17 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
         </Section>
       </AdvancedGroup>
 
-      {/*
-        One save for all three groups, pinned to the bottom of the viewport. The form is now taller
-        than a screen and one group is collapsed, so a button that scrolled away with the first card
-        would strand changes made in the last one.
-      */}
-      <div className="glass sticky bottom-3.5 z-10 flex flex-wrap items-center justify-end gap-3 rounded-lg px-[18px] py-3">
-        {status && <span className="mr-auto text-xs text-text-secondary">{status}</span>}
-        {!status && dirty && <span className="mr-auto text-xs text-warning">Unsaved changes</span>}
-        <button
+      <div className="flex flex-wrap items-center justify-end gap-3 rounded-lg border border-border-strong bg-surface px-[18px] py-3">
+        {dirty && <span className="mr-auto text-sm text-warning">Unsaved changes</span>}
+        <Button
           type="button"
+          variant="ghost"
+          className={SAVE_PRIMARY_CLASS}
           onClick={save}
           disabled={pending || !dirty}
-          className="rounded-md bg-linear-135 from-brand-strong to-brand-strong-2 px-4 py-2 text-[13px] font-medium text-brand-contrast shadow-[0_4px_12px_rgba(14,120,200,0.3)] transition-opacity hover:opacity-90 disabled:opacity-50"
         >
           {pending ? 'Saving...' : 'Save changes'}
-        </button>
+        </Button>
       </div>
     </div>
   );

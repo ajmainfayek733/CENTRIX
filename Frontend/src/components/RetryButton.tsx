@@ -4,6 +4,10 @@ import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { Button } from '@/components/ui';
 
+/** Solid fill so the control stays readable over the page gradient in both themes. */
+const RETRY_CLASS =
+  'border border-brand-strong bg-brand-strong text-brand-contrast shadow-none hover:bg-brand hover:text-brand-contrast';
+
 /**
  * Retries the current page against the server.
  *
@@ -24,7 +28,8 @@ export function RetryButton({ onRetry }: { onRetry?: () => void }) {
     <div className="flex items-center gap-3">
       <Button
         type="button"
-        variant="primary"
+        variant="ghost"
+        className={RETRY_CLASS}
         disabled={pending}
         onClick={() => {
           setAttempted(true);

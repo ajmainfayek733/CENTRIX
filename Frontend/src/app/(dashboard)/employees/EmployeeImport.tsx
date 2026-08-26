@@ -8,6 +8,12 @@ import { importEmployees, type ImportResult, type ImportRow } from './actions';
 /** Rows past this are rejected by the server anyway; catching it here gives a better message. */
 const MAX_ROWS = 1000;
 
+/** Solid fills so these controls stay readable over the page gradient in both themes. */
+const IMPORT_PRIMARY_CLASS =
+  'border border-brand-strong bg-brand-strong text-brand-contrast shadow-none hover:bg-brand hover:text-brand-contrast';
+const IMPORT_SECONDARY_CLASS =
+  'border border-border-strong bg-surface-strong text-text-primary shadow-none hover:bg-surface-muted hover:text-text-primary';
+
 /**
  * Bulk roster import.
  *
@@ -44,7 +50,7 @@ export function EmployeeImport({ organizationId }: { organizationId: string }) {
 
   if (!open) {
     return (
-      <Button type="button" variant="primary" onClick={() => setOpen(true)}>
+      <Button type="button" variant="ghost" className={IMPORT_PRIMARY_CLASS} onClick={() => setOpen(true)}>
         <Upload className="size-4" strokeWidth={1.75} aria-hidden />
         Import roster
       </Button>
@@ -72,7 +78,8 @@ export function EmployeeImport({ organizationId }: { organizationId: string }) {
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <Button
           type="button"
-          variant="primary"
+          variant="ghost"
+          className={IMPORT_PRIMARY_CLASS}
           onClick={submit}
           disabled={pending || parsed.rows.length === 0 || parsed.rows.length > MAX_ROWS}
         >
@@ -81,7 +88,8 @@ export function EmployeeImport({ organizationId }: { organizationId: string }) {
 
         <Button
           type="button"
-          variant="secondary"
+          variant="ghost"
+          className={IMPORT_SECONDARY_CLASS}
           onClick={() => {
             setOpen(false);
             setResult(null);
