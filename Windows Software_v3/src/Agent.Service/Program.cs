@@ -110,6 +110,8 @@ builder.Services.AddHostedService<RetentionWorker>();
 builder.Services.AddHostedService<HostSupervisorWorker>();
 
 var host = builder.Build();
+var recoveryLogger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("ServiceRecovery");
+ServiceRecoveryConfigurator.TryEnableNonCrashRecovery(recoveryLogger);
 await host.RunAsync();
 
 return 0;

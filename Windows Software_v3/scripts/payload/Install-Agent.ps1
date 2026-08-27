@@ -427,20 +427,27 @@ function Register-AgentService {
 
     if (Get-AgentService) {
         Write-Step 'Service is already registered; the existing registration is kept.'
-        return
+    }
+    else {
+        Write-Step 'Registering the Windows service...'
+        New-Service -Name $ServiceName `
+                    -BinaryPathName "`"$binaryPath`"" `
+                    -DisplayName $DisplayName `
+                    -Description $ServiceDescription `
+                    -StartupType Automatic | Out-Null
     }
 
-    Write-Step 'Registering the Windows service...'
-    New-Service -Name $ServiceName `
-                -BinaryPathName "`"$binaryPath`"" `
-                -DisplayName $DisplayName `
-                -Description $ServiceDescription `
-                -StartupType Automatic | Out-Null
-
-    # New-Service cannot express recovery actions, so this stays as sc.exe.
+    # Apply this on upgrades too. New-Service cannot express recovery actions, so this stays as sc.exe.
     & sc.exe failure $ServiceName reset= $FailureResetSeconds actions= $FailureActions | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        Write-Warn 'Could not set the service recovery actions. The agent will not restart itself after a crash.'
+        Write-Warn 'Could not set the service recovery actions. The agent will not restart itself after a failure.'
+    }
+
+    # Task Manager termination may not be reported as a crash. Enable recovery actions for every
+    # unexpected process termination, while a normal service stop remains intentional.
+    & sc.exe failureflag $ServiceName 1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warn 'Could not enable recovery for unexpected service termination.'
     }
 }
 
