@@ -34,7 +34,7 @@ The collected device information helps administrators distinguish individual dev
 
 ## Attendace report
 
-The Attendance Report Service records each employee's first login and last logout time for every workday, providing an accurate attendance record for payroll, reporting, and workforce analytics. It handles edge cases such as workstation lock/unlock, shutdown, restart, hibernate, sleep, and unexpected power loss by persistently updating the logout time and recording the corresponding session termination reason to ensure reliable daily attendance data.
+The Attendance Report Service records each employee's first login and last logout time for every workday, providing an accurate attendance record for payroll, reporting, and workforce analytics. It handles edge cases such as workstation lock/unlock, shutdown, restart, hibernate, sleep, and unexpected power loss by persistently updating the logout time and recording the corresponding session termination reason to ensure reliable daily attendance data. Attendance is durably refreshed every 30 seconds; after an abrupt power loss, only time through the last persisted heartbeat is counted, so unobserved time is never falsely reported as active.
 
 ---
 

@@ -30,29 +30,30 @@ public sealed class RetentionWorker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Close out any attendance session left open by an unclean shutdown before the first
-        // sweep, so the recovered row is uploaded rather than swept as stale.
-        try
-        {
-            _queue.RecoverOpenAttendanceSessions();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Could not recover open attendance sessions at startup");
-        }
+        var nextSweepAt = DateTimeOffset.MinValue;
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                Sweep();
+                // Recovery runs frequently because the previous service instance may have
+                // stopped before its row crossed the stale threshold. Running it only once at
+                // startup could leave a short-outage row open forever after the new host starts.
+                _queue.RecoverOpenAttendanceSessions();
+
+                var now = DateTimeOffset.UtcNow;
+                if (now >= nextSweepAt)
+                {
+                    Sweep();
+                    nextSweepAt = now + SweepInterval;
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Retention sweep failed");
+                _logger.LogWarning(ex, "Retention maintenance cycle failed");
             }
 
-            await Task.Delay(SweepInterval, stoppingToken).ConfigureAwait(false);
+            await Task.Delay(AgentCadence.AttendanceFlush, stoppingToken).ConfigureAwait(false);
         }
     }
 
