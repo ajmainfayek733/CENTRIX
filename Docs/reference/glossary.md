@@ -22,16 +22,16 @@ Optional on the wire; without it a replay still deduplicates per event, just mor
 `activity-session`, `browser-activity`, `usb-event`, `alert`. Also the URL segment in
 `POST /api/v1/events/{channel}`.
 
-**ClientEventId** - a uuid the *agent* generates for each event, before it is ever sent. The
+**ClientEventId** - a uuid the _agent_ generates for each event, before it is ever sent. The
 deduplication key for the whole pipeline. Not a database primary key.
 
 **Connected** vs **live** vs **online** - three different claims:
 
-| Term | Means | Source |
-|---|---|---|
-| `connected` | A command sent right now would reach the agent | A socket exists |
-| `live` | The workstation is actually alive | A heartbeat within `presenceHeartbeatSeconds` x 2.5 |
-| "online now" | It authenticated to the API recently | `devices.lastSeen` |
+| Term         | Means                                          | Source                                              |
+| ------------ | ---------------------------------------------- | --------------------------------------------------- |
+| `connected`  | A command sent right now would reach the agent | A socket exists                                     |
+| `live`       | The workstation is actually alive              | A heartbeat within `presenceHeartbeatSeconds` x 2.5 |
+| "online now" | It authenticated to the API recently           | `devices.lastSeen`                                  |
 
 They can disagree, and each is correct about a different thing. A socket outlives an unplugged
 cable by minutes; `lastSeen` outlives a socket drop.
@@ -44,10 +44,10 @@ stored DPAPI-protected on the workstation and as an HMAC on the server.
 
 **Device id** - ambiguous, so watch the context:
 
-| In | Means |
-|---|---|
-| `devices.deviceId` and enrollment | The Windows **MachineGuid** |
-| `devices.id` and realtime payloads | The database row uuid |
+| In                                 | Means                       |
+| ---------------------------------- | --------------------------- |
+| `devices.deviceId` and enrollment  | The Windows **MachineGuid** |
+| `devices.id` and realtime payloads | The database row uuid       |
 
 **Enrollment token** - the **org-wide** secret in every install. Traded once per machine for a
 device API key. Returned exactly once at organization creation.
@@ -55,8 +55,10 @@ device API key. Returned exactly once at organization creation.
 **Host** - `EmployeeMonitor.Host.exe`, running in the interactive user session. Observes. Holds no
 credential, opens no socket.
 
-**Idempotency, layer 1 / layer 2** - batch-level (`ingest_batches`) and event-level (unique
-`clientEventId`). Layer 1 saves work; layer 2 guarantees correctness.
+**Idempotency, layer 1 / layer 2** - batch-level (`ingest_batches` plus a hash of the sorted
+canonical full event contents) and event-level (unique `clientEventId`). Layer 1 saves work;
+layer 2 guarantees correctness. Attendance revisions can reuse `clientEventId`, so changed
+snapshots must not be treated as an identical batch.
 
 **MachineGuid** - `HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid`. The device identity key.
 Chosen over MAC address, which is spoofable and plural per machine.
@@ -70,7 +72,7 @@ so it cannot block the queue behind it.
 **Policy** - the full settings document for an organization, served whole and never as a diff. Its
 `version` increments on every write, which triggers an agent re-fetch and a fresh consent prompt.
 
-**Prepare / write split** - resolving lookups, categorization and deduplication *before* the ingest
+**Prepare / write split** - resolving lookups, categorization and deduplication _before_ the ingest
 transaction opens, so the transaction holds locks only for the inserts.
 
 **Productive share** - `productiveSeconds / activeSeconds`, 0-100. Idle time is excluded from the
@@ -78,10 +80,10 @@ denominator.
 
 **Rejected** vs **transient** - the distinction the whole sync durability model rests on:
 
-| | Means | Effect on the attempt counter |
-|---|---|---|
-| Rejected (4xx) | The server will refuse this identically forever | Incremented; dropped after 5 |
-| Transient (network, timeout, 5xx) | The data is fine, the server is not | **Untouched** |
+|                                   | Means                                           | Effect on the attempt counter |
+| --------------------------------- | ----------------------------------------------- | ----------------------------- |
+| Rejected (4xx)                    | The server will refuse this identically forever | Incremented; dropped after 5  |
+| Transient (network, timeout, 5xx) | The data is fine, the server is not             | **Untouched**                 |
 
 **Replay** - a batch resent verbatim because its response was lost. Recognized from the ledger and
 answered without redoing the work. Reported back as `replay: true`, and contributes

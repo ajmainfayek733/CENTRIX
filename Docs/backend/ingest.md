@@ -5,17 +5,17 @@ Everything under `/api/v1/*`. Source: `Backend/src/modules/ingest/`.
 This is the highest-volume, least-forgiving code in the system. It runs unattended against
 clients that retry, arrive out of order, and can be days behind.
 
-| File | Responsibility |
-|---|---|
-| `ingest.routes.ts` | Route table, rate-limit keys, per-channel validation |
-| `ingest.dto.ts` | Zod schema per channel - the wire contract |
-| `ingestController.ts` | Thin: unwrap, call, respond |
-| `ingestService.ts` | Enrollment, dedup, prepare/write split, rollup, consent, screenshots |
-| `rollupService.ts` | Daily aggregation, incremented never recomputed |
-| `policyService.ts` | Full policy document, created on demand |
-| `screenshotStorage.ts` | Filesystem persistence - the swap point for blob storage |
-| `upload.ts` | Multer config, `SCREENSHOT_FILE_FIELD` |
-| `deviceLiveness.ts` | Throttled `lastSeen` writes, shared with realtime |
+| File                   | Responsibility                                                       |
+| ---------------------- | -------------------------------------------------------------------- |
+| `ingest.routes.ts`     | Route table, rate-limit keys, per-channel validation                 |
+| `ingest.dto.ts`        | Zod schema per channel - the wire contract                           |
+| `ingestController.ts`  | Thin: unwrap, call, respond                                          |
+| `ingestService.ts`     | Enrollment, dedup, prepare/write split, rollup, consent, screenshots |
+| `rollupService.ts`     | Daily aggregation, incremented never recomputed                      |
+| `policyService.ts`     | Full policy document, created on demand                              |
+| `screenshotStorage.ts` | Filesystem persistence - the swap point for blob storage             |
+| `upload.ts`            | Multer config, `SCREENSHOT_FILE_FIELD`                               |
+| `deviceLiveness.ts`    | Throttled `lastSeen` writes, shared with realtime                    |
 
 ---
 
@@ -60,10 +60,10 @@ does not erase what was learned last time.
 `deviceAuth` looks the key up by HMAC on a unique indexed column - a single indexed read,
 inherently constant-time with respect to the presented key.
 
-| Status | Meaning | Agent behaviour |
-|---|---|---|
-| 401 | Missing, malformed or unrecognized credential | Re-enroll |
-| 403 | Authenticated but deliberately deactivated | Stop pushing |
+| Status | Meaning                                       | Agent behaviour |
+| ------ | --------------------------------------------- | --------------- |
+| 401    | Missing, malformed or unrecognized credential | Re-enroll       |
+| 403    | Authenticated but deliberately deactivated    | Stop pushing    |
 
 The two are distinct because the agent must react differently. Do not collapse them.
 
@@ -77,14 +77,14 @@ liveness tracking must never fail the request it rides on.
 
 `POST /api/v1/events/:channel`, one Zod schema each, fields landing in their own typed columns.
 
-| Channel | Key | Write mode | Rollup contribution |
-|---|---|---|---|
-| `attendance` | `sessionId` | **upsert** | Dates only - no seconds |
-| `activity-metric` | `clientEventId` | insert | Key/mouse counts |
-| `activity-session` | `activitySessionId` | insert | Active/idle and productivity seconds |
-| `browser-activity` | `browserActivityId` | insert | Visit count only |
-| `usb-event` | `clientEventId` | insert | Event count |
-| `alert` | `clientEventId` | **upsert** | Count, first sighting only |
+| Channel            | Key                 | Write mode | Rollup contribution                  |
+| ------------------ | ------------------- | ---------- | ------------------------------------ |
+| `attendance`       | `sessionId`         | **upsert** | Dates only - no seconds              |
+| `activity-metric`  | `clientEventId`     | insert     | Key/mouse counts                     |
+| `activity-session` | `activitySessionId` | insert     | Active/idle and productivity seconds |
+| `browser-activity` | `browserActivityId` | insert     | Visit count only                     |
+| `usb-event`        | `clientEventId`     | insert     | Event count                          |
+| `alert`            | `clientEventId`     | **upsert** | Count, first sighting only           |
 
 Two upserts, and both have a reason:
 
@@ -120,6 +120,7 @@ Two upserts, and both have a reason:
   winning - or, when the revisions are equal, the close winning over a refresh. Array order is not
   part of the wire contract, and applying two events for one session in arrival order would
   reintroduce the same bug from inside a single push.
+
 - **Alerts** escalate (idle 30 -> 45 -> 60 min) reusing one `clientEventId` rather than creating
   a row per escalation. Every alert is written; only first sightings are **counted**, or an
   escalation would inflate the day's alert total on every re-send.
@@ -133,7 +134,7 @@ counted that interval.
 ### Out-of-order arrival
 
 `browser-activity` references an `activitySessionId` that may not have arrived yet - an app
-session closes *after* the browser visits inside it. Unknown parents are **nulled rather than
+session closes _after_ the browser visits inside it. Unknown parents are **nulled rather than
 rejected**, so an out-of-order batch is not lost. `usb-event.sessionId` is treated the same way.
 
 ### Server-side re-categorization
@@ -148,12 +149,14 @@ when no rule matches.
 The agent's queue is at-least-once. A batch that committed but whose response was lost is resent
 verbatim.
 
-**Layer 1 - per batch.** `ingest_batches(deviceId, batchId)` plus a SHA-256 of the **sorted**
-event ids. A recognized replay is answered from the ledger without touching telemetry tables at
-all. Sorting means a retry that repacked the same events in a different order still matches. This
-is the layer that matters when a whole fleet reconnects after an outage.
+**Layer 1 - per batch.** `ingest_batches(deviceId, batchId)` plus a SHA-256 of the **sorted,
+canonical full event contents**. A recognized replay is answered from the ledger without touching
+telemetry tables at all. Sorting means a retry that repacked the same events in a different order
+still matches, while changed event fields do not. This distinction matters for attendance:
+successive snapshots may reuse `clientEventId` while changing `revision`, `logoutTime`, or totals.
+This is the layer that matters when a whole fleet reconnects after an outage.
 
-A recurring `batchId` with *different* contents falls back to per-event dedup with a warning -
+A recurring `batchId` with _different_ contents falls back to per-event dedup with a warning -
 trusting the ledger there would silently discard real telemetry.
 
 **Layer 2 - per event.** Unique `clientEventId` per channel. The backstop for a retry that
@@ -251,15 +254,15 @@ no logout. **The server is the only participant still running, so it closes the 
 every `ATTENDANCE_REAP_INTERVAL_SECONDS`, plus once at startup - the startup pass is the one that
 clears the backlog an outage left behind). Three rules, in order:
 
-| Rule | Fires when | Stamps | `endReason` |
-|---|---|---|---|
-| Superseded | A later login by the same user on the same workstation exists | `min(last evidence, that login)` | `Recovered` |
-| Abandoned | The device has been silent **and** the row has not advanced, both for `ATTENDANCE_ABANDON_AFTER_SECONDS` | last evidence | `PowerLoss` |
-| Ceiling | The row has not advanced for `ATTENDANCE_MAX_OPEN_SECONDS`, however healthy the device | last evidence | `Recovered` |
+| Rule       | Fires when                                                                                               | Stamps                           | `endReason` |
+| ---------- | -------------------------------------------------------------------------------------------------------- | -------------------------------- | ----------- |
+| Superseded | A later login by the same user on the same workstation exists                                            | `min(last evidence, that login)` | `Recovered` |
+| Abandoned  | The device has been silent **and** the row has not advanced, both for `ATTENDANCE_ABANDON_AFTER_SECONDS` | last evidence                    | `PowerLoss` |
+| Ceiling    | The row has not advanced for `ATTENDANCE_MAX_OPEN_SECONDS`, however healthy the device                   | last evidence                    | `Recovered` |
 
 Rule 1 is evidence, not a timeout, so it needs no waiting - and it is the common case after an
 outage, because the machine comes back and opens a fresh session while the dead one is still open.
-Rule 2 needs *both* halves: a device still checking in has a live agent that will close its own
+Rule 2 needs _both_ halves: a device still checking in has a live agent that will close its own
 session, and a row whose totals are still growing belongs to somebody at their desk.
 
 **Last evidence, never `now`.** A session that ended when the power went did not run until a sweep
@@ -267,7 +270,7 @@ noticed it; stamping the discovery time would add the length of the blackout to 
 is the best of `loginTime + totalActiveSeconds + totalIdleSeconds`, the latest activity-log
 `endTime`, and the latest metric `windowEndUtc` - all workstation clocks, clamped into
 `[loginTime, now]`. **`updatedAt` is deliberately not among them**: it records when the row reached
-*this server*, and a queue drained after an outage writes rows hours after the presence they
+_this server_, and a queue drained after an outage writes rows hours after the presence they
 describe.
 
 **Every close here is reversible.** It is written with `logoutSource = Server`, and the ingest guard
@@ -291,18 +294,18 @@ serves traffic and sweeps nothing.
 
 ## Failure modes
 
-| Symptom | Likely cause | Check |
-|---|---|---|
-| Attendance day with a login and no logout | Row still open - workstation gone, sweep not yet run | `SELECT * FROM attendance_sessions WHERE "logoutTime" IS NULL`; see section 9 |
-| A logout that looks too early | Server-inferred close; the agent had reported nothing since | `logoutSource = 'Server'` - it is corrected when the machine syncs |
-| A logout that keeps reappearing as null | Agent legitimately reporting the session still open after a server close | Expected: only `logoutSource = 'Agent'` is final |
-| 400 on every batch of one channel | Wire contract drift on that channel | Response `details[]` names the field; [../architecture/cross-tier-contracts.md](../architecture/cross-tier-contracts.md) |
-| 413 | Batch over `JSON_BODY_LIMIT` | Agent halves and retries automatically; only act if a *single* event cannot fit |
-| 429 | One agent in a retry loop | Limits are per device - a healthy fleet never hits them |
-| Totals too high | An event counted twice into the rollup | A `prepare*` method missing its existing-id pre-filter |
-| Totals too low / flat | Device unassigned, or events rejected | Devices screen; then `service-*.log` for rejections |
-| Numbers move on refresh but not live | Signalling only - data is fine | [realtime.md](realtime.md) |
-| Duplicate-looking rows | Expected for attendance/alert upserts | Same key, updated in place |
+| Symptom                                   | Likely cause                                                             | Check                                                                                                                    |
+| ----------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| Attendance day with a login and no logout | Row still open - workstation gone, sweep not yet run                     | `SELECT * FROM attendance_sessions WHERE "logoutTime" IS NULL`; see section 9                                            |
+| A logout that looks too early             | Server-inferred close; the agent had reported nothing since              | `logoutSource = 'Server'` - it is corrected when the machine syncs                                                       |
+| A logout that keeps reappearing as null   | Agent legitimately reporting the session still open after a server close | Expected: only `logoutSource = 'Agent'` is final                                                                         |
+| 400 on every batch of one channel         | Wire contract drift on that channel                                      | Response `details[]` names the field; [../architecture/cross-tier-contracts.md](../architecture/cross-tier-contracts.md) |
+| 413                                       | Batch over `JSON_BODY_LIMIT`                                             | Agent halves and retries automatically; only act if a _single_ event cannot fit                                          |
+| 429                                       | One agent in a retry loop                                                | Limits are per device - a healthy fleet never hits them                                                                  |
+| Totals too high                           | An event counted twice into the rollup                                   | A `prepare*` method missing its existing-id pre-filter                                                                   |
+| Totals too low / flat                     | Device unassigned, or events rejected                                    | Devices screen; then `service-*.log` for rejections                                                                      |
+| Numbers move on refresh but not live      | Signalling only - data is fine                                           | [realtime.md](realtime.md)                                                                                               |
+| Duplicate-looking rows                    | Expected for attendance/alert upserts                                    | Same key, updated in place                                                                                               |
 
 ---
 

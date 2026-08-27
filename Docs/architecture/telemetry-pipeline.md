@@ -3,7 +3,7 @@
 One event, followed from the moment it is observed to the moment it changes a number on a
 manager's screen. Ten hops, each with its own failure behaviour.
 
-When telemetry is missing, the question is always *which hop dropped it*. This document is the
+When telemetry is missing, the question is always _which hop dropped it_. This document is the
 map for answering that; [../operations/diagnostics.md](../operations/diagnostics.md) is the
 procedure for walking it with a real event id.
 
@@ -46,7 +46,7 @@ the service, so it looks healthy while collecting nothing.
 `IpcServer` receives it in the service.
 
 **Screenshots do not travel this way.** The host writes the JPEG into the shared spool directory
-and sends only the *file path*. A multi-megabyte frame every ten minutes would otherwise
+and sends only the _file path_. A multi-megabyte frame every ten minutes would otherwise
 monopolise a pipe that time-sensitive activity events share.
 
 Source: `Windows Software_v3/src/Agent.Core/Ipc/`,
@@ -88,11 +88,11 @@ Full contract in [../reference/agent-api.md](../reference/agent-api.md).
 **Failure behaviour is three-way, and the distinction matters more than anything else in this
 document:**
 
-| Outcome | Means | Agent does |
-|---|---|---|
-| Acknowledged | Stored | Marks those ids sent |
-| **Rejected** (4xx) | The server will refuse this identically forever | Increments the event's attempt counter; drops it after 5 |
-| **Transient** (network, timeout, 5xx) | The data is fine, the server is not | Backs off exponentially and retries; **counter untouched** |
+| Outcome                               | Means                                           | Agent does                                                 |
+| ------------------------------------- | ----------------------------------------------- | ---------------------------------------------------------- |
+| Acknowledged                          | Stored                                          | Marks those ids sent                                       |
+| **Rejected** (4xx)                    | The server will refuse this identically forever | Increments the event's attempt counter; drops it after 5   |
+| **Transient** (network, timeout, 5xx) | The data is fine, the server is not             | Backs off exponentially and retries; **counter untouched** |
 
 Collapsing rejected and transient would mean a week-long outage aged out perfectly good data -
 the exact opposite of what an offline queue is for.
@@ -133,20 +133,26 @@ and inside the same transaction, so it can never claim a batch that did not land
 The agent's queue is at-least-once: a batch that committed but whose HTTP response was lost is
 resent **verbatim**. Two layers absorb that.
 
-| Layer | Key | Catches |
-|---|---|---|
-| Batch | `ingest_batches(deviceId, batchId)` + a hash of the sorted event ids | A whole fleet replaying after an outage - answered from the ledger without touching telemetry tables |
-| Event | Unique `clientEventId` per channel | A retry that repacked events into a different batch, or an agent predating batch ids |
+| Layer | Key                                                                                      | Catches                                                                                              |
+| ----- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Batch | `ingest_batches(deviceId, batchId)` + a hash of the sorted canonical full event contents | A whole fleet replaying after an outage - answered from the ledger without touching telemetry tables |
+| Event | Unique `clientEventId` per channel                                                       | A retry that repacked events into a different batch, or an agent predating batch ids                 |
 
-If a `batchId` recurs with *different* contents, the ledger is ignored and the batch is processed
+If a `batchId` recurs with _different_ contents, the ledger is ignored and the batch is processed
 on its merits - trusting the ledger there would silently discard real telemetry.
+
+This content check is required for revisioned attendance. The agent keeps the same
+`clientEventId` while it rewrites one local attendance row, so an open snapshot and a later
+lock-closing snapshot must not be considered the same batch merely because their event ids match.
 
 **Layer 2 is also what makes the rollup exact.** Counters are incremented, never recomputed, so
 an already-stored event must contribute nothing.
 
 ### [9] Acknowledgement
 
-The response carries `acknowledgedEventIds` - a per-event answer, not a batch status.
+The response carries `acknowledgedEventIds` - a per-event answer, not a batch status. The agent
+marks acknowledged rows as sent locally. A later attendance rewrite clears that sent marker and
+queues the same session again with a higher `revision`.
 `TelemetryQueue.MarkSent` marks **only** those ids. `RetentionWorker` deletes marked rows later,
 which is what "delete local copies only after successful synchronization" means in practice.
 
@@ -170,13 +176,13 @@ Source: `Backend/src/realtime/index.ts`, `Frontend/src/components/RealtimeProvid
 
 In order of likelihood, and each one is checkable:
 
-| # | Loss | Detectable by |
-|---|---|---|
-| 1 | Host not running - nothing observed | Device online but no `activity-session` rows; check `host-s*.log` |
-| 2 | Observed but service down - in-memory buffer discarded | Gap in `activity_sessions` matching a service outage in `service-*.log` |
-| 3 | Poison event dropped after 5 rejections | `error`-level line in `service-*.log` naming the event id |
-| 4 | Aged out of the queue by retention | `RetentionWorker` line; only after `retentionDays` |
-| 5 | Never attributed to a person | Row exists but device is still on the "Unassigned Devices" placeholder |
+| #   | Loss                                                   | Detectable by                                                           |
+| --- | ------------------------------------------------------ | ----------------------------------------------------------------------- |
+| 1   | Host not running - nothing observed                    | Device online but no `activity-session` rows; check `host-s*.log`       |
+| 2   | Observed but service down - in-memory buffer discarded | Gap in `activity_sessions` matching a service outage in `service-*.log` |
+| 3   | Poison event dropped after 5 rejections                | `error`-level line in `service-*.log` naming the event id               |
+| 4   | Aged out of the queue by retention                     | `RetentionWorker` line; only after `retentionDays`                      |
+| 5   | Never attributed to a person                           | Row exists but device is still on the "Unassigned Devices" placeholder  |
 
 **#5 is the one that looks like data loss but is not.** An unassigned device's telemetry is
 stored correctly and simply never reaches per-employee reports. Check the Devices screen first.
