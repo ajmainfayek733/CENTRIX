@@ -21,7 +21,7 @@ public sealed record AttendanceEvent : ITelemetryEvent
     /// <summary>
     /// Which snapshot of this session this is: 1 for the row as it was first written, bumped on
     /// every rewrite of it. One session is reported many times - open with no seconds on it, open
-    /// with two minutes, closed - and the queue is at-least-once over a link that can be down for
+    /// with thirty seconds, closed - and the queue is at-least-once over a link that can be down for
     /// hours, so the server sees these out of order and cannot tell a newer report from a
     /// redelivered older one by looking at it. This is that answer, stated rather than inferred.
     /// Assigned by <see cref="Storage.TelemetryQueue"/> on write, never by a caller.

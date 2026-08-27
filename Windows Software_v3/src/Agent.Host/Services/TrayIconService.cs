@@ -33,7 +33,7 @@ public sealed class TrayIconService(ILogger<TrayIconService> logger) : IDisposab
         // No "Exit" item. The service restarts the host within seconds anyway, so offering an
         // exit that silently undoes itself would be misleading. Task Manager still works -
         // the agent is not hiding, it is just not offering a self-defeating button.
-        var about = new ToolStripMenuItem($"Employee Monitor {Agent.Core.DeviceIdentity.GetAgentVersion()}")
+        var about = new ToolStripMenuItem($"CENTRIX {Agent.Core.DeviceIdentity.GetAgentVersion()}")
         {
             Enabled = false
         };
@@ -42,7 +42,7 @@ public sealed class TrayIconService(ILogger<TrayIconService> logger) : IDisposab
         _icon = new NotifyIcon
         {
             Icon = BuildIcon(),
-            Text = "Employee Monitor - monitoring is active",
+            Text = "CENTRIX - monitoring is active",
             Visible = true,
             ContextMenuStrip = menu
         };

@@ -14,10 +14,10 @@ public static class AgentCadence
     /// <summary>
     /// How often the host refreshes the open attendance row.
     ///
-    /// Frequent enough that an unexpected power loss loses at most this much of the day, cheap
-    /// enough not to matter - it is an upsert on one row.
+    /// Frequent enough that an unexpected power loss loses at most this much of the observed day,
+    /// cheap enough not to matter - it is an upsert on one row.
     /// </summary>
-    public static readonly TimeSpan AttendanceFlush = TimeSpan.FromMinutes(2);
+    public static readonly TimeSpan AttendanceFlush = TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// How long an open attendance row may go unrefreshed before the service concludes the host

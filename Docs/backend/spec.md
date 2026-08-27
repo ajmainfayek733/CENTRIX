@@ -476,11 +476,13 @@ The agent's queue is at-least-once, so a batch that was committed but whose HTTP
 is resent verbatim.
 
 1. **Per batch** - `ingest_batches`, unique on `(deviceId, batchId)`. The agent derives `batchId`
-   deterministically from a SHA-256 of its sorted event ids, so a resend of the same events
-   produces the same id and is recognized. A known batch is answered from the ledger without
-   touching the telemetry tables. This is the layer that matters when a fleet reconnects after an
-   outage and replays at once. `eventIdsHash` guards against an id being reused for different
-   content: a mismatch falls back to layer 2 rather than discarding real telemetry.
+  deterministically from a SHA-256 of its sorted event ids, so a resend of the same events
+  produces the same id. The backend compares the batch with a SHA-256 of the sorted canonical
+  full event contents before treating it as a replay. A known, unchanged batch is answered from
+  the ledger without touching the telemetry tables. This is the layer that matters when a fleet
+  reconnects after an outage and replays at once. A content mismatch falls back to layer 2 rather
+  than discarding real telemetry. This is required for attendance, where successive revisions
+  reuse `clientEventId` while changing fields such as `logoutTime`.
 2. **Per event** - the unique `clientEventId` on every channel. Still the backstop for an older
    agent, or a retry that repacked its queue into a different batch.
 

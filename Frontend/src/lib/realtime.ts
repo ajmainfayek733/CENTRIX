@@ -129,4 +129,4 @@ export interface CommandAck {
  * hostname the browser cannot resolve. This must be the address a browser can reach.
  */
 export const REALTIME_URL =
-  process.env.NEXT_PUBLIC_MONITORING_API_URL ?? 'http://localhost:5000';
+  process.env.NEXT_PUBLIC_MONITORING_API_URL;

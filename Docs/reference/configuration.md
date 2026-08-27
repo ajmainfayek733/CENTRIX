@@ -112,7 +112,7 @@ from the user's browser.
 
 ## Agent install-time config
 
-`%ProgramData%\EmployeeMonitor\agent.config.json`, written by `Deploy-Agent.ps1`.
+`%ProgramData%\Centrix\agent.config.json`, written by `Deploy-Agent.ps1`.
 
 | Field | Notes |
 |---|---|

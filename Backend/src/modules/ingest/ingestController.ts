@@ -1,16 +1,16 @@
-import { Request, Response, NextFunction } from 'express';
-import fs from 'fs/promises';
-import { EnrollmentError, ingestService } from './ingestService';
-import { DeviceAuthenticatedRequest } from '../../middleware/deviceAuth';
-import { Channel } from './ingest.dto';
+import { Request, Response, NextFunction } from "express";
+import fs from "fs/promises";
+import { EnrollmentError, ingestService } from "./ingestService";
+import { DeviceAuthenticatedRequest } from "../../middleware/deviceAuth";
+import { Channel } from "./ingest.dto";
 
 export class IngestController {
   /** POST /api/v1/device/enroll - Features.md "Device Auth". */
   async enroll(req: Request, res: Response, next: NextFunction) {
     try {
-      const token = req.header('x-enrollment-token');
+      const token = req.header("x-enrollment-token");
       if (!token) {
-        return res.status(401).json({ error: 'Missing X-Enrollment-Token header' });
+        return res.status(401).json({ error: "Missing X-Enrollment-Token header" });
       }
 
       const result = await ingestService.enrollDevice(token, req.body);
@@ -54,7 +54,7 @@ export class IngestController {
         req.device!,
         channel,
         req.body.batchId,
-        req.body.events
+        req.body.events,
       );
       return res.status(200).json({ acknowledgedEventIds: acknowledged, replay });
     } catch (error) {
@@ -89,7 +89,7 @@ export class IngestController {
   async recordConsent(req: DeviceAuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       await ingestService.recordConsent(req.device!, req.body);
-      return res.status(200).json({ status: 'ok' });
+      return res.status(200).json({ status: "ok" });
     } catch (error) {
       next(error);
     }

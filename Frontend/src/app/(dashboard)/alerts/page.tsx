@@ -5,7 +5,7 @@ import type { AlertRow, UsbEventRow } from '@/types/api';
 import { AlertsTable } from './AlertsTable';
 import { UsbTable } from './UsbTable';
 
-export const metadata = { title: 'Alerts - Employee Monitor' };
+export const metadata = { title: 'Alerts - CENTRIX' };
 export const dynamic = 'force-dynamic';
 
 /**

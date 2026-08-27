@@ -11,25 +11,25 @@ conventional names. Primary keys are `uuid` unless stated.
 
 ## Table map
 
-| Model | Table | Holds |
-|---|---|---|
-| `Organization` | `organizations` | The tenant. Owns the enrollment token hash |
-| `Employee` | `employees` | People, including the hidden "Unassigned Devices" placeholder |
-| `Device` | `devices` | Enrolled workstations |
-| `Policy` | `policies` | One row per organization, all admin-editable settings |
-| `Category` | `categories` | App/domain productivity and blacklist rules |
-| `ConsentRecord` | `consent_records` | Per user, per policy version |
-| `IngestBatch` | `ingest_batches` | Batch idempotency ledger |
-| `DailyActivityRollup` | `daily_activity_rollups` | **What every report reads** |
-| `AttendanceSession` | `attendance_sessions` | Login/logout sessions |
-| `ActivityMetric` | `activity_metrics` | Key/mouse **counts** |
-| `ActivitySession` | `activity_sessions` | Foreground app / idle / lock intervals |
-| `BrowserActivity` | `browser_activity` | URL visits |
-| `UsbEvent` | `usb_events` | Device connect/disconnect metadata |
-| `Alert` | `alerts` | Raised alerts, upserted on escalation |
-| `Screenshot` | `screenshots` | Capture metadata; bytes live on disk |
-| `User`, `Session`, `Account`, `Verification` | `users`, `sessions`, `accounts`, `verifications` | Better Auth |
-| `AuditLog` | `audit_logs` | Who viewed or changed what |
+| Model                                        | Table                                            | Holds                                                         |
+| -------------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------- |
+| `Organization`                               | `organizations`                                  | The tenant. Owns the enrollment token hash                    |
+| `Employee`                                   | `employees`                                      | People, including the hidden "Unassigned Devices" placeholder |
+| `Device`                                     | `devices`                                        | Enrolled workstations                                         |
+| `Policy`                                     | `policies`                                       | One row per organization, all admin-editable settings         |
+| `Category`                                   | `categories`                                     | App/domain productivity and blacklist rules                   |
+| `ConsentRecord`                              | `consent_records`                                | Per user, per policy version                                  |
+| `IngestBatch`                                | `ingest_batches`                                 | Batch idempotency ledger                                      |
+| `DailyActivityRollup`                        | `daily_activity_rollups`                         | **What every report reads**                                   |
+| `AttendanceSession`                          | `attendance_sessions`                            | Login/logout sessions                                         |
+| `ActivityMetric`                             | `activity_metrics`                               | Key/mouse **counts**                                          |
+| `ActivitySession`                            | `activity_sessions`                              | Foreground app / idle / lock intervals                        |
+| `BrowserActivity`                            | `browser_activity`                               | URL visits                                                    |
+| `UsbEvent`                                   | `usb_events`                                     | Device connect/disconnect metadata                            |
+| `Alert`                                      | `alerts`                                         | Raised alerts, upserted on escalation                         |
+| `Screenshot`                                 | `screenshots`                                    | Capture metadata; bytes live on disk                          |
+| `User`, `Session`, `Account`, `Verification` | `users`, `sessions`, `accounts`, `verifications` | Better Auth                                                   |
+| `AuditLog`                                   | `audit_logs`                                     | Who viewed or changed what                                    |
 
 ---
 
@@ -37,29 +37,29 @@ conventional names. Primary keys are `uuid` unless stated.
 
 ### `organizations`
 
-| Column | Notes |
-|---|---|
+| Column                | Notes                                                                                                         |
+| --------------------- | ------------------------------------------------------------------------------------------------------------- |
 | `enrollmentTokenHash` | **unique**, nullable. HMAC with an `enrollment:` domain prefix so it can never collide with a device key hash |
 
 ### `employees`
 
-| Column | Notes |
-|---|---|
-| `email` | **unique**. The placeholder uses `unassigned+<orgId>@local.invalid` |
-| `status` | `placeholder` marks the hidden "Unassigned Devices" employee |
+| Column   | Notes                                                               |
+| -------- | ------------------------------------------------------------------- |
+| `email`  | **unique**. The placeholder uses `unassigned+<orgId>@local.invalid` |
+| `status` | `placeholder` marks the hidden "Unassigned Devices" employee        |
 
 Index: `(organizationId)`.
 
 ### `devices`
 
-| Column | Notes |
-|---|---|
-| `deviceId` | **unique** - the Windows MachineGuid. The identity key |
-| `apiKeyHash` | **unique** - HMAC of the device API key. Lookup is one indexed read, inherently constant-time |
-| `macAddress` | Metadata only, normalized to uppercase colon form; all-zero stored as `null` |
-| `isActive` | The kill switch. `false` gives 403 everywhere, including re-enrollment |
-| `lastSeen` | Written by authenticated HTTP requests, throttled to 60s. **"Online now" is derived from this, never from socket presence** |
-| `employeeId` | Points at the placeholder until an admin assigns it |
+| Column       | Notes                                                                                                                       |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `deviceId`   | **unique** - the Windows MachineGuid. The identity key                                                                      |
+| `apiKeyHash` | **unique** - HMAC of the device API key. Lookup is one indexed read, inherently constant-time                               |
+| `macAddress` | Metadata only, normalized to uppercase colon form; all-zero stored as `null`                                                |
+| `isActive`   | The kill switch. `false` gives 403 everywhere, including re-enrollment                                                      |
+| `lastSeen`   | Written by authenticated HTTP requests, throttled to 60s. **"Online now" is derived from this, never from socket presence** |
+| `employeeId` | Points at the placeholder until an admin assigns it                                                                         |
 
 Indexes: `(organizationId)`, `(employeeId)`, `(macAddress)`.
 
@@ -77,13 +77,13 @@ Indexes: `(employeeId, workDate)`, `(organizationId, workDate)`
 `deviceId` is part of the key, so a device reassigned mid-day produces two rows rather than one row
 changing owner.
 
-| Column group | Columns |
-|---|---|
-| Time | `activeSeconds`, `idleSeconds` |
+| Column group | Columns                                                                            |
+| ------------ | ---------------------------------------------------------------------------------- |
+| Time         | `activeSeconds`, `idleSeconds`                                                     |
 | Productivity | `productiveSeconds`, `unproductiveSeconds`, `neutralSeconds`, `blacklistedSeconds` |
-| Input | `keyCount`, `mouseCount` |
-| Counts | `activitySessionCount`, `browserVisitCount`, `usbEventCount`, `alertCount` |
-| Bounds | `firstActivityAt`, `lastActivityAt` |
+| Input        | `keyCount`, `mouseCount`                                                           |
+| Counts       | `activitySessionCount`, `browserVisitCount`, `usbEventCount`, `alertCount`         |
+| Bounds       | `firstActivityAt`, `lastActivityAt`                                                |
 
 **These counters are incremented inside the ingest transaction, never recomputed.** There is no
 repair pass - a double count is permanent and silent. The upsert is raw SQL with `LEAST`/`GREATEST`
@@ -98,15 +98,15 @@ because the activity bounds need comparison against stored values, which Prisma 
 
 Each has a unique client-generated id that is the deduplication key, and `deviceId` as the owner.
 
-| Table | Dedup key | Write mode | Indexes |
-|---|---|---|---|
-| `attendance_sessions` | `sessionId` | upsert | `(deviceId, workDate)`, `(userSid, workDate)`, `(logoutTime, loginTime)`, `(deviceId, userSid, loginTime)` |
-| `activity_metrics` | `clientEventId` | insert | `(deviceId, windowEndUtc)`, `(sessionId)` |
-| `activity_sessions` | `activitySessionId` | insert | `(deviceId, startTime)`, `(sessionId, startTime)`, `(deviceId, productivityTag)` |
-| `browser_activity` | `browserActivityId` | insert | `(deviceId, startTime)`, `(domain)`, `(activitySessionId)` |
-| `usb_events` | `clientEventId` | insert | `(deviceId, eventTime)`, `(serialNumber)` |
-| `alerts` | `clientEventId` | upsert | `(deviceId, triggeredAt)`, `(userSid, type, resolvedAt)`, `(severity, state)` |
-| `screenshots` | `clientEventId` | upsert | `(deviceId, capturedAt)` |
+| Table                 | Dedup key           | Write mode | Indexes                                                                                                    |
+| --------------------- | ------------------- | ---------- | ---------------------------------------------------------------------------------------------------------- |
+| `attendance_sessions` | `sessionId`         | upsert     | `(deviceId, workDate)`, `(userSid, workDate)`, `(logoutTime, loginTime)`, `(deviceId, userSid, loginTime)` |
+| `activity_metrics`    | `clientEventId`     | insert     | `(deviceId, windowEndUtc)`, `(sessionId)`                                                                  |
+| `activity_sessions`   | `activitySessionId` | insert     | `(deviceId, startTime)`, `(sessionId, startTime)`, `(deviceId, productivityTag)`                           |
+| `browser_activity`    | `browserActivityId` | insert     | `(deviceId, startTime)`, `(domain)`, `(activitySessionId)`                                                 |
+| `usb_events`          | `clientEventId`     | insert     | `(deviceId, eventTime)`, `(serialNumber)`                                                                  |
+| `alerts`              | `clientEventId`     | upsert     | `(deviceId, triggeredAt)`, `(userSid, type, resolvedAt)`, `(severity, state)`                              |
+| `screenshots`         | `clientEventId`     | upsert     | `(deviceId, capturedAt)`                                                                                   |
 
 Notes worth carrying:
 
@@ -120,7 +120,7 @@ Notes worth carrying:
   rows oldest first, and the next login on the same workstation for the same user. See
   [../backend/ingest.md](../backend/ingest.md) section 9.
 - **`activity_metrics` has no field that could hold a character.** Counts only, structurally.
-- **`browser_activity.activitySessionId` is a nullable FK.** The parent app session closes *after*
+- **`browser_activity.activitySessionId` is a nullable FK.** The parent app session closes _after_
   the visits inside it, so an unknown parent is nulled rather than rejected.
 - **`usb_events.sessionId` is nullable** for the same reason, and `capacityBytes` is a `BigInt` -
   drive capacities exceed JSON's safe integer range, so it travels as a decimal string.
@@ -140,10 +140,10 @@ page. The keyset cursor is `(timestamp, id)` - see
 
 Unique `(deviceId, batchId)`, index `(receivedAt)`.
 
-| Column | Notes |
-|---|---|
-| `eventIdsHash` | SHA-256 of the **sorted** event ids, so a reordered retry still matches |
-| `eventCount`, `channel` | |
+| Column                  | Notes                                                                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `eventIdsHash`          | SHA-256 of the **sorted canonical full event contents**, so reordered retries still match while changed snapshots do not |
+| `eventCount`, `channel` |                                                                                                                          |
 
 Written **last and inside the ingest transaction**, so it can never claim a batch that did not
 land. Pruned after `INGEST_BATCH_RETENTION_DAYS`.
@@ -177,21 +177,21 @@ writes** - screenshot views individually.
 
 ## Enums
 
-| Enum | Values |
-|---|---|
-| `ActivityType` | `Application`, `Desktop`, `Locked`, `Idle`, `Sleeping`, `Disconnected` |
-| `ActivityEndReason` | `UserInactivity`, `ScreenLock`, `Sleep`, `Disconnect`, `AppSwitch`, `SessionEnd` |
-| `ProductivityTag` | `Productive`, `Unproductive`, `Blacklisted`, `Neutral` |
-| `SessionEndReason` | `Logout`, `Lock`, `Shutdown`, `Restart`, `Hibernate`, `Sleep`, `PowerLoss`, `Disconnect`, `Recovered` |
-| `UsbEventType` | `Connected`, `Disconnected` |
-| `UsbDeviceType` | `UsbStorage`, `MobileDevice`, `Hid`, `Other` |
-| `BrowserKind` | `Chrome`, `Edge`, `Firefox`, `Brave`, `Opera`, `Vivaldi`, `Other` |
-| `UrlProtocol` | `Http`, `Https` |
-| `AlertSeverity` | `Information`, `Warning`, `High`, `Critical` |
-| `AlertState` | `New`, `Shown`, `Acknowledged`, `Resolved`, `Archived` |
-| `AlertType` | `IdleThreshold`, `BlacklistedApp`, `BlacklistedWebsite`, `UsbDeviceConnected` |
-| `CategoryTarget` | `App`, `Domain` |
-| `UserRole` | `super_admin`, `manager`, `auditor` |
+| Enum                | Values                                                                                                |
+| ------------------- | ----------------------------------------------------------------------------------------------------- |
+| `ActivityType`      | `Application`, `Desktop`, `Locked`, `Idle`, `Sleeping`, `Disconnected`                                |
+| `ActivityEndReason` | `UserInactivity`, `ScreenLock`, `Sleep`, `Disconnect`, `AppSwitch`, `SessionEnd`                      |
+| `ProductivityTag`   | `Productive`, `Unproductive`, `Blacklisted`, `Neutral`                                                |
+| `SessionEndReason`  | `Logout`, `Lock`, `Shutdown`, `Restart`, `Hibernate`, `Sleep`, `PowerLoss`, `Disconnect`, `Recovered` |
+| `UsbEventType`      | `Connected`, `Disconnected`                                                                           |
+| `UsbDeviceType`     | `UsbStorage`, `MobileDevice`, `Hid`, `Other`                                                          |
+| `BrowserKind`       | `Chrome`, `Edge`, `Firefox`, `Brave`, `Opera`, `Vivaldi`, `Other`                                     |
+| `UrlProtocol`       | `Http`, `Https`                                                                                       |
+| `AlertSeverity`     | `Information`, `Warning`, `High`, `Critical`                                                          |
+| `AlertState`        | `New`, `Shown`, `Acknowledged`, `Resolved`, `Archived`                                                |
+| `AlertType`         | `IdleThreshold`, `BlacklistedApp`, `BlacklistedWebsite`, `UsbDeviceConnected`                         |
+| `CategoryTarget`    | `App`, `Domain`                                                                                       |
+| `UserRole`          | `super_admin`, `manager`, `auditor`                                                                   |
 
 Enums are serialized as **strings** on the wire and mirrored in `Agent.Core/Contracts/Enums.cs`.
 **Removing a member poisons events already queued on workstations.** See
