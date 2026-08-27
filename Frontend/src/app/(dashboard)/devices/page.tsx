@@ -6,7 +6,7 @@ import type { DeviceRow, EmployeeSummary } from '@/types/api';
 import { DeviceActions } from './DeviceActions';
 import { DeviceAssignment } from './DeviceAssignment';
 
-export const metadata = { title: 'Devices - Employee Monitor' };
+export const metadata = { title: 'Devices - CENTRIX' };
 export const dynamic = 'force-dynamic';
 
 export default async function DevicesPage() {

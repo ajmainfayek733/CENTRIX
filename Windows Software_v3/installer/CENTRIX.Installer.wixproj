@@ -16,7 +16,7 @@
 
   <PropertyGroup>
     <OutputType>Package</OutputType>
-    <OutputName>EmployeeMonitorAgent</OutputName>
+    <OutputName>CentrixAgent</OutputName>
 
     <!-- The agent is win-x64 only (spec section 11), so the package is too: an x86 package would
          install into the 32-bit Program Files and register a service that cannot start. -->
@@ -73,10 +73,10 @@
     missing prerequisite step.
   -->
   <Target Name="VerifyAgentPublished" BeforeTargets="BeforeBuild">
-    <Error Condition="!Exists('$(AgentPublishRoot)EmployeeMonitor.Service.exe')"
+    <Error Condition="!Exists('$(AgentPublishRoot)Centrix.Service.exe')"
            Text="No published agent at $(AgentPublishRoot). Run scripts\Deploy-Agent.ps1 -Action Publish first, or pass -p:AgentPublishDir=&lt;dir&gt;." />
-    <Error Condition="!Exists('$(AgentPublishRoot)EmployeeMonitor.Host.exe')"
-           Text="$(AgentPublishRoot) has no EmployeeMonitor.Host.exe. Both executables must publish into the same folder - the supervisor resolves the host next to the service." />
+    <Error Condition="!Exists('$(AgentPublishRoot)Centrix.Host.exe')"
+           Text="$(AgentPublishRoot) has no Centrix.Host.exe. Both executables must publish into the same folder - the supervisor resolves the host next to the service." />
   </Target>
 
 </Project>

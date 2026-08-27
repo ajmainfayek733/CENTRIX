@@ -27,8 +27,8 @@ Work down this list in order. The first three are far more common than the rest.
 |---|---|---|
 | 1 | **Is the device assigned to an employee?** Devices screen - is it on "Unassigned Devices"? | Telemetry is being stored correctly but never reaches per-employee reports. Assign it. Not a bug. |
 | 2 | **Is the device active?** Devices screen - deactivated devices get 403 on everything. | Reactivate. Note a deactivated device also gets 403 at re-enrollment, by design. |
-| 3 | **Is the host process running?** Task Manager on the workstation - `EmployeeMonitor.Host.exe`. | The service can be perfectly healthy while collecting nothing. See section 2. |
-| 4 | Is the service running? `sc query EmployeeMonitorAgent` | Nothing is queued or sent while it is stopped. |
+| 3 | **Is the host process running?** Task Manager on the workstation - `Centrix.Host.exe`. | The service can be perfectly healthy while collecting nothing. See section 2. |
+| 4 | Is the service running? `sc query CentrixAgent` | Nothing is queued or sent while it is stopped. |
 | 5 | Is the queue draining? Check `service-<date>.log` for sync cycles. | Look for rejections or backoff - sections 3 and 4. |
 | 6 | Did enrollment succeed? Look for the enrollment line in `service-*.log`. | A bad `serverUrl` or enrollment token in `agent.config.json`. |
 
@@ -41,9 +41,9 @@ looks healthy and collects nothing.
 
 The host is not running, or is crash-looping.
 
-- Check `host-s<session>-<date>.log` in `%ProgramData%\EmployeeMonitor\logs\`. If the file does
+- Check `host-s<session>-<date>.log` in `%ProgramData%\Centrix\logs\`. If the file does
   not exist, the host never started.
-- Check the Event Log source `EmployeeMonitorHost` for failures before the file sink could open.
+- Check the Event Log source `CentrixHost` for failures before the file sink could open.
 - `HostSupervisorWorker` widens its relaunch interval to 5 minutes after 5 fast failures, so a
   crash loop looks like long silences rather than constant restarts.
 

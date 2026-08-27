@@ -1,4 +1,4 @@
-// Employee Monitoring - v3 schema.
+// CENTRIXing - v3 schema.
 //
 // Hard rule for this schema: NO Json columns. Every telemetry field the Agent sends gets its
 // own typed column, so the database is queryable by the reporting layer without unpacking a
@@ -374,7 +374,7 @@ enum LogoutSource {
 }
 
 model AttendanceSession {
-  id       String @id @default(uuid())
+  id       String @id @default(dbgenerated("gen_random_uuid()"))
   deviceId String
   device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
@@ -412,7 +412,7 @@ model AttendanceSession {
   totalIdleSeconds   Int @default(0)
 
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @default(now()) @updatedAt
 
   activityMetrics  ActivityMetric[]
   activitySessions ActivitySession[]

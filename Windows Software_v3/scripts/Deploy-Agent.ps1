@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Builds the Employee Monitor agent and the package that installs it on a workstation.
+    Builds the CENTRIX agent and the package that installs it on a workstation.
 
 .DESCRIPTION
     The build-machine half of the deployment story (spec section 11). It needs the .NET SDK, so
@@ -36,6 +36,10 @@
 .PARAMETER PurgeData
     With Uninstall, also delete the local database, screenshot spool and stored credential.
 
+.PARAMETER CleanInstall
+    With Install, delete existing ProgramData before installing. Without this switch, existing
+    data is preserved and the operation behaves as an install over the previous installation.
+
 .PARAMETER Compress
     With Bundle, also produce a .zip of the bundle folder for copying to workstations.
 
@@ -56,6 +60,7 @@ param(
     [string]$EnrollmentToken,
     [switch]$AllowInsecureHttp,
     [switch]$PurgeData,
+    [switch]$CleanInstall,
     [switch]$Compress
 )
 
@@ -67,13 +72,13 @@ $InstallerDir = Join-Path $RepoRoot 'artifacts\installer'
 $DeployRoot   = Join-Path $RepoRoot 'artifacts\deploy'
 $PayloadDir   = Join-Path $PSScriptRoot 'payload'
 
-$InstallerProject = Join-Path $RepoRoot 'installer\EmployeeMonitor.Installer.wixproj'
+$InstallerProject = Join-Path $RepoRoot 'installer\Centrix.Installer.wixproj'
 $ServiceProject   = Join-Path $RepoRoot 'src\Agent.Service\Agent.Service.csproj'
 $HostProject      = Join-Path $RepoRoot 'src\Agent.Host\Agent.Host.csproj'
 
-$ServiceExeName = 'EmployeeMonitor.Service.exe'
-$HostExeName    = 'EmployeeMonitor.Host.exe'
-$BundleNamePrefix = 'EmployeeMonitorAgent'
+$ServiceExeName = 'Centrix.Service.exe'
+$HostExeName    = 'Centrix.Host.exe'
+$BundleNamePrefix = 'CentrixAgent'
 
 # The installer script is the single implementation of "install on a machine"; this script only
 # decides which copy of it to run.
@@ -88,7 +93,7 @@ function Invoke-Publish {
     Write-Host 'Publishing agent (self-contained, win-x64)...' -ForegroundColor Cyan
 
     # Both executables publish into the same folder on purpose: HostSupervisorWorker resolves
-    # EmployeeMonitor.Host.exe relative to the service's own directory.
+    # Centrix.Host.exe relative to the service's own directory.
     dotnet publish $ServiceProject -c Release -o $ArtifactDir --nologo
     if ($LASTEXITCODE -ne 0) { throw 'Service publish failed.' }
 
@@ -173,7 +178,7 @@ function Invoke-Package {
         -p:OutputPath=$InstallerDir
     if ($LASTEXITCODE -ne 0) { throw 'Installer build failed.' }
 
-    $msi = Join-Path $InstallerDir 'EmployeeMonitorAgent.msi'
+    $msi = Join-Path $InstallerDir 'CentrixAgent.msi'
     Write-Host "Built $msi" -ForegroundColor Green
     Write-Host 'Install it with:' -ForegroundColor Green
     Write-Host "  msiexec /i `"$msi`" /qn SERVERURL=https://monitoring.example.com ENROLLMENTTOKEN=<token>" -ForegroundColor Gray
@@ -201,6 +206,7 @@ function Invoke-Install {
     if ($ServerUrl)         { $arguments += @('-ServerUrl', $ServerUrl) }
     if ($EnrollmentToken)   { $arguments += @('-EnrollmentToken', $EnrollmentToken) }
     if ($AllowInsecureHttp) { $arguments += '-AllowInsecureHttp' }
+    if ($CleanInstall)      { $arguments += '-CleanInstall' }
 
     Invoke-MachineInstaller -Arguments $arguments
 }
