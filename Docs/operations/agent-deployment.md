@@ -4,11 +4,11 @@ Installing, updating and removing the Windows agent across a fleet.
 
 There are three paths, and they are not alternatives to each other:
 
-| | Use for | Artifact |
-|---|---|---|
-| **Bundle** | Fleet rollout - copied to a workstation and installed by double-clicking `install.bat`, or driven unattended from GPO/Intune/PDQ. **No .NET runtime or SDK on the target.** | `artifacts/deploy/EmployeeMonitorAgent-<version>/` (and `.zip`) |
-| **MSI** | GPO/Intune/ConfigMgr where a native MSI is required. A single self-contained `.msi` - both executables are embedded, and running it self-elevates | `artifacts/installer/EmployeeMonitorAgent.msi` |
-| **`Deploy-Agent.ps1`** | Development and single-machine work on the build box, where publishing and installing in one step is the point | none, installs from `artifacts/agent` |
+|                        | Use for                                                                                                                                                                     | Artifact                                                        |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| **Bundle**             | Fleet rollout - copied to a workstation and installed by double-clicking `install.bat`, or driven unattended from GPO/Intune/PDQ. **No .NET runtime or SDK on the target.** | `artifacts/deploy/EmployeeMonitorAgent-<version>/` (and `.zip`) |
+| **MSI**                | GPO/Intune/ConfigMgr where a native MSI is required. A single self-contained `.msi` - both executables are embedded, and running it self-elevates                           | `artifacts/installer/EmployeeMonitorAgent.msi`                  |
+| **`Deploy-Agent.ps1`** | Development and single-machine work on the build box, where publishing and installing in one step is the point                                                              | none, installs from `artifacts/agent`                           |
 
 All three write their configuration through the **same** entry point in the agent
 (`EmployeeMonitor.Service.exe --configure`), so a machine installed any way ends up with an
@@ -89,11 +89,11 @@ silently skips the page - which is exactly the bug that hid it before.
 Running the MSI directly walks an administrator through licence, install location, and a
 **configuration page** carrying the three settings the agent cannot start without:
 
-| Field | Property | Notes |
-|---|---|---|
-| Server address | `SERVERURL` | e.g. `https://monitoring.example.com` |
-| Enrollment token | `ENROLLMENTTOKEN` | Masked on screen; from the dashboard under Settings - Organization |
-| Allow an insecure HTTP server address | `ALLOWINSECUREHTTP` | Checkbox. Test servers only |
+| Field                                 | Property            | Notes                                                              |
+| ------------------------------------- | ------------------- | ------------------------------------------------------------------ |
+| Server address                        | `SERVERURL`         | e.g. `https://monitoring.example.com`                              |
+| Enrollment token                      | `ENROLLMENTTOKEN`   | Masked on screen; from the dashboard under Settings - Organization |
+| Allow an insecure HTTP server address | `ALLOWINSECUREHTTP` | Checkbox. Test servers only                                        |
 
 **Next stays disabled** until there is a server and a token and the address is either HTTPS or the
 checkbox is ticked. The same three rules are enforced as launch conditions, because a dialog
@@ -114,8 +114,21 @@ service that cannot enroll. Add `ALLOWINSECUREHTTP=1` for a test server. To capt
 `/l*v install.log` - the token is registered in `MsiHiddenProperties`, so it is redacted there.
 
 Uninstall with `msiexec /x EmployeeMonitorAgent.msi /qn`, or from Apps and Features. Uninstall
-**leaves `%ProgramData%\EmployeeMonitor` in place**, collected data included; remove it separately
-if that is what you want.
+**leaves `%ProgramData%\EmployeeMonitor` in place**, collected data included. To remove all local
+data during uninstall, pass `PURGEDATA=1`:
+
+```
+msiexec /x EmployeeMonitorAgent.msi /qn PURGEDATA=1
+```
+
+For a clean install that removes existing data before installing, pass `CLEANINSTALL=1`:
+
+```
+msiexec /i EmployeeMonitorAgent.msi /qn CLEANINSTALL=1 ^
+  SERVERURL=https://monitoring.example.com ENROLLMENTTOKEN=%ENROLL_TOKEN%
+```
+
+Without `CLEANINSTALL=1`, installation and upgrades preserve `%ProgramData%\EmployeeMonitor`.
 
 Upgrades are major upgrades: install the new MSI over the old one and it replaces it, keeping
 `%ProgramData%` - so no re-enrollment and nothing queued is lost.
@@ -126,14 +139,14 @@ Runs on the build box, where the .NET SDK is. Its `Install`, `Uninstall` and `St
 `scripts\payload\Install-Agent.ps1` - the same script the bundle ships - so a developer machine and
 a workstation follow one code path.
 
-| Action | Does |
-|---|---|
-| `-Action Publish` | Builds both executables self-contained into `artifacts/agent` |
-| `-Action Bundle [-Compress]` | Publishes, then assembles the redistributable folder (and `.zip`) into `artifacts/deploy` |
-| `-Action Package` | Publishes, then builds the MSI into `artifacts/installer` |
-| `-Action Install` | Publishes, then installs on this machine from the fresh output |
-| `-Action Uninstall [-PurgeData]` | Stops and removes the service; `-PurgeData` also deletes `%ProgramData%\EmployeeMonitor` |
-| `-Action Status` | Reports service state, version, server, enrollment and queue depth |
+| Action                            | Does                                                                                         |
+| --------------------------------- | -------------------------------------------------------------------------------------------- |
+| `-Action Publish`                 | Builds both executables self-contained into `artifacts/agent`                                |
+| `-Action Bundle [-Compress]`      | Publishes, then assembles the redistributable folder (and `.zip`) into `artifacts/deploy`    |
+| `-Action Package`                 | Publishes, then builds the MSI into `artifacts/installer`                                    |
+| `-Action Install [-CleanInstall]` | Publishes, then installs on this machine; `-CleanInstall` removes existing ProgramData first |
+| `-Action Uninstall [-PurgeData]`  | Stops and removes the service; `-PurgeData` also deletes `%ProgramData%\EmployeeMonitor`     |
+| `-Action Status`                  | Reports service state, version, server, enrollment and queue depth                           |
 
 ```powershell
 cd "Windows Software_v3"
@@ -149,12 +162,12 @@ one otherwise, because the spec requires TLS in production.
 
 1. **Create the organization.** `POST /v1/dashboard/organizations` returns the enrollment token
    **once**. Store it; only its HMAC is persisted.
-2. **Import the roster** *before* the rollout, so devices have somewhere to be assigned.
-   Employees screen -> *Import roster* -> paste `name, email, department`, one per line.
+2. **Import the roster** _before_ the rollout, so devices have somewhere to be assigned.
+   Employees screen -> _Import roster_ -> paste `name, email, department`, one per line.
    Tab-separated text pasted from a spreadsheet works, a header row is ignored, and re-importing a
    file containing existing people skips them rather than failing.
 3. **Roll the agent out** with the same token on every machine.
-4. **Assign each device.** Devices screen -> the *Assigned to* dropdown.
+4. **Assign each device.** Devices screen -> the _Assigned to_ dropdown.
 
 **Step 4 is not cosmetic.** Until a device is assigned it sits on the hidden "Unassigned Devices"
 placeholder employee: its telemetry is stored but never reaches per-employee reports.
@@ -218,10 +231,10 @@ Both executables must land in the **same folder** - the supervisor resolves
 Restart on failure, with the failure counter reset daily. **The install paths differ slightly** in
 the delay, because they configure the SCM through different mechanisms:
 
-| Path | Recovery actions |
-|---|---|
-| MSI (`util:ServiceConfig`) | restart after 5 s on each of the first three failures |
-| Bundle / `Deploy-Agent.ps1` (`sc.exe failure`) | restart after 5 s twice, then 60 s |
+| Path                                           | Recovery actions                                      |
+| ---------------------------------------------- | ----------------------------------------------------- |
+| MSI (`util:ServiceConfig`)                     | restart after 5 s on each of the first three failures |
+| Bundle / `Deploy-Agent.ps1` (`sc.exe failure`) | restart after 5 s twice, then 60 s                    |
 
 The daily reset is the part that matters either way: a machine that crashes once a week never
 accumulates enough failures to stop being restarted, while a genuine crash loop stops after the

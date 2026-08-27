@@ -40,6 +40,10 @@
 .PARAMETER PurgeData
     With Uninstall, also delete the local database, screenshot spool, logs and stored credential.
 
+.PARAMETER CleanInstall
+    With Install, delete existing ProgramData before installing. Without this switch, existing
+    data is preserved and the operation behaves as an install over the previous installation.
+
 .PARAMETER SourceDir
     Directory holding the published executables. Defaults to this script's own folder, which is
     what the bundle layout produces.
@@ -64,6 +68,7 @@ param(
     [string]$EnrollmentToken,
     [switch]$AllowInsecureHttp,
     [switch]$PurgeData,
+    [switch]$CleanInstall,
     [string]$SourceDir,
     [switch]$Interactive
 )
@@ -510,6 +515,12 @@ function Invoke-Install {
     $version = Get-PayloadVersion -ServiceExePath (Join-Path $payloadDir $ServiceExeName)
 
     Stop-AgentProcess
+
+    if ($CleanInstall -and (Test-Path -LiteralPath $DataDir)) {
+        Write-Step "Deleting existing $DataDir for a clean install..."
+        Remove-DirectoryTree -Path $DataDir
+    }
+
     $installedBytes = Copy-Payload -PayloadDir $payloadDir
     Copy-Installer -PayloadDir $payloadDir
 

@@ -36,6 +36,10 @@
 .PARAMETER PurgeData
     With Uninstall, also delete the local database, screenshot spool and stored credential.
 
+.PARAMETER CleanInstall
+    With Install, delete existing ProgramData before installing. Without this switch, existing
+    data is preserved and the operation behaves as an install over the previous installation.
+
 .PARAMETER Compress
     With Bundle, also produce a .zip of the bundle folder for copying to workstations.
 
@@ -56,6 +60,7 @@ param(
     [string]$EnrollmentToken,
     [switch]$AllowInsecureHttp,
     [switch]$PurgeData,
+    [switch]$CleanInstall,
     [switch]$Compress
 )
 
@@ -201,6 +206,7 @@ function Invoke-Install {
     if ($ServerUrl)         { $arguments += @('-ServerUrl', $ServerUrl) }
     if ($EnrollmentToken)   { $arguments += @('-EnrollmentToken', $EnrollmentToken) }
     if ($AllowInsecureHttp) { $arguments += '-AllowInsecureHttp' }
+    if ($CleanInstall)      { $arguments += '-CleanInstall' }
 
     Invoke-MachineInstaller -Arguments $arguments
 }

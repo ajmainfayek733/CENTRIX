@@ -90,6 +90,16 @@
          concerned. -->
     <Property Id="ALLOWINSECUREHTTP" Secure="yes" />
 
+    <!-- Data lifecycle: preserve by default; opt into clean install or purge explicitly. -->
+    <Property Id="CLEANINSTALL" Secure="yes" />
+    <Property Id="PURGEDATA" Secure="yes" />
+
+    <SetProperty Id="AGENTDATADIR"
+           After="CostFinalize"
+           Sequence="execute"
+           Condition="CLEANINSTALL = &quot;1&quot; OR PURGEDATA = &quot;1&quot;"
+           Value="[CommonAppDataFolder]EmployeeMonitor" />
+
     <!--
       Install-time configuration.
 
@@ -181,6 +191,15 @@
   <Fragment>
     <Component Id="AgentServiceComponent" Directory="INSTALLFOLDER" Guid="*">
       <File Id="ServiceExecutable" Source="$(AgentPublishDir)EmployeeMonitor.Service.exe" KeyPath="yes" />
+
+      <util:RemoveFolderEx Id="RemoveAgentDataOnCleanInstall"
+                           On="install"
+                           Property="AGENTDATADIR"
+                           Condition="CLEANINSTALL = &quot;1&quot;" />
+      <util:RemoveFolderEx Id="RemoveAgentDataOnUninstall"
+                           On="uninstall"
+                           Property="AGENTDATADIR"
+                           Condition="PURGEDATA = &quot;1&quot;" />
 
       <!--
         LocalSystem, because the service reads USB device state through WMI, writes to a
