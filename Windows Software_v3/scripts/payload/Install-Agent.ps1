@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Installs, upgrades, removes and inspects the CENTRIX agent on one workstation.
+    Installs, upgrades, removes and inspects the Employee Monitor agent on one workstation.
 
 .DESCRIPTION
     The machine-side half of the deployment story. It ships inside the bundle produced by
@@ -40,10 +40,6 @@
 .PARAMETER PurgeData
     With Uninstall, also delete the local database, screenshot spool, logs and stored credential.
 
-.PARAMETER CleanInstall
-    With Install, delete existing ProgramData before installing. Without this switch, existing
-    data is preserved and the operation behaves as an install over the previous installation.
-
 .PARAMETER SourceDir
     Directory holding the published executables. Defaults to this script's own folder, which is
     what the bundle layout produces.
@@ -56,7 +52,7 @@
 
 .EXAMPLE
     # Unattended rollout from a GPO startup script, against a copy of the bundle on a share
-    \\fileserver\deploy\CentrixAgent\Install-Agent.ps1 -Action Install `
+    \\fileserver\deploy\EmployeeMonitorAgent\Install-Agent.ps1 -Action Install `
         -ServerUrl https://monitoring.example.com -EnrollmentToken $env:ENROLL_TOKEN
 #>
 [CmdletBinding()]
@@ -68,7 +64,6 @@ param(
     [string]$EnrollmentToken,
     [switch]$AllowInsecureHttp,
     [switch]$PurgeData,
-    [switch]$CleanInstall,
     [string]$SourceDir,
     [switch]$Interactive
 )
@@ -76,20 +71,20 @@ param(
 $ErrorActionPreference = 'Stop'
 
 # --- Identity ---------------------------------------------------------------------------------
-$ServiceName      = 'CentrixAgent'
-$DisplayName      = 'CENTRIX Agent'
-$Publisher        = 'CENTRIX'
-$ServiceExeName   = 'Centrix.Service.exe'
-$HostExeName      = 'Centrix.Host.exe'
-$HostProcessName  = 'Centrix.Host'
+$ServiceName      = 'EmployeeMonitorAgent'
+$DisplayName      = 'Employee Monitor Agent'
+$Publisher        = 'Employee Monitor'
+$ServiceExeName   = 'EmployeeMonitor.Service.exe'
+$HostExeName      = 'EmployeeMonitor.Host.exe'
+$HostProcessName  = 'EmployeeMonitor.Host'
 $InstallerBatName = 'install.bat'
 $InstallerPs1Name = 'Install-Agent.ps1'
 
 $ServiceDescription = 'Collects workplace productivity telemetry under company monitoring policy. See the notice in the system tray.'
 
 # --- Locations --------------------------------------------------------------------------------
-$InstallDir      = Join-Path $env:ProgramFiles 'CENTRIX'
-$DataDir         = Join-Path $env:ProgramData 'Centrix'
+$InstallDir      = Join-Path $env:ProgramFiles 'Employee Monitor'
+$DataDir         = Join-Path $env:ProgramData 'EmployeeMonitor'
 $ScreenshotDir   = Join-Path $DataDir 'screenshots'
 $LogDir          = Join-Path $DataDir 'logs'
 $ConfigFileName  = 'agent.config.json'
@@ -427,27 +422,20 @@ function Register-AgentService {
 
     if (Get-AgentService) {
         Write-Step 'Service is already registered; the existing registration is kept.'
-    }
-    else {
-        Write-Step 'Registering the Windows service...'
-        New-Service -Name $ServiceName `
-                    -BinaryPathName "`"$binaryPath`"" `
-                    -DisplayName $DisplayName `
-                    -Description $ServiceDescription `
-                    -StartupType Automatic | Out-Null
+        return
     }
 
-    # Apply this on upgrades too. New-Service cannot express recovery actions, so this stays as sc.exe.
+    Write-Step 'Registering the Windows service...'
+    New-Service -Name $ServiceName `
+                -BinaryPathName "`"$binaryPath`"" `
+                -DisplayName $DisplayName `
+                -Description $ServiceDescription `
+                -StartupType Automatic | Out-Null
+
+    # New-Service cannot express recovery actions, so this stays as sc.exe.
     & sc.exe failure $ServiceName reset= $FailureResetSeconds actions= $FailureActions | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        Write-Warn 'Could not set the service recovery actions. The agent will not restart itself after a failure.'
-    }
-
-    # Task Manager termination may not be reported as a crash. Enable recovery actions for every
-    # unexpected process termination, while a normal service stop remains intentional.
-    & sc.exe failureflag $ServiceName 1 | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warn 'Could not enable recovery for unexpected service termination.'
+        Write-Warn 'Could not set the service recovery actions. The agent will not restart itself after a crash.'
     }
 }
 
@@ -522,12 +510,6 @@ function Invoke-Install {
     $version = Get-PayloadVersion -ServiceExePath (Join-Path $payloadDir $ServiceExeName)
 
     Stop-AgentProcess
-
-    if ($CleanInstall -and (Test-Path -LiteralPath $DataDir)) {
-        Write-Step "Deleting existing $DataDir for a clean install..."
-        Remove-DirectoryTree -Path $DataDir
-    }
-
     $installedBytes = Copy-Payload -PayloadDir $payloadDir
     Copy-Installer -PayloadDir $payloadDir
 
@@ -706,7 +688,7 @@ if (-not (Test-Elevated)) {
 if ($Action -eq 'Uninstall' -and $PSScriptRoot -and
     $PSScriptRoot.TrimEnd('\') -ieq $InstallDir.TrimEnd('\')) {
 
-    $stagingDir = Join-Path ([IO.Path]::GetTempPath()) "CentrixSetup-$([Guid]::NewGuid())"
+    $stagingDir = Join-Path ([IO.Path]::GetTempPath()) "EmployeeMonitorSetup-$([Guid]::NewGuid())"
     New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
     Copy-Item -LiteralPath $PSCommandPath -Destination (Join-Path $stagingDir $InstallerPs1Name) -Force
 

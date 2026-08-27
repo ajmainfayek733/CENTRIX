@@ -4,14 +4,14 @@ Installing, updating and removing the Windows agent across a fleet.
 
 There are three paths, and they are not alternatives to each other:
 
-|                        | Use for                                                                                                                                                                     | Artifact                                                        |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| **Bundle**             | Fleet rollout - copied to a workstation and installed by double-clicking `install.bat`, or driven unattended from GPO/Intune/PDQ. **No .NET runtime or SDK on the target.** | `artifacts/deploy/CentrixAgent-<version>/` (and `.zip`) |
-| **MSI**                | GPO/Intune/ConfigMgr where a native MSI is required. A single self-contained `.msi` - both executables are embedded, and running it self-elevates                           | `artifacts/installer/CentrixAgent.msi`                  |
-| **`Deploy-Agent.ps1`** | Development and single-machine work on the build box, where publishing and installing in one step is the point                                                              | none, installs from `artifacts/agent`                           |
+| | Use for | Artifact |
+|---|---|---|
+| **Bundle** | Fleet rollout - copied to a workstation and installed by double-clicking `install.bat`, or driven unattended from GPO/Intune/PDQ. **No .NET runtime or SDK on the target.** | `artifacts/deploy/EmployeeMonitorAgent-<version>/` (and `.zip`) |
+| **MSI** | GPO/Intune/ConfigMgr where a native MSI is required. A single self-contained `.msi` - both executables are embedded, and running it self-elevates | `artifacts/installer/EmployeeMonitorAgent.msi` |
+| **`Deploy-Agent.ps1`** | Development and single-machine work on the build box, where publishing and installing in one step is the point | none, installs from `artifacts/agent` |
 
 All three write their configuration through the **same** entry point in the agent
-(`Centrix.Service.exe --configure`), so a machine installed any way ends up with an
+(`EmployeeMonitor.Service.exe --configure`), so a machine installed any way ends up with an
 identical layout. All require **elevation**.
 
 The bundle is the recommended fleet artifact: it is fully self-contained, so the 30+ target
@@ -26,16 +26,16 @@ Built by `.\scripts\Deploy-Agent.ps1 -Action Bundle -Compress`, which publishes 
 self-contained and then assembles a redistributable folder:
 
 ```
-CentrixAgent-<version>/
+EmployeeMonitorAgent-<version>/
     install.bat                     start here - double-click it
     Install-Agent.ps1               the installer; install.bat calls it
-    Centrix.Service.exe     the SYSTEM service (carries its own .NET runtime)
-    Centrix.Host.exe        the per-user session process
+    EmployeeMonitor.Service.exe     the SYSTEM service (carries its own .NET runtime)
+    EmployeeMonitor.Host.exe        the per-user session process
     appsettings.json                logging configuration
     README.txt                      operator instructions
 ```
 
-`-Compress` also writes `CentrixAgent-<version>.zip`. The build filters out `*.pdb` and
+`-Compress` also writes `EmployeeMonitorAgent-<version>.zip`. The build filters out `*.pdb` and
 `appsettings.Development.json`, so nothing developer-only reaches a workstation.
 
 ### On one machine
@@ -54,7 +54,7 @@ Put the folder on a share and run, elevated, on each machine:
 
 ```
 powershell -NoProfile -ExecutionPolicy Bypass ^
-  -File "\\fileserver\deploy\CentrixAgent-<version>\Install-Agent.ps1" ^
+  -File "\\fileserver\deploy\EmployeeMonitorAgent-<version>\Install-Agent.ps1" ^
   -Action Install ^
   -ServerUrl https://monitoring.example.com ^
   -EnrollmentToken %ENROLL_TOKEN%
@@ -65,13 +65,13 @@ That form prompts for nothing; exit code 0 means success. `install.bat <action>`
 
 The install registers an **Add/Remove Programs** entry (spec section 3: the agent must be
 discoverable, never disguised), whose uninstall command points at a copy of `install.bat` placed
-beside the binaries. Uninstall from there leaves `%ProgramData%\Centrix` in place unless
+beside the binaries. Uninstall from there leaves `%ProgramData%\EmployeeMonitor` in place unless
 launched with the purge option.
 
 ## 2. The MSI
 
 Built by `.\scripts\Deploy-Agent.ps1 -Action Package`, which publishes the agent and then builds
-`installer\Centrix.Installer.wixproj` around the published output.
+`installer\EmployeeMonitor.Installer.wixproj` around the published output.
 
 The result is a **single self-contained file**. Both executables are compressed into cabinets
 embedded in the `.msi` itself (`MediaTemplate EmbedCab="yes"`), so there is nothing to distribute
@@ -89,11 +89,11 @@ silently skips the page - which is exactly the bug that hid it before.
 Running the MSI directly walks an administrator through licence, install location, and a
 **configuration page** carrying the three settings the agent cannot start without:
 
-| Field                                 | Property            | Notes                                                              |
-| ------------------------------------- | ------------------- | ------------------------------------------------------------------ |
-| Server address                        | `SERVERURL`         | e.g. `https://monitoring.example.com`                              |
-| Enrollment token                      | `ENROLLMENTTOKEN`   | Masked on screen; from the dashboard under Settings - Organization |
-| Allow an insecure HTTP server address | `ALLOWINSECUREHTTP` | Checkbox. Test servers only                                        |
+| Field | Property | Notes |
+|---|---|---|
+| Server address | `SERVERURL` | e.g. `https://monitoring.example.com` |
+| Enrollment token | `ENROLLMENTTOKEN` | Masked on screen; from the dashboard under Settings - Organization |
+| Allow an insecure HTTP server address | `ALLOWINSECUREHTTP` | Checkbox. Test servers only |
 
 **Next stays disabled** until there is a server and a token and the address is either HTTPS or the
 checkbox is ticked. The same three rules are enforced as launch conditions, because a dialog
@@ -104,7 +104,7 @@ cannot validate an install that never shows one.
 The same properties on the command line - this is how a fleet is actually deployed:
 
 ```
-msiexec /i CentrixAgent.msi /qn ^
+msiexec /i EmployeeMonitorAgent.msi /qn ^
         SERVERURL=https://monitoring.example.com ^
         ENROLLMENTTOKEN=%ENROLL_TOKEN%
 ```
@@ -113,22 +113,9 @@ A missing or non-HTTPS property fails immediately with a named message rather th
 service that cannot enroll. Add `ALLOWINSECUREHTTP=1` for a test server. To capture a log:
 `/l*v install.log` - the token is registered in `MsiHiddenProperties`, so it is redacted there.
 
-Uninstall with `msiexec /x CentrixAgent.msi /qn`, or from Apps and Features. Uninstall
-**leaves `%ProgramData%\Centrix` in place**, collected data included. To remove all local
-data during uninstall, pass `PURGEDATA=1`:
-
-```
-msiexec /x CentrixAgent.msi /qn PURGEDATA=1
-```
-
-For a clean install that removes existing data before installing, pass `CLEANINSTALL=1`:
-
-```
-msiexec /i CentrixAgent.msi /qn CLEANINSTALL=1 ^
-  SERVERURL=https://monitoring.example.com ENROLLMENTTOKEN=%ENROLL_TOKEN%
-```
-
-Without `CLEANINSTALL=1`, installation and upgrades preserve `%ProgramData%\Centrix`.
+Uninstall with `msiexec /x EmployeeMonitorAgent.msi /qn`, or from Apps and Features. Uninstall
+**leaves `%ProgramData%\EmployeeMonitor` in place**, collected data included; remove it separately
+if that is what you want.
 
 Upgrades are major upgrades: install the new MSI over the old one and it replaces it, keeping
 `%ProgramData%` - so no re-enrollment and nothing queued is lost.
@@ -139,14 +126,14 @@ Runs on the build box, where the .NET SDK is. Its `Install`, `Uninstall` and `St
 `scripts\payload\Install-Agent.ps1` - the same script the bundle ships - so a developer machine and
 a workstation follow one code path.
 
-| Action                            | Does                                                                                         |
-| --------------------------------- | -------------------------------------------------------------------------------------------- |
-| `-Action Publish`                 | Builds both executables self-contained into `artifacts/agent`                                |
-| `-Action Bundle [-Compress]`      | Publishes, then assembles the redistributable folder (and `.zip`) into `artifacts/deploy`    |
-| `-Action Package`                 | Publishes, then builds the MSI into `artifacts/installer`                                    |
-| `-Action Install [-CleanInstall]` | Publishes, then installs on this machine; `-CleanInstall` removes existing ProgramData first |
-| `-Action Uninstall [-PurgeData]`  | Stops and removes the service; `-PurgeData` also deletes `%ProgramData%\Centrix`     |
-| `-Action Status`                  | Reports service state, version, server, enrollment and queue depth                           |
+| Action | Does |
+|---|---|
+| `-Action Publish` | Builds both executables self-contained into `artifacts/agent` |
+| `-Action Bundle [-Compress]` | Publishes, then assembles the redistributable folder (and `.zip`) into `artifacts/deploy` |
+| `-Action Package` | Publishes, then builds the MSI into `artifacts/installer` |
+| `-Action Install` | Publishes, then installs on this machine from the fresh output |
+| `-Action Uninstall [-PurgeData]` | Stops and removes the service; `-PurgeData` also deletes `%ProgramData%\EmployeeMonitor` |
+| `-Action Status` | Reports service state, version, server, enrollment and queue depth |
 
 ```powershell
 cd "Windows Software_v3"
@@ -162,12 +149,12 @@ one otherwise, because the spec requires TLS in production.
 
 1. **Create the organization.** `POST /v1/dashboard/organizations` returns the enrollment token
    **once**. Store it; only its HMAC is persisted.
-2. **Import the roster** _before_ the rollout, so devices have somewhere to be assigned.
-   Employees screen -> _Import roster_ -> paste `name, email, department`, one per line.
+2. **Import the roster** *before* the rollout, so devices have somewhere to be assigned.
+   Employees screen -> *Import roster* -> paste `name, email, department`, one per line.
    Tab-separated text pasted from a spreadsheet works, a header row is ignored, and re-importing a
    file containing existing people skips them rather than failing.
 3. **Roll the agent out** with the same token on every machine.
-4. **Assign each device.** Devices screen -> the _Assigned to_ dropdown.
+4. **Assign each device.** Devices screen -> the *Assigned to* dropdown.
 
 **Step 4 is not cosmetic.** Until a device is assigned it sits on the hidden "Unassigned Devices"
 placeholder employee: its telemetry is stored but never reaches per-employee reports.
@@ -197,8 +184,8 @@ want to limit the shared secret's exposure, but plan to redistribute config.
 ## 7. Installed layout
 
 ```
-%ProgramFiles%\CENTRIX\        both executables, published side by side
-%ProgramData%\Centrix\
+%ProgramFiles%\Employee Monitor\        both executables, published side by side
+%ProgramData%\EmployeeMonitor\
     agent.config.json                   server URL + enrollment token (installer-written)
     device.key                          DPAPI-protected device API key, LocalMachine scope
     agent.db                            typed telemetry tables + offline queue (WAL)
@@ -206,7 +193,7 @@ want to limit the shared secret's exposure, but plan to redistribute config.
     logs\                               service-<date>.log, host-s<session>-<date>.log
 ```
 
-The layout and its ACLs are applied by `Centrix.Service.exe --configure`, which every
+The layout and its ACLs are applied by `EmployeeMonitor.Service.exe --configure`, which every
 install path calls - the bundle and `Deploy-Agent.ps1` through `Install-Agent.ps1`, the MSI from a
 deferred custom action. It is in the agent
 rather than in either installer because the service depends on this layout at runtime, so there is
@@ -224,17 +211,17 @@ ACLs applied:
   history. Ageing log files out is therefore `RetentionWorker`'s job, running as SYSTEM.
 
 Both executables must land in the **same folder** - the supervisor resolves
-`Centrix.Host.exe` next to the service executable.
+`EmployeeMonitor.Host.exe` next to the service executable.
 
 ## 8. Service recovery
 
 Restart on failure, with the failure counter reset daily. **The install paths differ slightly** in
 the delay, because they configure the SCM through different mechanisms:
 
-| Path                                           | Recovery actions                                      |
-| ---------------------------------------------- | ----------------------------------------------------- |
-| MSI (`util:ServiceConfig`)                     | restart after 5 s on each of the first three failures |
-| Bundle / `Deploy-Agent.ps1` (`sc.exe failure`) | restart after 5 s twice, then 60 s                    |
+| Path | Recovery actions |
+|---|---|
+| MSI (`util:ServiceConfig`) | restart after 5 s on each of the first three failures |
+| Bundle / `Deploy-Agent.ps1` (`sc.exe failure`) | restart after 5 s twice, then 60 s |
 
 The daily reset is the part that matters either way: a machine that crashes once a week never
 accumulates enough failures to stop being restarted, while a genuine crash loop stops after the
@@ -252,7 +239,7 @@ Both executables publish self-contained, `win-x64`, single-file, **untrimmed**.
 resolved WMI types, and does so at runtime rather than at build time. `Directory.Build.props`
 fixes the target framework, RID, version metadata and `TreatWarningsAsErrors`.
 
-WiX is pinned to **5.0.2** in `installer/Centrix.Installer.wixproj`, and the `Util` and
+WiX is pinned to **5.0.2** in `installer/EmployeeMonitor.Installer.wixproj`, and the `Util` and
 `UI` extension references must carry the same version. v6+ requires accepting the paid Open Source
 Maintenance Fee EULA (`WIX7015`); a version mismatch between the SDK and an extension gives
 `WIX6101`. See [../architecture/decisions.md](../architecture/decisions.md) AD-14.

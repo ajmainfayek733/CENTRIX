@@ -18,7 +18,7 @@ export default function LoginPage() {
             C E N T R I X
           </h1>
           <p className="mt-1 text-[13.5px] text-text-secondary">
-            CENTRIXing & Movement Tracking Application; Focuses on improving efficiency.
+            Employee Monitoring & Movement Tracking Application; Focuses on improving efficiency.
           </p>
         </div>
 

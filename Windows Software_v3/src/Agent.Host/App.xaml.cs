@@ -15,7 +15,7 @@ using Microsoft.Extensions.Logging;
 namespace Agent.Host;
 
 /// <summary>
-/// CENTRIX Agent - interactive half.
+/// Employee Monitor Agent - interactive half.
 ///
 /// Runs in the logged-on user's session because everything it does is session-bound: the
 /// foreground window, idle time, input counts and the screen itself are all invisible from
@@ -43,7 +43,7 @@ public partial class App : System.Windows.Application
 
         // Local scope: one host per interactive session is correct, and a Global mutex would
         // wrongly block a second user during fast user switching.
-        _singleInstance = new Mutex(true, @"Local\Centrix.Host", out var isFirstInstance);
+        _singleInstance = new Mutex(true, @"Local\EmployeeMonitor.Host", out var isFirstInstance);
         if (!isFirstInstance)
         {
             Shutdown();

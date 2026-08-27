@@ -117,7 +117,7 @@ public sealed class SessionEventMonitor(ILogger<SessionEventMonitor> logger) : I
         {
             _dispatcher.Invoke(() =>
             {
-                var parameters = new HwndSourceParameters("Centrix.SessionEndListener")
+                var parameters = new HwndSourceParameters("EmployeeMonitor.SessionEndListener")
                 {
                     // Zero-sized, never shown, and kept out of the taskbar and alt-tab list. It
                     // exists to have a window procedure, not to be looked at.

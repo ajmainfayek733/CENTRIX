@@ -36,17 +36,17 @@ The agent is two executables, deliberately.
 
 ```
 Windows boot
-  +- Centrix.Service.exe          LocalSystem, session 0
+  +- EmployeeMonitor.Service.exe          LocalSystem, session 0
        +- ConnectivityWorker              enroll -> heartbeat -> policy
        +- SyncWorker                      drain the offline queue to the backend
        +- UsbWorker                       WMI device arrival/removal
        +- RetentionWorker                 sweep synced rows, screenshots, log files
        +- HostSupervisorWorker            keep one host alive on the desktop
-       +- IpcServer  --------------+      named pipe, Global\Centrix.Agent
+       +- IpcServer  --------------+      named pipe, Global\EmployeeMonitor.Agent
        +- LocalStore / TelemetryQueue     SQLite: typed tables + offline queue
                                    |
 User logon                         |
-  +- Centrix.Host.exe  ----+      interactive session, standard user
+  +- EmployeeMonitor.Host.exe  ----+      interactive session, standard user
        +- MonitoringOrchestrator          the single sampling loop
        +- ForegroundWindowTracker         what app is in focus
        +- BrowserUrlExtractor             address bar via UI Automation
@@ -185,7 +185,7 @@ These are architectural, not configuration. They cannot be switched on or off by
 
 ## 7. Configuration and identity
 
-**Install-time config** (`%ProgramData%\Centrix\agent.config.json`, written by
+**Install-time config** (`%ProgramData%\EmployeeMonitor\agent.config.json`, written by
 `Deploy-Agent.ps1`): `serverUrl`, `enrollmentToken`, `allowInsecureHttp`. The service refuses to
 start without a valid server URL and token, and refuses a plain-HTTP URL unless
 `allowInsecureHttp` is set (test only - spec section 9 requires TLS).
@@ -221,8 +221,8 @@ overrides whenever a rule matches.
 ## 9. On-disk layout (installed)
 
 ```
-%ProgramFiles%\CENTRIX\        both executables, published side by side
-%ProgramData%\Centrix\
+%ProgramFiles%\Employee Monitor\        both executables, published side by side
+%ProgramData%\EmployeeMonitor\
     agent.config.json                   server URL + enrollment token
     device.key                          DPAPI-protected device API key
     agent.db                            typed telemetry tables + offline queue (WAL)
@@ -264,8 +264,8 @@ publishes, copies to Program Files, writes the config, sets ACLs, registers the 
 
 ## 11. Logging
 
-Both processes log to the Windows Event Log (`CentrixAgent`, `CentrixHost`) **and**
-to rolling files under `%ProgramData%\Centrix\logs\` via
+Both processes log to the Windows Event Log (`EmployeeMonitorAgent`, `EmployeeMonitorHost`) **and**
+to rolling files under `%ProgramData%\EmployeeMonitor\logs\` via
 `Agent.Core.Logging.FileLoggerProvider`.
 
 The files are what to collect when diagnosing a workstation; the Event Log covers anything failing

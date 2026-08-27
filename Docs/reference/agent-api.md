@@ -9,14 +9,14 @@ Enrollment uses the `X-Enrollment-Token` header instead.
 These endpoints do **not** use the `{ status, message, data }` envelope. That is the dashboard
 API only.
 
-| Endpoint                  | Method | Auth                 | Limit/min           |
-| ------------------------- | ------ | -------------------- | ------------------- |
-| `/api/v1/device/enroll`   | POST   | `X-Enrollment-Token` | 10, per MachineGuid |
-| `/api/v1/heartbeat`       | GET    | Device key           | 120, per device     |
-| `/api/v1/events/:channel` | POST   | Device key           | 200, per device     |
-| `/api/v1/policy`          | GET    | Device key           | 200, per device     |
-| `/api/v1/screenshots`     | POST   | Device key           | 60, per device      |
-| `/api/v1/consent`         | POST   | Device key           | 60, per device      |
+| Endpoint | Method | Auth | Limit/min |
+|---|---|---|---|
+| `/api/v1/device/enroll` | POST | `X-Enrollment-Token` | 10, per MachineGuid |
+| `/api/v1/heartbeat` | GET | Device key | 120, per device |
+| `/api/v1/events/:channel` | POST | Device key | 200, per device |
+| `/api/v1/policy` | GET | Device key | 200, per device |
+| `/api/v1/screenshots` | POST | Device key | 60, per device |
+| `/api/v1/consent` | POST | Device key | 60, per device |
 
 A per-IP backstop of 3000/min applies to everything under `/api/v1` before authentication.
 
@@ -30,15 +30,15 @@ Trades the org-wide enrollment token for a per-device API key.
 
 **Body:**
 
-| Field          | Type    | Required | Notes                                                       |
-| -------------- | ------- | -------- | ----------------------------------------------------------- |
-| `deviceId`     | string  | Yes      | Windows MachineGuid - **the identity key**                  |
-| `deviceName`   | string  | Yes      |                                                             |
-| `systemType`   | string? | No       |                                                             |
-| `edition`      | string? | No       |                                                             |
-| `version`      | string? | No       |                                                             |
-| `macAddress`   | string? | No       | Normalized to uppercase colon form; all-zero becomes `null` |
-| `agentVersion` | string? | No       |                                                             |
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `deviceId` | string | Yes | Windows MachineGuid - **the identity key** |
+| `deviceName` | string | Yes | |
+| `systemType` | string? | No | |
+| `edition` | string? | No | |
+| `version` | string? | No | |
+| `macAddress` | string? | No | Normalized to uppercase colon form; all-zero becomes `null` |
+| `agentVersion` | string? | No | |
 
 **Response** `201` first enrollment, `200` re-enrollment:
 
@@ -48,10 +48,10 @@ Trades the org-wide enrollment token for a per-device API key.
 
 **The `apiKey` is returned exactly once.** Only its HMAC is persisted.
 
-| Status | Meaning                                     |
-| ------ | ------------------------------------------- |
-| 401    | Missing header, or invalid enrollment token |
-| 403    | Device was deactivated by an administrator  |
+| Status | Meaning |
+|---|---|
+| 401 | Missing header, or invalid enrollment token |
+| 403 | Device was deactivated by an administrator |
 
 MAC addresses arrive in whichever notation the source used and are normalized so one NIC cannot
 appear as several values. The all-zero address is stored as `null` rather than as an address - it
@@ -84,18 +84,10 @@ pulling the whole document.
 **Body:**
 
 ```json
-{
-  "batchId": "<uuid, optional>",
-  "events": [
-    /* 1..INGEST_MAX_BATCH_EVENTS */
-  ]
-}
+{ "batchId": "<uuid, optional>", "events": [ /* 1..INGEST_MAX_BATCH_EVENTS */ ] }
 ```
 
 `batchId` identifies the push so a replay is recognized and answered without redoing the work.
-The server verifies the batch against a hash of the sorted canonical full event contents, not only
-the event ids. This is required because an attendance session can reuse its `clientEventId` while
-the agent sends a later snapshot with a higher `revision` and a newly observed `logoutTime`.
 Optional, so an older agent still ingests - those batches fall back to per-event deduplication,
 which is correct but repeats the expensive work on every replay.
 
@@ -112,91 +104,91 @@ previous response was lost.
 
 **Errors:**
 
-| Status    | Body                                                | Agent behaviour                                    |
-| --------- | --------------------------------------------------- | -------------------------------------------------- |
-| 400       | `{ error, channel, details: [{ field, message }] }` | Rejection - counts toward the 5-strike drop        |
-| 401 / 403 | `{ error }`                                         | Re-enroll / stop                                   |
-| 413       | `{ error, limitBytes, receivedBytes, remedy }`      | Halve the chunk and retry                          |
-| 429       | `{ error, retryAfterSeconds }`                      | Exponential backoff                                |
-| 5xx       | `{ error }`                                         | Transient - backoff, **attempt counter untouched** |
+| Status | Body | Agent behaviour |
+|---|---|---|
+| 400 | `{ error, channel, details: [{ field, message }] }` | Rejection - counts toward the 5-strike drop |
+| 401 / 403 | `{ error }` | Re-enroll / stop |
+| 413 | `{ error, limitBytes, receivedBytes, remedy }` | Halve the chunk and retry |
+| 429 | `{ error, retryAfterSeconds }` | Exponential backoff |
+| 5xx | `{ error }` | Transient - backoff, **attempt counter untouched** |
 
 ### Channel: `attendance`
 
 Upserted on `sessionId` - the agent re-sends as `logoutTime` firms up across lock, sleep and
 shutdown, and the **highest `revision` wins**.
 
-| Field                | Type         | Notes                                                                                                                                                                                                                                                                                                                                                           |
-| -------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `clientEventId`      | uuid         |                                                                                                                                                                                                                                                                                                                                                                 |
-| `sessionId`          | uuid         | The upsert key                                                                                                                                                                                                                                                                                                                                                  |
-| `revision`           | int >= 0     | Which snapshot of this session it is. Starts at 1, bumped by the agent on every rewrite of the row. A report below the stored revision is **dropped as stale**; equal is applied (a redelivered batch carries the same values). Omitted or `0` means the agent predates the counter, and the server falls back to ordering by whether a report carries a logout |
-| `userSid`            | string       |                                                                                                                                                                                                                                                                                                                                                                 |
-| `loginTime`          | datetime     |                                                                                                                                                                                                                                                                                                                                                                 |
-| `logoutTime`         | datetime?    |                                                                                                                                                                                                                                                                                                                                                                 |
-| `endReason`          | enum?        | `Logout`, `Lock`, `Shutdown`, `Restart`, `Hibernate`, `Sleep`, `PowerLoss`, `Disconnect`, `Recovered`                                                                                                                                                                                                                                                           |
-| `workDate`           | `YYYY-MM-DD` | **Local** calendar date - only the workstation knows its timezone                                                                                                                                                                                                                                                                                               |
-| `totalActiveSeconds` | int >= 0     | Contributes **no** seconds to the rollup                                                                                                                                                                                                                                                                                                                        |
-| `totalIdleSeconds`   | int >= 0     | Same                                                                                                                                                                                                                                                                                                                                                            |
+| Field | Type | Notes |
+|---|---|---|
+| `clientEventId` | uuid | |
+| `sessionId` | uuid | The upsert key |
+| `revision` | int >= 0 | Which snapshot of this session it is. Starts at 1, bumped by the agent on every rewrite of the row. A report below the stored revision is **dropped as stale**; equal is applied (a redelivered batch carries the same values). Omitted or `0` means the agent predates the counter, and the server falls back to ordering by whether a report carries a logout |
+| `userSid` | string | |
+| `loginTime` | datetime | |
+| `logoutTime` | datetime? | |
+| `endReason` | enum? | `Logout`, `Lock`, `Shutdown`, `Restart`, `Hibernate`, `Sleep`, `PowerLoss`, `Disconnect`, `Recovered` |
+| `workDate` | `YYYY-MM-DD` | **Local** calendar date - only the workstation knows its timezone |
+| `totalActiveSeconds` | int >= 0 | Contributes **no** seconds to the rollup |
+| `totalIdleSeconds` | int >= 0 | Same |
 
 ### Channel: `activity-metric`
 
 **Counts only, never content.** There is no field here that could hold a key or a character.
 
-| Field                                                                                  | Type     |
-| -------------------------------------------------------------------------------------- | -------- |
-| `clientEventId`                                                                        | uuid     |
-| `sessionId`                                                                            | uuid     |
-| `keyCount`, `mouseCount`                                                               | int >= 0 |
+| Field | Type |
+|---|---|
+| `clientEventId` | uuid |
+| `sessionId` | uuid |
+| `keyCount`, `mouseCount` | int >= 0 |
 | `mouseLeftKeyCount`, `mouseRightKeyCount`, `mouseMiddleKeyCount`, `mouseOtherKeyCount` | int >= 0 |
-| `windowStartUtc`, `windowEndUtc`                                                       | datetime |
+| `windowStartUtc`, `windowEndUtc` | datetime |
 
 ### Channel: `activity-session`
 
-| Field                                      | Type     | Notes                                                                                                      |
-| ------------------------------------------ | -------- | ---------------------------------------------------------------------------------------------------------- |
-| `clientEventId`                            | uuid     |                                                                                                            |
-| `activitySessionId`                        | uuid     | The dedup key                                                                                              |
-| `sessionId`                                | uuid     | Attendance session - source of the work date                                                               |
-| `appName`, `processName`, `executablePath` | string?  |                                                                                                            |
-| `type`                                     | enum     | `Application`, `Desktop`, `Locked`, `Idle`, `Sleeping`, `Disconnected`                                     |
-| `windowTitle`                              | string?  |                                                                                                            |
-| `startTime`, `endTime`                     | datetime |                                                                                                            |
-| `durationSeconds`                          | int >= 0 |                                                                                                            |
-| `reason`                                   | enum?    | `UserInactivity`, `ScreenLock`, `Sleep`, `Disconnect`, `AppSwitch`, `SessionEnd`                           |
-| `productivityTag`                          | enum     | `Productive`, `Unproductive`, `Blacklisted`, `Neutral`. **The server re-derives this and its answer wins** |
+| Field | Type | Notes |
+|---|---|---|
+| `clientEventId` | uuid | |
+| `activitySessionId` | uuid | The dedup key |
+| `sessionId` | uuid | Attendance session - source of the work date |
+| `appName`, `processName`, `executablePath` | string? | |
+| `type` | enum | `Application`, `Desktop`, `Locked`, `Idle`, `Sleeping`, `Disconnected` |
+| `windowTitle` | string? | |
+| `startTime`, `endTime` | datetime | |
+| `durationSeconds` | int >= 0 | |
+| `reason` | enum? | `UserInactivity`, `ScreenLock`, `Sleep`, `Disconnect`, `AppSwitch`, `SessionEnd` |
+| `productivityTag` | enum | `Productive`, `Unproductive`, `Blacklisted`, `Neutral`. **The server re-derives this and its answer wins** |
 
 ### Channel: `browser-activity`
 
-| Field                           | Type     | Notes                                                                                        |
-| ------------------------------- | -------- | -------------------------------------------------------------------------------------------- |
-| `clientEventId`                 | uuid     |                                                                                              |
-| `browserActivityId`             | uuid     | The dedup key                                                                                |
-| `activitySessionId`             | uuid?    | Owning app session. **Nulled rather than rejected if unknown** - it may not have arrived yet |
-| `browser`                       | enum     | `Chrome`, `Edge`, `Firefox`, `Brave`, `Opera`, `Vivaldi`, `Other`                            |
-| `browserVersion`, `profileName` | string?  |                                                                                              |
-| `domain`                        | string   | Lowercased server-side                                                                       |
-| `rawUrl`                        | string   |                                                                                              |
-| `windowTitle`, `pageTitle`      | string?  |                                                                                              |
-| `protocol`                      | enum     | `Http`, `Https` - only these; `file://` and `chrome://` are rejected agent-side              |
-| `startTime`, `endTime`          | datetime |                                                                                              |
-| `durationSeconds`               | int >= 0 | **Not** added to `activeSeconds` - the parent session counted it                             |
-| `productivityTag`               | enum     | Server re-derives                                                                            |
+| Field | Type | Notes |
+|---|---|---|
+| `clientEventId` | uuid | |
+| `browserActivityId` | uuid | The dedup key |
+| `activitySessionId` | uuid? | Owning app session. **Nulled rather than rejected if unknown** - it may not have arrived yet |
+| `browser` | enum | `Chrome`, `Edge`, `Firefox`, `Brave`, `Opera`, `Vivaldi`, `Other` |
+| `browserVersion`, `profileName` | string? | |
+| `domain` | string | Lowercased server-side |
+| `rawUrl` | string | |
+| `windowTitle`, `pageTitle` | string? | |
+| `protocol` | enum | `Http`, `Https` - only these; `file://` and `chrome://` are rejected agent-side |
+| `startTime`, `endTime` | datetime | |
+| `durationSeconds` | int >= 0 | **Not** added to `activeSeconds` - the parent session counted it |
+| `productivityTag` | enum | Server re-derives |
 
 ### Channel: `usb-event`
 
 Connection and removal **metadata only**. Contents are never enumerated, opened, read or copied.
 
-| Field                                                   | Type                       | Notes                                                               |
-| ------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------- |
-| `clientEventId`                                         | uuid                       |                                                                     |
-| `sessionId`                                             | uuid?                      | Nulled if unknown                                                   |
-| `eventType`                                             | enum                       | `Connected`, `Disconnected`                                         |
-| `deviceType`                                            | enum                       | `UsbStorage`, `MobileDevice`, `Hid`, `Other`                        |
-| `friendlyName`, `manufacturer`, `model`, `serialNumber` | string?                    |                                                                     |
-| `vendorId`, `productId`                                 | string?                    |                                                                     |
-| `driveLetter`, `volumeLabel`, `fileSystem`              | string?                    |                                                                     |
-| `capacityBytes`                                         | **decimal string** or int? | Sent as a string: drive capacities exceed JSON's safe integer range |
-| `eventTime`                                             | datetime                   |                                                                     |
+| Field | Type | Notes |
+|---|---|---|
+| `clientEventId` | uuid | |
+| `sessionId` | uuid? | Nulled if unknown |
+| `eventType` | enum | `Connected`, `Disconnected` |
+| `deviceType` | enum | `UsbStorage`, `MobileDevice`, `Hid`, `Other` |
+| `friendlyName`, `manufacturer`, `model`, `serialNumber` | string? | |
+| `vendorId`, `productId` | string? | |
+| `driveLetter`, `volumeLabel`, `fileSystem` | string? | |
+| `capacityBytes` | **decimal string** or int? | Sent as a string: drive capacities exceed JSON's safe integer range |
+| `eventTime` | datetime | |
 
 ### Channel: `alert`
 
@@ -204,21 +196,21 @@ Upserted on `clientEventId` - an escalating incident (idle 30 -> 45 -> 60 min) r
 rather than creating a row per escalation. Every alert is written; only first sightings are
 **counted**.
 
-| Field                                              | Type      | Notes                                                                         |
-| -------------------------------------------------- | --------- | ----------------------------------------------------------------------------- |
-| `clientEventId`                                    | uuid      | The upsert key                                                                |
-| `userSid`                                          | string    |                                                                               |
-| `type`                                             | enum      | `IdleThreshold`, `BlacklistedApp`, `BlacklistedWebsite`, `UsbDeviceConnected` |
-| `severity`                                         | enum      | `Information`, `Warning`, `High`, `Critical`                                  |
-| `state`                                            | enum      | `New`, `Shown`, `Acknowledged`, `Resolved`, `Archived`                        |
-| `title`, `message`                                 | string    |                                                                               |
-| `idleSeconds`, `thresholdSeconds`                  | int?      | Which context fields apply depends on `type`                                  |
-| `contextAppName`, `contextProcessName`             | string?   |                                                                               |
-| `contextDomain`, `contextUrl`                      | string?   |                                                                               |
-| `contextUsbSerialNumber`, `contextUsbFriendlyName` | string?   |                                                                               |
-| `triggeredAt`                                      | datetime  |                                                                               |
-| `acknowledgedAt`, `resolvedAt`, `lastNotifiedAt`   | datetime? |                                                                               |
-| `escalationLevel`, `notificationCount`             | int >= 0  |                                                                               |
+| Field | Type | Notes |
+|---|---|---|
+| `clientEventId` | uuid | The upsert key |
+| `userSid` | string | |
+| `type` | enum | `IdleThreshold`, `BlacklistedApp`, `BlacklistedWebsite`, `UsbDeviceConnected` |
+| `severity` | enum | `Information`, `Warning`, `High`, `Critical` |
+| `state` | enum | `New`, `Shown`, `Acknowledged`, `Resolved`, `Archived` |
+| `title`, `message` | string | |
+| `idleSeconds`, `thresholdSeconds` | int? | Which context fields apply depends on `type` |
+| `contextAppName`, `contextProcessName` | string? | |
+| `contextDomain`, `contextUrl` | string? | |
+| `contextUsbSerialNumber`, `contextUsbFriendlyName` | string? | |
+| `triggeredAt` | datetime | |
+| `acknowledgedAt`, `resolvedAt`, `lastNotifiedAt` | datetime? | |
+| `escalationLevel`, `notificationCount` | int >= 0 | |
 
 ## GET /api/v1/policy
 
@@ -231,13 +223,13 @@ Field list: [configuration.md](configuration.md#policy-fields).
 
 `multipart/form-data`. **File field name: `file`.**
 
-| Field             | Type          | Required |
-| ----------------- | ------------- | -------- |
-| `file`            | binary (JPEG) | Yes      |
-| `clientEventId`   | uuid          | Yes      |
-| `capturedAtUtc`   | datetime      | Yes      |
-| `userSid`         | string        | No       |
-| `width`, `height` | int > 0       | No       |
+| Field | Type | Required |
+|---|---|---|
+| `file` | binary (JPEG) | Yes |
+| `clientEventId` | uuid | Yes |
+| `capturedAtUtc` | datetime | Yes |
+| `userSid` | string | No |
+| `width`, `height` | int > 0 | No |
 
 **Response:** `{ "screenshotId": "..." }`
 
@@ -245,10 +237,10 @@ Idempotent on `clientEventId` - overwrite, not append.
 
 ## POST /api/v1/consent
 
-| Field            | Type     |
-| ---------------- | -------- |
-| `userSid`        | string   |
-| `policyVersion`  | int >= 0 |
+| Field | Type |
+|---|---|
+| `userSid` | string |
+| `policyVersion` | int >= 0 |
 | `acknowledgedAt` | datetime |
 
 **Response:** `{ "status": "ok" }`

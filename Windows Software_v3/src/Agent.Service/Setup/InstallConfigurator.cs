@@ -10,7 +10,7 @@ namespace Agent.Service.Setup;
 
 /// <summary>
 /// The install-time configuration step, invoked as
-/// <c>Centrix.Service.exe --configure --server-url ... --enrollment-token ...</c>.
+/// <c>EmployeeMonitor.Service.exe --configure --server-url ... --enrollment-token ...</c>.
 ///
 /// It lives in the service executable rather than in the installer so that there is exactly one
 /// implementation of "lay out ProgramData and write the agent configuration". The MSI calls it,

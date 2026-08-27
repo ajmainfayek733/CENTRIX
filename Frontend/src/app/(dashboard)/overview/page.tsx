@@ -19,7 +19,7 @@ import { LiveOnlineTile } from '@/components/LiveOnlineTile';
 import { LiveActiveTimeTile } from '@/components/LiveTotals';
 import type { Overview, Roster } from '@/types/api';
 
-export const metadata = { title: 'Overview - CENTRIX' };
+export const metadata = { title: 'Overview - Employee Monitor' };
 
 // Live operational data. Never served from Next's fetch cache, or a manager sees a stale
 // "who is online now" - see Docs/frontend/session-and-auth.md.

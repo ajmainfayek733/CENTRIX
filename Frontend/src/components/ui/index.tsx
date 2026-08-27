@@ -1,7 +1,7 @@
-import type { ComponentProps, ReactNode } from "react";
-import Link from "next/link";
-import { cn } from "@/lib/utils";
-import type { ProductivityTag, AlertSeverity } from "@/types/api";
+import type { ComponentProps, ReactNode } from 'react';
+import Link from 'next/link';
+import { cn } from '@/lib/utils';
+import type { ProductivityTag, AlertSeverity } from '@/types/api';
 
 /**
  * The dashboard's whole component vocabulary. Hand-rolled rather than pulled from a component
@@ -26,7 +26,7 @@ export function Card({
   title,
   action,
   children,
-  className = "",
+  className = '',
 }: {
   title?: string;
   action?: ReactNode;
@@ -37,13 +37,13 @@ export function Card({
     <section
       className={cn(
         // overflow-hidden so a full-bleed table cannot square off the rounded corners.
-        "overflow-hidden rounded-lg border border-glass-border bg-surface shadow-glass-sm",
-        className,
+        'overflow-hidden rounded-lg border border-glass-border bg-surface shadow-glass-sm',
+        className
       )}
     >
       {(title || action) && (
         <header className="flex items-center justify-between gap-4 border-b border-border bg-surface-muted px-[18px] py-[13px]">
-          {title && <h2 className={cn(LABEL_CLASS, "text-text-secondary")}>{title}</h2>}
+          {title && <h2 className={cn(LABEL_CLASS, 'text-text-secondary')}>{title}</h2>}
           {action}
         </header>
       )}
@@ -83,22 +83,22 @@ export function PageHeader({
 }
 
 /** The small uppercase label used for card titles, tile labels and table headings alike. */
-const LABEL_CLASS = "text-[11px] font-medium uppercase tracking-[0.06em]";
+const LABEL_CLASS = 'text-[11px] font-medium uppercase tracking-[0.06em]';
 
 export function SectionTitle({ children }: { children: ReactNode }) {
-  return <h3 className={cn(LABEL_CLASS, "mb-2.5 text-text-tertiary")}>{children}</h3>;
+  return <h3 className={cn(LABEL_CLASS, 'mb-2.5 text-text-tertiary')}>{children}</h3>;
 }
 
 /* ------------------------------------------------------------------ readings */
 
-type Tone = "default" | "brand" | "success" | "warning" | "danger";
+type Tone = 'default' | 'brand' | 'success' | 'warning' | 'danger';
 
 const VALUE_TONE: Record<Tone, string> = {
-  default: "text-text-primary",
-  brand: "text-brand",
-  success: "text-success",
-  warning: "text-warning",
-  danger: "text-danger",
+  default: 'text-text-primary',
+  brand: 'text-brand',
+  success: 'text-success',
+  warning: 'text-warning',
+  danger: 'text-danger',
 };
 
 /** A single headline number. The overview is built from a row of these. */
@@ -106,7 +106,7 @@ export function StatTile({
   label,
   value,
   hint,
-  tone = "default",
+  tone = 'default',
 }: {
   label: string;
   value: string | number;
@@ -115,13 +115,8 @@ export function StatTile({
 }) {
   return (
     <div className="rounded-lg border border-glass-border bg-surface px-[18px] py-4 shadow-glass-sm transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-glass-lift">
-      <p className={cn(LABEL_CLASS, "mb-[7px] text-text-tertiary")}>{label}</p>
-      <p
-        className={cn(
-          "tnum text-[26px] font-semibold leading-[1.1] tracking-[-0.7px]",
-          VALUE_TONE[tone],
-        )}
-      >
+      <p className={cn(LABEL_CLASS, 'mb-[7px] text-text-tertiary')}>{label}</p>
+      <p className={cn('tnum text-[26px] font-semibold leading-[1.1] tracking-[-0.7px]', VALUE_TONE[tone])}>
         {value}
       </p>
       {hint && <p className="mt-[5px] text-xs text-text-secondary">{hint}</p>}
@@ -133,7 +128,7 @@ export function StatTile({
 export function HeroPercent({ value, caption }: { value: string; caption: string }) {
   return (
     <p className="mb-[3px] text-[30px] font-semibold leading-tight tracking-[-0.9px] text-text-primary">
-      <span className="tnum">{value}</span>{" "}
+      <span className="tnum">{value}</span>{' '}
       <span className="text-sm font-normal tracking-normal text-text-secondary">{caption}</span>
     </p>
   );
@@ -141,25 +136,25 @@ export function HeroPercent({ value, caption }: { value: string; caption: string
 
 export function Badge({
   children,
-  tone = "neutral",
+  tone = 'neutral',
 }: {
   children: ReactNode;
-  tone?: "neutral" | "brand" | "success" | "warning" | "danger" | "info";
+  tone?: 'neutral' | 'brand' | 'success' | 'warning' | 'danger' | 'info';
 }) {
   const toneClass = {
-    neutral: "bg-surface-muted text-text-secondary",
-    brand: "bg-brand/12 text-brand",
-    success: "bg-success/14 text-success",
-    warning: "bg-warning/14 text-warning",
-    danger: "bg-danger/14 text-danger",
-    info: "bg-info/12 text-info",
+    neutral: 'bg-surface-muted text-text-secondary',
+    brand: 'bg-brand/12 text-brand',
+    success: 'bg-success/14 text-success',
+    warning: 'bg-warning/14 text-warning',
+    danger: 'bg-danger/14 text-danger',
+    info: 'bg-info/12 text-info',
   }[tone];
 
   return (
     <span
       className={cn(
-        "inline-block whitespace-nowrap rounded-full px-[9px] py-[3px] text-[11.5px] font-medium",
-        toneClass,
+        'inline-block whitespace-nowrap rounded-full px-[9px] py-[3px] text-[11.5px] font-medium',
+        toneClass
       )}
     >
       {children}
@@ -169,22 +164,22 @@ export function Badge({
 
 export function TagBadge({ tag }: { tag: ProductivityTag }) {
   const tone = {
-    Productive: "success",
-    Unproductive: "warning",
-    Blacklisted: "danger",
-    Neutral: "neutral",
-  }[tag] as "success" | "warning" | "danger" | "neutral";
+    Productive: 'success',
+    Unproductive: 'warning',
+    Blacklisted: 'danger',
+    Neutral: 'neutral',
+  }[tag] as 'success' | 'warning' | 'danger' | 'neutral';
 
   return <Badge tone={tone}>{tag}</Badge>;
 }
 
 export function SeverityBadge({ severity }: { severity: AlertSeverity }) {
   const tone = {
-    Information: "info",
-    Warning: "warning",
-    High: "danger",
-    Critical: "danger",
-  }[severity] as "info" | "warning" | "danger";
+    Information: 'info',
+    Warning: 'warning',
+    High: 'danger',
+    Critical: 'danger',
+  }[severity] as 'info' | 'warning' | 'danger';
 
   return <Badge tone={tone}>{severity}</Badge>;
 }
@@ -194,8 +189,8 @@ export function StatusDot({ online }: { online: boolean }) {
   return (
     <span
       className={cn(
-        "inline-block size-2 shrink-0 rounded-full",
-        online ? "bg-success-vivid" : "bg-neutral-dot",
+        'inline-block size-2 shrink-0 rounded-full',
+        online ? 'bg-success-vivid' : 'bg-neutral-dot'
       )}
       aria-hidden
     />
@@ -221,21 +216,15 @@ export function TableWrap({ children }: { children: ReactNode }) {
  * <tr> cannot paint a background across cells reliably - the cells have to carry it.
  */
 export const TABLE_CLASS =
-  "w-full border-collapse [&_tbody_tr:last-child_td]:border-b-0 [&_tbody_tr:hover_td]:bg-row-hover";
+  'w-full border-collapse [&_tbody_tr:last-child_td]:border-b-0 [&_tbody_tr:hover_td]:bg-row-hover';
 
-export function Th({
-  children,
-  align = "left",
-}: {
-  children: ReactNode;
-  align?: "left" | "right";
-}) {
+export function Th({ children, align = 'left' }: { children: ReactNode; align?: 'left' | 'right' }) {
   return (
     <th
       className={cn(
         LABEL_CLASS,
-        "whitespace-nowrap border-b border-border bg-th-bg px-[15px] py-2.5 text-text-tertiary",
-        align === "right" ? "text-right" : "text-left",
+        'whitespace-nowrap border-b border-border bg-th-bg px-[15px] py-2.5 text-text-tertiary',
+        align === 'right' ? 'text-right' : 'text-left'
       )}
     >
       {children}
@@ -245,23 +234,23 @@ export function Th({
 
 export function Td({
   children = null,
-  align = "left",
+  align = 'left',
   muted = false,
   numeric = false,
 }: {
   /** Optional so a nested/continuation row can render an empty spacer cell. */
   children?: ReactNode;
-  align?: "left" | "right";
+  align?: 'left' | 'right';
   muted?: boolean;
   numeric?: boolean;
 }) {
   return (
     <td
       className={cn(
-        "border-b border-border px-[15px] py-3 align-middle text-[13.5px] transition-colors",
-        align === "right" ? "text-right" : "text-left",
-        muted ? "text-text-tertiary" : "text-text-primary",
-        numeric && "tnum",
+        'border-b border-border px-[15px] py-3 align-middle text-[13.5px] transition-colors',
+        align === 'right' ? 'text-right' : 'text-left',
+        muted ? 'text-text-tertiary' : 'text-text-primary',
+        numeric && 'tnum'
       )}
     >
       {children}
@@ -308,10 +297,7 @@ export function EmptyState({ message, icon }: { message: string; icon?: ReactNod
   return (
     <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
       {icon && (
-        <span
-          className="grid size-10 place-items-center rounded-md bg-brand-soft text-brand"
-          aria-hidden
-        >
+        <span className="grid size-10 place-items-center rounded-md bg-brand-soft text-brand" aria-hidden>
           {icon}
         </span>
       )}
@@ -324,11 +310,11 @@ export function EmptyState({ message, icon }: { message: string; icon?: ReactNod
 
 /** The four productivity segments plus idle, in the one order used everywhere they appear. */
 const SEGMENT_STYLE = {
-  productive: "bg-success-vivid",
-  neutral: "bg-neutral-dot",
-  unproductive: "bg-warning",
-  blacklisted: "bg-danger",
-  idle: "bg-border-strong",
+  productive: 'bg-success-vivid',
+  neutral: 'bg-neutral-dot',
+  unproductive: 'bg-warning',
+  blacklisted: 'bg-danger',
+  idle: 'bg-border-strong',
 } as const;
 
 export type SegmentKey = keyof typeof SEGMENT_STYLE;
@@ -343,26 +329,23 @@ export function ProductivityBar({
   unproductive,
   neutral,
   blacklisted,
-  size = "md",
+  size = 'md',
 }: {
   productive: number;
   unproductive: number;
   neutral: number;
   blacklisted: number;
-  size?: "sm" | "md";
+  size?: 'sm' | 'md';
 }) {
-  const track = cn(
-    "flex overflow-hidden rounded-full bg-surface-muted",
-    size === "sm" ? "h-[5px]" : "h-[7px]",
-  );
+  const track = cn('flex overflow-hidden rounded-full bg-surface-muted', size === 'sm' ? 'h-[5px]' : 'h-[7px]');
   const total = productive + unproductive + neutral + blacklisted;
   if (total <= 0) return <div className={track} />;
 
   const segments: { value: number; key: SegmentKey; label: string }[] = [
-    { value: productive, key: "productive", label: "Productive" },
-    { value: neutral, key: "neutral", label: "Neutral" },
-    { value: unproductive, key: "unproductive", label: "Unproductive" },
-    { value: blacklisted, key: "blacklisted", label: "Blacklisted" },
+    { value: productive, key: 'productive', label: 'Productive' },
+    { value: neutral, key: 'neutral', label: 'Neutral' },
+    { value: unproductive, key: 'unproductive', label: 'Unproductive' },
+    { value: blacklisted, key: 'blacklisted', label: 'Blacklisted' },
   ];
 
   return (
@@ -387,10 +370,7 @@ export function Legend({ items }: { items: { key: SegmentKey; label: string; val
     <dl className="flex flex-wrap gap-x-[18px] gap-y-2.5">
       {items.map((item) => (
         <div key={item.key} className="flex items-center gap-[7px] text-[12.5px]">
-          <span
-            className={cn("size-[7px] shrink-0 rounded-full", SEGMENT_STYLE[item.key])}
-            aria-hidden
-          />
+          <span className={cn('size-[7px] shrink-0 rounded-full', SEGMENT_STYLE[item.key])} aria-hidden />
           <dt className="text-text-secondary">{item.label}</dt>
           <dd className="tnum font-medium text-text-primary">{item.value}</dd>
         </div>
@@ -402,29 +382,29 @@ export function Legend({ items }: { items: { key: SegmentKey; label: string; val
 /* ------------------------------------------------------------------ controls */
 
 const BUTTON_BASE =
-  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium transition-[background,color,opacity,box-shadow] cursor-pointer disabled:cursor-not-allowed disabled:opacity-50";
+  'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium transition-[background,color,opacity,box-shadow] disabled:pointer-events-none disabled:opacity-50';
 
 const BUTTON_VARIANT = {
   /* A gradient of the two deeper blues rather than the bright accent: white text on #0ea5e9
      is about 2.8:1. The accent stays the accent everywhere it is a foreground colour. */
   primary:
-    "bg-linear-135 from-brand-strong to-brand-strong-2 text-brand-contrast shadow-[0_4px_12px_rgba(14,120,200,0.3)] hover:opacity-92",
-  secondary: "glass-control text-text-primary hover:bg-surface-strong",
-  ghost: "text-text-secondary hover:bg-brand-soft hover:text-brand",
-  danger: "bg-danger text-destructive-foreground hover:opacity-90",
+    'bg-linear-135 from-brand-strong to-brand-strong-2 text-brand-contrast shadow-[0_4px_12px_rgba(14,120,200,0.3)] hover:opacity-92',
+  secondary: 'glass-control text-text-primary hover:bg-surface-strong',
+  ghost: 'text-text-secondary hover:bg-brand-soft hover:text-brand',
+  danger: 'bg-danger text-destructive-foreground hover:opacity-90',
 } as const;
 
 const BUTTON_SIZE = {
-  sm: "px-[11px] py-[5px] text-xs",
-  md: "px-4 py-2 text-[13px]",
+  sm: 'px-[11px] py-[5px] text-xs',
+  md: 'px-4 py-2 text-[13px]',
 } as const;
 
 export function Button({
-  variant = "secondary",
-  size = "md",
+  variant = 'secondary',
+  size = 'md',
   className,
   ...props
-}: ComponentProps<"button"> & {
+}: ComponentProps<'button'> & {
   variant?: keyof typeof BUTTON_VARIANT;
   size?: keyof typeof BUTTON_SIZE;
 }) {
@@ -439,25 +419,25 @@ export function Button({
 /** A round icon-only control, as used across the topbar. Requires an accessible name. */
 export function IconButton({
   className,
-  "aria-label": ariaLabel,
+  'aria-label': ariaLabel,
   ...props
-}: ComponentProps<"button"> & { "aria-label": string }) {
+}: ComponentProps<'button'> & { 'aria-label': string }) {
   return (
     <button
       {...props}
       aria-label={ariaLabel}
       className={cn(
-        "glass-control relative grid size-9 shrink-0 place-items-center rounded-full text-text-secondary transition-colors hover:text-brand",
-        className,
+        'glass-control relative grid size-9 shrink-0 place-items-center rounded-full text-text-secondary transition-colors hover:text-brand',
+        className
       )}
     />
   );
 }
 
 export const INPUT_CLASS =
-  "w-full rounded-md border border-border-strong bg-surface-strong px-3 py-2 text-[13.5px] text-text-primary outline-none transition-colors placeholder:text-text-tertiary focus:border-brand";
+  'w-full rounded-md border border-border-strong bg-surface-strong px-3 py-2 text-[13.5px] text-text-primary outline-none transition-colors placeholder:text-text-tertiary focus:border-brand';
 
-export function Input({ className, ...props }: ComponentProps<"input">) {
+export function Input({ className, ...props }: ComponentProps<'input'>) {
   return <input {...props} className={cn(INPUT_CLASS, className)} />;
 }
 
@@ -485,20 +465,14 @@ export function Field({
 }
 
 /** An inline informational panel - policy notices, degraded-mode explanations. */
-export function Notice({
-  children,
-  tone = "info",
-}: {
-  children: ReactNode;
-  tone?: "info" | "warning";
-}) {
+export function Notice({ children, tone = 'info' }: { children: ReactNode; tone?: 'info' | 'warning' }) {
   return (
     <div
       className={cn(
-        "rounded-md border px-4 py-[13px] text-[13px] leading-relaxed",
-        tone === "warning"
-          ? "border-warning/40 bg-warning/10 text-text-primary"
-          : "border-border-strong bg-surface-muted text-text-secondary",
+        'rounded-md border px-4 py-[13px] text-[13px] leading-relaxed',
+        tone === 'warning'
+          ? 'border-warning/40 bg-warning/10 text-text-primary'
+          : 'border-border-strong bg-surface-muted text-text-secondary'
       )}
     >
       {children}
@@ -511,5 +485,5 @@ export function Notice({
  * match the shape of what replaces it, rather than being a generic grey box.
  */
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={cn("animate-pulse rounded-md bg-surface-muted", className)} aria-hidden />;
+  return <div className={cn('animate-pulse rounded-md bg-surface-muted', className)} aria-hidden />;
 }

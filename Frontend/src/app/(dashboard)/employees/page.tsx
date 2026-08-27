@@ -15,7 +15,7 @@ import {
 import type { Organization, Roster } from '@/types/api';
 import { EmployeeImport } from './EmployeeImport';
 
-export const metadata = { title: 'Employees - CENTRIX' };
+export const metadata = { title: 'Employees - Employee Monitor' };
 export const dynamic = 'force-dynamic';
 
 export default async function EmployeesPage({

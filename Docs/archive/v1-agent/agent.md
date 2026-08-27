@@ -5,7 +5,7 @@
 
 ---
 
-# Agent.md - CENTRIXing Agent (Windows)
+# Agent.md - Employee Monitoring Agent (Windows)
 
 This document is the governing spec for the `Agent/` project. It exists so that any
 developer (or AI coding assistant) working inside this repo can implement, extend, or

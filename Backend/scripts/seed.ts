@@ -14,9 +14,9 @@ import { auth } from '../src/config/auth';
 import { organizationService } from '../src/modules/organization/organizationService';
 import { generateEnrollmentToken, hashEnrollmentToken } from '../src/utils/token';
 
-const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL;
-const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD;
-const ORG_NAME = process.env.SEED_ORG_NAME;
+const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL ?? 'admin@example.com';
+const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? 'ChangeMe123!';
+const ORG_NAME = process.env.SEED_ORG_NAME ?? 'Acme Corp';
 
 async function main() {
   console.log('\nSeeding development data\n');
@@ -38,14 +38,14 @@ async function main() {
     });
     console.log(`  Organization  ${organization.name} (existing, enrollment token rotated)`);
   } else {
-    const created = await organizationService.createOrganization({ name: ORG_NAME! });
+    const created = await organizationService.createOrganization({ name: ORG_NAME });
     enrollmentToken = created.enrollmentToken;
     organization = await prisma.organization.findUniqueOrThrow({ where: { id: created.id } });
     console.log(`  Organization  ${organization.name} (created)`);
   }
 
   // -- Dashboard admin ------------------------------------------------------
-  const existingUser = await prisma.user.findUnique({ where: { email: ADMIN_EMAIL! } });
+  const existingUser = await prisma.user.findUnique({ where: { email: ADMIN_EMAIL } });
 
   if (existingUser) {
     console.log(`  Admin user    ${ADMIN_EMAIL} (existing, password unchanged)`);
@@ -54,8 +54,8 @@ async function main() {
     // algorithm sign-in verifies against.
     await auth.api.signUpEmail({
       body: {
-        email: ADMIN_EMAIL!,
-        password: ADMIN_PASSWORD!,
+        email: ADMIN_EMAIL,
+        password: ADMIN_PASSWORD,
         name: 'Seed Administrator',
         role: 'super_admin',
       },

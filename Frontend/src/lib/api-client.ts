@@ -11,7 +11,7 @@ import { cookies } from 'next/headers';
 
 export const SESSION_COOKIE = 'session';
 
-const API_URL = process.env.MONITORING_API_URL;
+const API_URL = process.env.MONITORING_API_URL ?? 'http://localhost:5000';
 
 export class ApiError extends Error {
   constructor(

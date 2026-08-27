@@ -11,7 +11,7 @@ const inter = Inter({ variable: '--font-inter', subsets: ['latin'] });
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'CENTRIX',
+  title: 'Employee Monitor',
   description: 'Workforce productivity and attendance reporting',
 };
 
