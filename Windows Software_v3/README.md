@@ -1,4 +1,4 @@
-# Employee Monitor - v3
+# CENTRIX - v3
 
 Windows-native monitoring agent, Express/Postgres backend, and Next.js admin dashboard.
 
@@ -14,7 +14,7 @@ the repository root.
 
 ```
 Windows boot
-  +- EmployeeMonitor.Service      (LocalSystem, session 0)
+  +- Centrix.Service      (LocalSystem, session 0)
        +- policy fetch + heartbeat            ConnectivityWorker
        +- backend sync (offline queue drain)  SyncWorker
        +- USB / WMI device events             UsbWorker
@@ -23,7 +23,7 @@ Windows boot
        +- named pipe  -------------+          IpcServer
                                    |
 User logon                         |
-  +- EmployeeMonitor.Host  --------+          (interactive session)
+  +- Centrix.Host  --------+          (interactive session)
        +- foreground window / activity sessions
        +- idle + active state
        +- key and mouse *counts* (never content)
@@ -33,7 +33,7 @@ User logon                         |
 ```
 
 **Why two processes.** Session 0 cannot read a foreground window title, cannot measure user
-idle time, and cannot capture the screen. Those collectors *must* run in the user's session. A
+idle time, and cannot capture the screen. Those collectors _must_ run in the user's session. A
 SYSTEM service on top gives boot-time start, survival across logoff, supervision with
 crash-loop backoff, and a place to hold the device credential that a standard user cannot read.
 
@@ -59,11 +59,11 @@ These are architectural, not configuration:
 
 ## Projects
 
-| Project | Output | Role |
-|---|---|---|
-| `Agent.Core` | library | Wire contracts, typed SQLite store, policy model, IPC framing |
-| `Agent.Service` | `EmployeeMonitor.Service.exe` | LocalSystem service |
-| `Agent.Host` | `EmployeeMonitor.Host.exe` | WPF app in the user session |
+| Project         | Output                        | Role                                                          |
+| --------------- | ----------------------------- | ------------------------------------------------------------- |
+| `Agent.Core`    | library                       | Wire contracts, typed SQLite store, policy model, IPC framing |
+| `Agent.Service` | `Centrix.Service.exe` | LocalSystem service                                           |
+| `Agent.Host`    | `Centrix.Host.exe`    | WPF app in the user session                                   |
 
 ---
 
@@ -71,15 +71,15 @@ These are architectural, not configuration:
 
 All documentation now lives in the repository's central `Docs/` tree.
 
-| Document | Contents |
-|---|---|
-| [../Docs/agent/architecture.md](../Docs/agent/architecture.md) | Architecture, process model, data flow, invariants - **start here** |
-| [../Docs/agent/agent-core.md](../Docs/agent/agent-core.md) | Every type in the shared library |
-| [../Docs/agent/agent-service.md](../Docs/agent/agent-service.md) | Every type in the service |
-| [../Docs/agent/agent-host.md](../Docs/agent/agent-host.md) | Every type in the user-session host |
-| [../Docs/agent/features.md](../Docs/agent/features.md) | Feature requirements this agent implements |
-| [../Docs/operations/agent-deployment.md](../Docs/operations/agent-deployment.md) | Installing, updating and removing it |
-| [../Docs/README.md](../Docs/README.md) | Documentation index for the whole system |
+| Document                                                                         | Contents                                                            |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| [../Docs/agent/architecture.md](../Docs/agent/architecture.md)                   | Architecture, process model, data flow, invariants - **start here** |
+| [../Docs/agent/agent-core.md](../Docs/agent/agent-core.md)                       | Every type in the shared library                                    |
+| [../Docs/agent/agent-service.md](../Docs/agent/agent-service.md)                 | Every type in the service                                           |
+| [../Docs/agent/agent-host.md](../Docs/agent/agent-host.md)                       | Every type in the user-session host                                 |
+| [../Docs/agent/features.md](../Docs/agent/features.md)                           | Feature requirements this agent implements                          |
+| [../Docs/operations/agent-deployment.md](../Docs/operations/agent-deployment.md) | Installing, updating and removing it                                |
+| [../Docs/README.md](../Docs/README.md)                                           | Documentation index for the whole system                            |
 
 Both executables publish self-contained (`win-x64`, single file, untrimmed - trimming breaks
 `System.Management`'s reflective WMI types).
@@ -133,7 +133,9 @@ cd "Windows Software_v3"
 `-AllowInsecureHttp` is for local testing only. Spec section 9 requires HTTPS in production, and
 the service refuses a plain-HTTP server address without it.
 
-Other actions: `-Action Status`, `-Action Publish`, `-Action Uninstall [-PurgeData]`.
+Other actions: `-Action Status`, `-Action Publish`, `-Action Install [-CleanInstall]`,
+`-Action Uninstall [-PurgeData]`. A normal install preserves existing ProgramData; use
+`-CleanInstall` to remove it before installing.
 
 For anything beyond your own machine, build the MSI instead - it gives Windows a supported
 uninstall and upgrade path, and prompts for the server address and token (or takes them as
@@ -141,11 +143,11 @@ properties for an unattended rollout):
 
 ```powershell
 .\scripts\Deploy-Agent.ps1 -Action Package
-msiexec /i .\artifacts\installer\EmployeeMonitorAgent.msi /qn `
+msiexec /i .\artifacts\installer\CentrixAgent.msi /qn `
         SERVERURL=https://monitoring.example.com ENROLLMENTTOKEN=<token>
 ```
 
-The device enrolls, appears on the dashboard's **Devices** screen as *Unassigned*, and starts
+The device enrolls, appears on the dashboard's **Devices** screen as _Unassigned_, and starts
 reporting once an admin assigns it to an employee.
 
 ---
@@ -153,8 +155,8 @@ reporting once an admin assigns it to an employee.
 ## On-disk layout (installed)
 
 ```
-%ProgramFiles%\Employee Monitor\        both executables
-%ProgramData%\EmployeeMonitor\
+%ProgramFiles%\CENTRIX\        both executables
+%ProgramData%\Centrix\
     agent.config.json                   server URL + enrollment token (installer-written)
     device.key                          DPAPI-protected device API key, LocalMachine scope
     agent.db                            typed telemetry tables + offline queue
@@ -165,12 +167,12 @@ reporting once an admin assigns it to an employee.
 The data directory is ACL'd to SYSTEM and Administrators. `screenshots\` additionally grants
 Users modify rights, because the host writes captures there as the logged-on employee.
 
-`logs\` grants Users *write* but not modify: the host has to create and append to its own file,
+`logs\` grants Users _write_ but not modify: the host has to create and append to its own file,
 yet a standard user should not be able to delete or truncate the agent's history. Ageing files
 out is therefore the service's job - `RetentionWorker` sweeps them after 14 days as SYSTEM.
 
-Both processes also log to the Windows Event Log (`EmployeeMonitorAgent`,
-`EmployeeMonitorHost`). The files are the ones to collect when diagnosing a workstation; the
+Both processes also log to the Windows Event Log (`CentrixAgent`,
+`CentrixHost`). The files are the ones to collect when diagnosing a workstation; the
 Event Log is there for anything that fails before the file sink can open, and for fleet-wide
 monitoring that already scrapes it.
 

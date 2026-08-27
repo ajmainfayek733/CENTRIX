@@ -5,7 +5,9 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>Agent.Host</RootNamespace>
-    <AssemblyName>EmployeeMonitor.Host</AssemblyName>
+    <AssemblyName>Centrix.Host</AssemblyName>
+    <Product>CENTRIX Host</Product>
+    <AssemblyTitle>CENTRIX Host</AssemblyTitle>
     <ApplicationManifest>app.manifest</ApplicationManifest>
 
     <!-- Screenshots must capture real pixels on scaled displays. Without per-monitor

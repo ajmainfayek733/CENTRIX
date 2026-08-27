@@ -1,8 +1,16 @@
-'use client';
+"use client";
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
-import { io, type Socket } from 'socket.io-client';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { useRouter } from "next/navigation";
+import { io, type Socket } from "socket.io-client";
 import {
   DASHBOARD_NAMESPACE,
   DashboardEvent,
@@ -13,7 +21,7 @@ import {
   type PresenceSnapshotPayload,
   type RollupDeltaPayload,
   type TelemetryIngestedPayload,
-} from '@/lib/realtime';
+} from "@/lib/realtime";
 
 /**
  * Holds the dashboard's realtime connection and refreshes server components when data changes.
@@ -136,7 +144,7 @@ export function useDeviceLiveness(deviceId: string): DeviceLiveness | null {
  * One interval per component that asks. These render a handful of rows, so this stays cheap; a
  * table of thousands would want a single shared ticker instead.
  */
-function useNow(): number {
+export function useNow(): number {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -155,9 +163,9 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   const [devices, setDevices] = useState<ReadonlyMap<string, DeviceLiveness>>(new Map());
   const [maxSilenceMs, setMaxSilenceMs] = useState(DEFAULT_MAX_SILENCE_MS);
   const [liveDelta, setLiveDelta] = useState<RollupDeltaPayload>(emptyRollupDelta);
-  const [liveDeltaByEmployee, setLiveDeltaByEmployee] = useState<ReadonlyMap<string, RollupDeltaPayload>>(
-    new Map()
-  );
+  const [liveDeltaByEmployee, setLiveDeltaByEmployee] = useState<
+    ReadonlyMap<string, RollupDeltaPayload>
+  >(new Map());
 
   // Held in refs, not state: changing them must not re-render, and the cleanup below has to be
   // able to clear a timer armed by an event that has already been handled.
@@ -216,8 +224,8 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
 
       let ticket: string;
       try {
-        const response = await fetch('/api/realtime/ticket', { method: 'POST' });
-        if (!response.ok) throw new Error('ticket refused');
+        const response = await fetch("/api/realtime/ticket", { method: "POST" });
+        if (!response.ok) throw new Error("ticket refused");
         ({ ticket } = (await response.json()) as { ticket: string });
       } catch {
         // No ticket means no live updates - never means the page is broken. Every screen still
@@ -234,10 +242,10 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         // minute: the library would loop forever re-presenting a credential that is already
         // stale, whereas `connect()` fetches a fresh one each time.
         reconnection: false,
-        transports: ['websocket', 'polling'],
+        transports: ["websocket", "polling"],
       });
 
-      socket.on('connect', () => {
+      socket.on("connect", () => {
         if (cancelled) return;
         setConnected(true);
         reconnectDelay = RECONNECT_MIN_MS;
@@ -246,7 +254,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         requestRefresh();
       });
 
-      socket.on('disconnect', () => {
+      socket.on("disconnect", () => {
         if (cancelled) return;
         setConnected(false);
         // Cleared rather than frozen. Holding the last known table would leave every device
@@ -256,7 +264,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         retry();
       });
 
-      socket.on('connect_error', () => {
+      socket.on("connect_error", () => {
         if (cancelled) return;
         setConnected(false);
         retry();
@@ -277,7 +285,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
             const next = new Map(current);
             next.set(
               payload.employeeId,
-              addRollupDelta(next.get(payload.employeeId) ?? emptyRollupDelta(), payload.delta)
+              addRollupDelta(next.get(payload.employeeId) ?? emptyRollupDelta(), payload.delta),
             );
             return next;
           });
@@ -343,7 +351,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({ connected, devices, maxSilenceMs, liveDelta, liveDeltaByEmployee }),
-    [connected, devices, maxSilenceMs, liveDelta, liveDeltaByEmployee]
+    [connected, devices, maxSilenceMs, liveDelta, liveDeltaByEmployee],
   );
 
   return <RealtimeContext.Provider value={value}>{children}</RealtimeContext.Provider>;

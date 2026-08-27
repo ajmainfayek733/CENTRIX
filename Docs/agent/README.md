@@ -2,8 +2,8 @@
 
 The .NET 10 Windows monitoring agent. Source: `Windows Software_v3/`.
 
-Two executables by design - `EmployeeMonitor.Service.exe` as LocalSystem in session 0, and
-`EmployeeMonitor.Host.exe` in the interactive user session. Session 0 has no desktop, so window
+Two executables by design - `Centrix.Service.exe` as LocalSystem in session 0, and
+`Centrix.Host.exe` in the interactive user session. Session 0 has no desktop, so window
 titles, idle time and screen capture are physically impossible there; the service on top provides
 boot-time start, survival across logoff, supervision and a credential a standard user cannot read.
 
@@ -23,8 +23,8 @@ boot-time start, survival across logoff, supervision and a credential a standard
 | Project | Output | Role |
 |---|---|---|
 | `Agent.Core` | library | Shared contracts, storage, policy, IPC |
-| `Agent.Service` | `EmployeeMonitor.Service.exe` | LocalSystem service |
-| `Agent.Host` | `EmployeeMonitor.Host.exe` | WPF app in the user session |
+| `Agent.Service` | `Centrix.Service.exe` | LocalSystem service |
+| `Agent.Host` | `Centrix.Host.exe` | WPF app in the user session |
 
 Both executables publish self-contained, `win-x64`, single-file and **untrimmed** - trimming
 breaks `System.Management`'s reflectively-resolved WMI types and silently disables USB collection.

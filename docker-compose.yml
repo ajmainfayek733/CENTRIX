@@ -1,4 +1,4 @@
-# Employee Monitor - backend + database.
+# CENTRIX - backend + database.
 #
 # Deployment target is intentionally open: this composes the two pieces the agent fleet needs
 # (an HTTP API and Postgres) with everything else driven by environment variables, so the same
@@ -19,13 +19,13 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-monitoring}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
-      POSTGRES_DB: ${POSTGRES_DB:-employee_monitor}
+      POSTGRES_DB: ${POSTGRES_DB:-centrix}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
       # The backend must not start against a database still initialising, or its first query
       # fails and the container restart-loops until Postgres happens to be ready.
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-monitoring} -d ${POSTGRES_DB:-employee_monitor}']
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-monitoring} -d ${POSTGRES_DB:-centrix}']
       interval: 5s
       timeout: 5s
       retries: 20
@@ -44,7 +44,7 @@ services:
     restart: 'no'
     command: ['npx', 'prisma', 'migrate', 'deploy']
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://monitoring:${POSTGRES_PASSWORD}@postgres:5432/employee_monitor}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://monitoring:${POSTGRES_PASSWORD}@postgres:5432/centrix}
     depends_on:
       postgres:
         condition: service_healthy
@@ -61,7 +61,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 5000
-      DATABASE_URL: ${DATABASE_URL:-postgresql://monitoring:${POSTGRES_PASSWORD}@postgres:5432/employee_monitor}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://monitoring:${POSTGRES_PASSWORD}@postgres:5432/centrix}
 
       # Secrets - no defaults on purpose. Compose fails fast rather than starting with a
       # placeholder that would let anyone forge a device credential offline.

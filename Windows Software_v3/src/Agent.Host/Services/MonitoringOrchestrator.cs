@@ -79,7 +79,7 @@ public sealed class MonitoringOrchestrator(
     /// This is the invariant that keeps the attendance report honest: a stamped logout is final,
     /// so no later write may clear it or move it. Without it, the periodic refresh - which sends a
     /// null logout time to mean "still open" - overwrote the logout stamped at the preceding lock
-    /// or suspend two minutes later, and every session the employee ever returned from ended up
+    /// or suspend thirty seconds later, and every session the employee ever returned from ended up
     /// with a login and no logout.
     /// </summary>
     private bool _attendanceClosed;

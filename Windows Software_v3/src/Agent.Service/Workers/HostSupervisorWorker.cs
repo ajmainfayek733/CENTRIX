@@ -7,7 +7,7 @@ using Microsoft.Win32;
 namespace Agent.Service.Workers;
 
 /// <summary>
-/// Keeps exactly one <c>EmployeeMonitor.Host.exe</c> alive on the interactive desktop.
+/// Keeps exactly one <c>Centrix.Host.exe</c> alive on the interactive desktop.
 ///
 /// Spec section 10 requires the agent to auto-start on boot and auto-recover if it crashes.
 /// The service half gets that from the Windows service manager; the host half gets it from
@@ -22,7 +22,7 @@ public sealed class HostSupervisorWorker(
     private readonly SessionLauncher _launcher = launcher;
     private readonly ILogger<HostSupervisorWorker> _logger = logger;
 
-    private const string HostExecutableName = "EmployeeMonitor.Host.exe";
+    private const string HostExecutableName = "Centrix.Host.exe";
 
     /// <summary>How often to verify the host is still running.</summary>
     private static readonly TimeSpan CheckInterval = TimeSpan.FromSeconds(15);

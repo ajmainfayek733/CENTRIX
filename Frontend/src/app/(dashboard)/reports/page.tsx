@@ -10,7 +10,7 @@ import {
 import { PageHeader, Button } from '@/components/ui';
 import { TemplateNotice } from '@/components/TemplateNotice';
 
-export const metadata = { title: 'Reports - Employee Monitor' };
+export const metadata = { title: 'Reports - CENTRIX' };
 
 /**
  * The report catalogue, laid out from the blueprint.

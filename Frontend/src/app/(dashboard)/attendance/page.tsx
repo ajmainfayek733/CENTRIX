@@ -12,7 +12,7 @@ import {
 import { BarChart } from '@/components/charts';
 import { TemplateNotice } from '@/components/TemplateNotice';
 
-export const metadata = { title: 'Attendance - Employee Monitor' };
+export const metadata = { title: 'Attendance - CENTRIX' };
 
 /**
  * Team-wide daily attendance, laid out from the blueprint.
