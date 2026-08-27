@@ -1,5 +1,5 @@
 ================================================================================
- CENTRIX Agent - workstation deployment package
+ Employee Monitor Agent - workstation deployment package
 ================================================================================
 
 WHAT THIS IS
@@ -13,8 +13,8 @@ WHAT THIS IS
 CONTENTS
   install.bat                   Start here. Double-click it.
   Install-Agent.ps1             The installer itself; install.bat calls it.
-  Centrix.Service.exe    The SYSTEM service.
-  Centrix.Host.exe       The per-user session process.
+  EmployeeMonitor.Service.exe    The SYSTEM service.
+  EmployeeMonitor.Host.exe       The per-user session process.
   appsettings.json              Logging configuration.
   README.txt                    This file.
 
@@ -49,7 +49,7 @@ INSTALLING ACROSS THE FLEET
   Put this folder on a share and run, elevated, on each machine:
 
     powershell -NoProfile -ExecutionPolicy Bypass ^
-      -File "\\fileserver\deploy\CentrixAgent\Install-Agent.ps1" ^
+      -File "\\fileserver\deploy\EmployeeMonitorAgent\Install-Agent.ps1" ^
       -Action Install ^
       -ServerUrl https://monitoring.example.com ^
       -EnrollmentToken <token>
@@ -68,11 +68,11 @@ A PLAIN-HTTP SERVER
   including screenshots, would travel unencrypted.
 
 WHERE THINGS GO
-  Program files      C:\Program Files\CENTRIX
-  Data and logs      C:\ProgramData\Centrix
-  Service name       CentrixAgent
+  Program files      C:\Program Files\Employee Monitor
+  Data and logs      C:\ProgramData\EmployeeMonitor
+  Service name       EmployeeMonitorAgent
 
 IF SOMETHING GOES WRONG
   Run install.bat and choose [5] Status first - it shows whether the service
   is running, whether the machine enrolled, and how much is queued locally.
-  Then collect C:\ProgramData\Centrix\logs.
+  Then collect C:\ProgramData\EmployeeMonitor\logs.

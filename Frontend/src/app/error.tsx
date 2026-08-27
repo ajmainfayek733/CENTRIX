@@ -24,7 +24,7 @@ export default function RootError({
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6">
       <h1 className="text-2xl font-semibold tracking-[-0.5px] text-text-primary">
-        CENTRIX is temporarily unavailable
+        Employee Monitor is temporarily unavailable
       </h1>
 
       <p className="mt-2 text-sm text-text-secondary">

@@ -9,9 +9,9 @@ Each entry: **what was decided**, **what it rules out**, **what would justify re
 
 ## AD-01 - The agent is a SYSTEM service plus a user-session host
 
-**Decided:** two executables. `Centrix.Service.exe` runs as LocalSystem in session 0 and
+**Decided:** two executables. `EmployeeMonitor.Service.exe` runs as LocalSystem in session 0 and
 owns policy, the SQLite store, the device credential, USB/WMI events and all backend traffic.
-`Centrix.Host.exe` runs in the interactive session and owns foreground-window tracking,
+`EmployeeMonitor.Host.exe` runs in the interactive session and owns foreground-window tracking,
 idle state, input counts, browser URL extraction and screenshots. They talk over a secured named
 pipe; the service supervises and restarts the host.
 
@@ -169,7 +169,7 @@ fails with `WIX7015` without it. Extensions not matching the CLI version fail wi
 
 ## AD-15 - The installer does not write the agent's configuration
 
-**Decided:** the MSI shells out to `Centrix.Service.exe --configure` from a deferred custom
+**Decided:** the MSI shells out to `EmployeeMonitor.Service.exe --configure` from a deferred custom
 action. The agent creates its own ProgramData layout, applies the ACLs and writes
 `agent.config.json`; `Deploy-Agent.ps1` calls the same entry point.
 

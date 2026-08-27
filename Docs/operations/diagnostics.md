@@ -8,12 +8,12 @@ Where the evidence is, and how to follow one event from a workstation to a dashb
 
 ### Agent (workstation)
 
-`%ProgramData%\Centrix\logs\`
+`%ProgramData%\EmployeeMonitor\logs\`
 
 | File | Written by | Contains |
 |---|---|---|
-| `service-<date>.log` | `Centrix.Service.exe` (SYSTEM) | Enrollment, policy fetches, sync cycles, rejections, retention sweeps, host supervision |
-| `host-s<session>-<date>.log` | `Centrix.Host.exe` (user) | Collector activity, IPC sends, alert evaluation, screenshot capture |
+| `service-<date>.log` | `EmployeeMonitor.Service.exe` (SYSTEM) | Enrollment, policy fetches, sync cycles, rejections, retention sweeps, host supervision |
+| `host-s<session>-<date>.log` | `EmployeeMonitor.Host.exe` (user) | Collector activity, IPC sends, alert evaluation, screenshot capture |
 
 File names are prefixed per writing process so two processes never share a handle. Files roll
 daily and at 8 MB, and are pruned after 14 days by `RetentionWorker` running as SYSTEM.
@@ -22,8 +22,8 @@ Both processes **also** write to the Windows Event Log:
 
 | Source | Process |
 |---|---|
-| `CentrixAgent` | Service |
-| `CentrixHost` | Host |
+| `EmployeeMonitorAgent` | Service |
+| `EmployeeMonitorHost` | Host |
 
 **The files are what to collect for diagnosis.** The Event Log covers anything that fails before
 the file sink can open - a bad config, a missing dependency, a permissions problem - and fleet
@@ -88,7 +88,7 @@ SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 50;
 
 ### Agent-local SQLite
 
-`%ProgramData%\Centrix\agent.db` - readable with any SQL client, because there are no
+`%ProgramData%\EmployeeMonitor\agent.db` - readable with any SQL client, because there are no
 serialized-document columns anywhere in it.
 
 ```sql
@@ -156,8 +156,8 @@ a broken wire contract before a fleet does.
 ## 5. Checking agent state on a workstation
 
 ```powershell
-sc query CentrixAgent
-Get-Process Centrix.Host -ErrorAction SilentlyContinue
+sc query EmployeeMonitorAgent
+Get-Process EmployeeMonitor.Host -ErrorAction SilentlyContinue
 
 cd "Windows Software_v3"
 .\scripts\Deploy-Agent.ps1 -Action Status

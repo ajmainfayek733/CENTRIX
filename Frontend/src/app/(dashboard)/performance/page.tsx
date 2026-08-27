@@ -11,7 +11,7 @@ import {
 import { DonutChart } from '@/components/charts';
 import { TemplateNotice } from '@/components/TemplateNotice';
 
-export const metadata = { title: 'Performance - CENTRIX' };
+export const metadata = { title: 'Performance - Employee Monitor' };
 
 /**
  * Productivity and activity ratings, laid out from the blueprint.

@@ -6,12 +6,12 @@ something the others cannot, and because a compromise of one must not hand over 
 ```
    WORKSTATION (x30-100)                 SERVER                        OPERATOR
  +------------------------+     +----------------------+     +----------------------+
- |  Centrix       |     |  Backend/            |     |  Frontend/           |
+ |  EmployeeMonitor       |     |  Backend/            |     |  Frontend/           |
  |  .Service.exe          |     |  Express + Prisma    |     |  Next.js App Router  |
  |  (LocalSystem, sess 0) |     |  PostgreSQL          |     |                      |
  |     |  named pipe      |---->|                      |<----|                      |
  |     v                  | HTTP|  /api/v1/*  (agents) |HTTP |  server components   |
- |  Centrix       |<----|  /v1/dashboard/*     |---->|  + proxy routes      |
+ |  EmployeeMonitor       |<----|  /v1/dashboard/*     |---->|  + proxy routes      |
  |  .Host.exe             | Sock|                      |Sock |                      |
  |  (user session, WPF)   |<--->|  Socket.IO           |<--->|  browser             |
  +------------------------+     +----------------------+     +----------------------+
@@ -34,7 +34,7 @@ standard user who must not be able to read the device credential or the collecte
 
 So the responsibilities split by capability:
 
-| | `Centrix.Service.exe` | `Centrix.Host.exe` |
+| | `EmployeeMonitor.Service.exe` | `EmployeeMonitor.Host.exe` |
 |---|---|---|
 | Runs as | LocalSystem, session 0 | The logged-on user, interactive session |
 | Starts | At boot, before anyone logs on | At logon, launched by the service |

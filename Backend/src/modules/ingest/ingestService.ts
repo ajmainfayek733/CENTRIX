@@ -1,13 +1,13 @@
-import { createHash } from "crypto";
-import { ActivityType, LogoutSource, Prisma, ProductivityTag } from "@prisma/client";
-import { prisma } from "../../config/db";
-import { env } from "../../config/env";
-import { categoryService } from "../report/categoryService";
-import { generateDeviceApiKey, hashDeviceApiKey, hashEnrollmentToken } from "../../utils/token";
-import { persistScreenshot } from "./screenshotStorage";
-import { getOrCreatePolicy } from "./policyService";
-import { RollupAccumulator, applyRollup, utcWorkDate } from "./rollupService";
-import { broadcastTelemetryIngested } from "../../realtime";
+import { createHash } from 'crypto';
+import { ActivityType, LogoutSource, Prisma, ProductivityTag } from '@prisma/client';
+import { prisma } from '../../config/db';
+import { env } from '../../config/env';
+import { categoryService } from '../report/categoryService';
+import { generateDeviceApiKey, hashDeviceApiKey, hashEnrollmentToken } from '../../utils/token';
+import { persistScreenshot } from './screenshotStorage';
+import { getOrCreatePolicy } from './policyService';
+import { RollupAccumulator, applyRollup, utcWorkDate } from './rollupService';
+import { broadcastTelemetryIngested } from '../../realtime';
 import type {
   ActivityMetricEventDto,
   ActivitySessionEventDto,
@@ -19,7 +19,7 @@ import type {
   DeviceRegisterDto,
   ScreenshotFieldsDto,
   UsbEventDto,
-} from "./ingest.dto";
+} from './ingest.dto';
 
 /** Retention windows are configured in days; this is the only place they become milliseconds. */
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -39,7 +39,7 @@ export class IngestValidationError extends Error {
 export class EnrollmentError extends Error {
   constructor(
     message: string,
-    public statusCode: number,
+    public statusCode: number
   ) {
     super(message);
   }
@@ -88,7 +88,7 @@ class IngestService {
     device: DeviceContext,
     channel: Channel,
     batchId: string | undefined,
-    events: unknown[],
+    events: unknown[]
   ): Promise<PushOutcome> {
     const eventIds = (events as Array<{ clientEventId: string }>).map((e) => e.clientEventId);
     const eventIdsHash = hashEventIds(eventIds);
@@ -112,7 +112,7 @@ class IngestService {
         // per-event deduplication still guarantees correctness, it is just the slower path.
         console.warn(
           `ingest: device ${device.deviceId} reused batch ${ledgerBatchId} with different contents; ` +
-            "falling back to per-event deduplication",
+            'falling back to per-event deduplication'
         );
         ledgerBatchId = undefined;
       }
@@ -128,12 +128,8 @@ class IngestService {
         // between them would leave a day permanently miscounted with nothing to detect it.
         await applyRollup(
           tx,
-          {
-            organizationId: device.organizationId,
-            employeeId: device.employeeId,
-            deviceId: device.id,
-          },
-          prepared.accumulator,
+          { organizationId: device.organizationId, employeeId: device.employeeId, deviceId: device.id },
+          prepared.accumulator
         );
 
         // Written last and inside the same transaction, so the ledger can never claim a batch
@@ -150,7 +146,7 @@ class IngestService {
           });
         }
       },
-      { timeout: env.INGEST_TRANSACTION_TIMEOUT_MS },
+      { timeout: env.INGEST_TRANSACTION_TIMEOUT_MS }
     );
 
     // Sent only after the commit, and carrying the aggregate this batch just produced so
@@ -173,23 +169,19 @@ class IngestService {
     return { acknowledged: eventIds, replay: false };
   }
 
-  private prepare(
-    device: DeviceContext,
-    channel: Channel,
-    events: unknown[],
-  ): Promise<PreparedBatch> {
+  private prepare(device: DeviceContext, channel: Channel, events: unknown[]): Promise<PreparedBatch> {
     switch (channel) {
-      case "attendance":
+      case 'attendance':
         return this.prepareAttendance(device, events as AttendanceEventDto[]);
-      case "activity-metric":
+      case 'activity-metric':
         return this.prepareActivityMetrics(device, events as ActivityMetricEventDto[]);
-      case "activity-session":
+      case 'activity-session':
         return this.prepareActivitySessions(device, events as ActivitySessionEventDto[]);
-      case "browser-activity":
+      case 'browser-activity':
         return this.prepareBrowserActivity(device, events as BrowserActivityEventDto[]);
-      case "usb-event":
+      case 'usb-event':
         return this.prepareUsbEvents(device, events as UsbEventDto[]);
-      case "alert":
+      case 'alert':
         return this.prepareAlerts(device, events as AlertEventDto[]);
     }
   }
@@ -221,42 +213,42 @@ class IngestService {
     if (ids.length === 0) return new Set();
 
     switch (channel) {
-      case "attendance": {
+      case 'attendance': {
         const rows = await prisma.attendanceSession.findMany({
           where: { sessionId: { in: ids } },
           select: { sessionId: true },
         });
         return new Set(rows.map((r) => r.sessionId));
       }
-      case "activity-metric": {
+      case 'activity-metric': {
         const rows = await prisma.activityMetric.findMany({
           where: { clientEventId: { in: ids } },
           select: { clientEventId: true },
         });
         return new Set(rows.map((r) => r.clientEventId));
       }
-      case "activity-session": {
+      case 'activity-session': {
         const rows = await prisma.activitySession.findMany({
           where: { activitySessionId: { in: ids } },
           select: { activitySessionId: true },
         });
         return new Set(rows.map((r) => r.activitySessionId));
       }
-      case "browser-activity": {
+      case 'browser-activity': {
         const rows = await prisma.browserActivity.findMany({
           where: { browserActivityId: { in: ids } },
           select: { browserActivityId: true },
         });
         return new Set(rows.map((r) => r.browserActivityId));
       }
-      case "usb-event": {
+      case 'usb-event': {
         const rows = await prisma.usbEvent.findMany({
           where: { clientEventId: { in: ids } },
           select: { clientEventId: true },
         });
         return new Set(rows.map((r) => r.clientEventId));
       }
-      case "alert": {
+      case 'alert': {
         const rows = await prisma.alert.findMany({
           where: { clientEventId: { in: ids } },
           select: { clientEventId: true },
@@ -304,18 +296,23 @@ class IngestService {
   // establishes that the day exists.
   // -------------------------------------------------------------------------
 
-  private async prepareAttendance(
-    device: DeviceContext,
-    events: AttendanceEventDto[],
-  ): Promise<PreparedBatch> {
+  private async prepareAttendance(device: DeviceContext, events: AttendanceEventDto[]): Promise<PreparedBatch> {
     const collapsed = collapseAttendanceBySession(events);
 
     const existing = await prisma.attendanceSession.findMany({
       where: { sessionId: { in: collapsed.map((e) => e.sessionId) } },
-      select: { sessionId: true },
+      select: { sessionId: true, logoutTime: true, logoutSource: true },
     });
 
     const stored = new Set(existing.map((r) => r.sessionId));
+
+    // Anything closed that the reaper did not close is the agent's own work and is final. Tested
+    // as "not Server" rather than "is Agent" so rows closed before logoutSource existed keep the
+    // stricter treatment: they predate the reaper, so an agent is the only thing that can have
+    // written them, and a null source there means unknown provenance - not permission to revise.
+    const closedByAgent = new Set(
+      existing.filter((r) => r.logoutTime !== null && r.logoutSource !== LogoutSource.Server).map((r) => r.sessionId)
+    );
 
     const accumulator = new RollupAccumulator();
 
@@ -328,8 +325,9 @@ class IngestService {
       accumulator,
       write: async (tx) => {
         for (const e of collapsed) {
+          if (closedByAgent.has(e.sessionId)) continue;
+
           const logoutTime = e.logoutTime ?? null;
-          const logoutSource = logoutTime === null ? null : LogoutSource.Agent;
           const shared = {
             deviceId: device.id,
             userSid: e.userSid,
@@ -339,42 +337,43 @@ class IngestService {
             endReason: e.endReason ?? null,
             // Everything arriving on this channel came from the workstation, so a logout it
             // carries is observed rather than inferred - and supersedes any estimate on the row.
-            logoutSource,
+            logoutSource: logoutTime === null ? null : LogoutSource.Agent,
             workDate: new Date(`${e.workDate}T00:00:00.000Z`),
             totalActiveSeconds: e.totalActiveSeconds,
             totalIdleSeconds: e.totalIdleSeconds,
           };
 
-          // Keep the revision and provenance checks inside the upsert. The read above is only for
-          // rollup bookkeeping and can be stale when two pushes for the same session race.
-          await tx.$executeRaw(Prisma.sql`
-            INSERT INTO "attendance_sessions" (
-              "sessionId", "deviceId", "userSid", "revision", "loginTime", "logoutTime",
-              "endReason", "logoutSource", "workDate", "totalActiveSeconds", "totalIdleSeconds"
-            ) VALUES (
-              ${e.sessionId}, ${shared.deviceId}, ${shared.userSid}, ${shared.revision},
-              ${shared.loginTime}, ${shared.logoutTime}, ${shared.endReason}::"SessionEndReason",
-              ${shared.logoutSource}::"LogoutSource", ${shared.workDate},
-              ${shared.totalActiveSeconds}, ${shared.totalIdleSeconds}
-            )
-            ON CONFLICT ("sessionId") DO UPDATE SET
-              "deviceId" = EXCLUDED."deviceId",
-              "userSid" = EXCLUDED."userSid",
-              "revision" = EXCLUDED."revision",
-              "loginTime" = EXCLUDED."loginTime",
-              "logoutTime" = EXCLUDED."logoutTime",
-              "endReason" = EXCLUDED."endReason",
-              "logoutSource" = EXCLUDED."logoutSource",
-              "workDate" = EXCLUDED."workDate",
-              "totalActiveSeconds" = EXCLUDED."totalActiveSeconds",
-              "totalIdleSeconds" = EXCLUDED."totalIdleSeconds",
-              "updatedAt" = CURRENT_TIMESTAMP
-            WHERE "attendance_sessions"."revision" < EXCLUDED."revision"
-              AND (
-                "attendance_sessions"."logoutTime" IS NULL
-                OR "attendance_sessions"."logoutSource" = 'Server'::"LogoutSource"
-              )
-          `);
+          // A session the server has never seen: upsert, because the create side has to tolerate a
+          // concurrent insert of the same id rather than aborting the whole batch on the unique
+          // constraint.
+          if (!stored.has(e.sessionId)) {
+            await tx.attendanceSession.upsert({
+              where: { sessionId: e.sessionId },
+              create: { sessionId: e.sessionId, ...shared },
+              update: shared,
+            });
+            continue;
+          }
+
+          // A session already on file: updateMany rather than update, so both tests are part of
+          // the statement instead of decisions taken from a read outside the transaction.
+          //
+          // `revision: { lte }` is the ordering guard - a snapshot older than the one stored
+          // matches nothing and is discarded. Equality still matches, because a redelivered batch
+          // carries the same revision *and* the same values, so applying it again changes nothing.
+          //
+          // The logout test is the provenance guard, and is still ANDed on: a row the agent closed
+          // matches nothing and the write is dropped, which is the whole point - an observed logout
+          // is not revised. A row the *reaper* closed still matches, because that one was only ever
+          // a best guess at what this agent now knows.
+          await tx.attendanceSession.updateMany({
+            where: {
+              sessionId: e.sessionId,
+              revision: { lte: e.revision },
+              OR: [{ logoutTime: null }, { logoutSource: LogoutSource.Server }],
+            },
+            data: shared,
+          });
         }
       },
     };
@@ -386,12 +385,9 @@ class IngestService {
 
   private async prepareActivityMetrics(
     device: DeviceContext,
-    events: ActivityMetricEventDto[],
+    events: ActivityMetricEventDto[]
   ): Promise<PreparedBatch> {
-    const stored = await this.existingEventIds(
-      "activity-metric",
-      events.map((e) => e.clientEventId),
-    );
+    const stored = await this.existingEventIds('activity-metric', events.map((e) => e.clientEventId));
     const fresh = events.filter((e) => !stored.has(e.clientEventId));
     const workDates = await this.workDatesBySession(fresh.map((e) => e.sessionId));
 
@@ -403,7 +399,7 @@ class IngestService {
         workDates.get(e.sessionId) ?? utcWorkDate(e.windowEndUtc),
         e.keyCount,
         e.mouseCount,
-        e.windowEndUtc,
+        e.windowEndUtc
       );
 
       rows.push({
@@ -428,8 +424,7 @@ class IngestService {
         // skipDuplicates is kept as a backstop even though `fresh` is already filtered: the
         // filter read outside the transaction, so a concurrent insert would otherwise abort the
         // whole batch instead of being absorbed.
-        if (rows.length > 0)
-          await tx.activityMetric.createMany({ data: rows, skipDuplicates: true });
+        if (rows.length > 0) await tx.activityMetric.createMany({ data: rows, skipDuplicates: true });
       },
     };
   }
@@ -443,12 +438,9 @@ class IngestService {
 
   private async prepareActivitySessions(
     device: DeviceContext,
-    events: ActivitySessionEventDto[],
+    events: ActivitySessionEventDto[]
   ): Promise<PreparedBatch> {
-    const stored = await this.existingEventIds(
-      "activity-session",
-      events.map((e) => e.activitySessionId),
-    );
+    const stored = await this.existingEventIds('activity-session', events.map((e) => e.activitySessionId));
     const fresh = events.filter((e) => !stored.has(e.activitySessionId));
     const workDates = await this.workDatesBySession(fresh.map((e) => e.sessionId));
 
@@ -460,7 +452,7 @@ class IngestService {
         device.organizationId,
         e.appName,
         e.processName,
-        e.executablePath,
+        e.executablePath
       );
 
       const productivityTag = match ? match.tag : (e.productivityTag as ProductivityTag);
@@ -472,7 +464,7 @@ class IngestService {
         productivityTag,
         e.durationSeconds,
         e.startTime,
-        e.endTime,
+        e.endTime
       );
 
       rows.push({
@@ -496,8 +488,7 @@ class IngestService {
       newEventIds: fresh.map((e) => e.activitySessionId),
       accumulator,
       write: async (tx) => {
-        if (rows.length > 0)
-          await tx.activitySession.createMany({ data: rows, skipDuplicates: true });
+        if (rows.length > 0) await tx.activitySession.createMany({ data: rows, skipDuplicates: true });
       },
     };
   }
@@ -512,17 +503,12 @@ class IngestService {
 
   private async prepareBrowserActivity(
     device: DeviceContext,
-    events: BrowserActivityEventDto[],
+    events: BrowserActivityEventDto[]
   ): Promise<PreparedBatch> {
-    const stored = await this.existingEventIds(
-      "browser-activity",
-      events.map((e) => e.browserActivityId),
-    );
+    const stored = await this.existingEventIds('browser-activity', events.map((e) => e.browserActivityId));
     const fresh = events.filter((e) => !stored.has(e.browserActivityId));
 
-    const referenced = [
-      ...new Set(fresh.map((e) => e.activitySessionId).filter((v): v is string => !!v)),
-    ];
+    const referenced = [...new Set(fresh.map((e) => e.activitySessionId).filter((v): v is string => !!v))];
 
     // sessionId comes along for the ride: it is how a browser visit inherits the local work date
     // of the attendance session that contained it, rather than being attributed by UTC midnight.
@@ -540,9 +526,7 @@ class IngestService {
     for (const e of fresh) {
       const match = await categoryService.categorizeDomain(device.organizationId, e.domain);
 
-      const parentSession = e.activitySessionId
-        ? parentSessionId.get(e.activitySessionId)
-        : undefined;
+      const parentSession = e.activitySessionId ? parentSessionId.get(e.activitySessionId) : undefined;
       const workDate = (parentSession && workDates.get(parentSession)) ?? utcWorkDate(e.startTime);
 
       accumulator.addBrowserVisit(workDate, e.startTime, e.endTime);
@@ -551,9 +535,7 @@ class IngestService {
         deviceId: device.id,
         browserActivityId: e.browserActivityId,
         activitySessionId:
-          e.activitySessionId && parentSessionId.has(e.activitySessionId)
-            ? e.activitySessionId
-            : null,
+          e.activitySessionId && parentSessionId.has(e.activitySessionId) ? e.activitySessionId : null,
         browser: e.browser,
         browserVersion: e.browserVersion ?? null,
         profileName: e.profileName ?? null,
@@ -573,8 +555,7 @@ class IngestService {
       newEventIds: fresh.map((e) => e.browserActivityId),
       accumulator,
       write: async (tx) => {
-        if (rows.length > 0)
-          await tx.browserActivity.createMany({ data: rows, skipDuplicates: true });
+        if (rows.length > 0) await tx.browserActivity.createMany({ data: rows, skipDuplicates: true });
       },
     };
   }
@@ -583,14 +564,8 @@ class IngestService {
   // USB events - connection/removal metadata only, never contents.
   // -------------------------------------------------------------------------
 
-  private async prepareUsbEvents(
-    device: DeviceContext,
-    events: UsbEventDto[],
-  ): Promise<PreparedBatch> {
-    const stored = await this.existingEventIds(
-      "usb-event",
-      events.map((e) => e.clientEventId),
-    );
+  private async prepareUsbEvents(device: DeviceContext, events: UsbEventDto[]): Promise<PreparedBatch> {
+    const stored = await this.existingEventIds('usb-event', events.map((e) => e.clientEventId));
     const fresh = events.filter((e) => !stored.has(e.clientEventId));
 
     // sessionId is a nullable FK onto attendance_sessions; null out ids we haven't seen
@@ -605,7 +580,7 @@ class IngestService {
       const known = !!e.sessionId && workDates.has(e.sessionId);
       accumulator.addUsbEvent(
         (known && workDates.get(e.sessionId!)) || utcWorkDate(e.eventTime),
-        e.eventTime,
+        e.eventTime
       );
 
       rows.push({
@@ -645,19 +620,12 @@ class IngestService {
   // incident, and counting it again would inflate the day's alert total on every re-send.
   // -------------------------------------------------------------------------
 
-  private async prepareAlerts(
-    device: DeviceContext,
-    events: AlertEventDto[],
-  ): Promise<PreparedBatch> {
-    const stored = await this.existingEventIds(
-      "alert",
-      events.map((e) => e.clientEventId),
-    );
+  private async prepareAlerts(device: DeviceContext, events: AlertEventDto[]): Promise<PreparedBatch> {
+    const stored = await this.existingEventIds('alert', events.map((e) => e.clientEventId));
     const accumulator = new RollupAccumulator();
 
     for (const e of events) {
-      if (!stored.has(e.clientEventId))
-        accumulator.addAlert(utcWorkDate(e.triggeredAt), e.triggeredAt);
+      if (!stored.has(e.clientEventId)) accumulator.addAlert(utcWorkDate(e.triggeredAt), e.triggeredAt);
     }
 
     return {
@@ -729,11 +697,7 @@ class IngestService {
 
   /** POST /api/v1/screenshots - idempotent on clientEventId: overwrite, not append. */
   async storeScreenshot(device: DeviceContext, fields: ScreenshotFieldsDto, tempFilePath: string) {
-    const { storagePath, sizeBytes } = await persistScreenshot(
-      device.id,
-      fields.clientEventId,
-      tempFilePath,
-    );
+    const { storagePath, sizeBytes } = await persistScreenshot(device.id, fields.clientEventId, tempFilePath);
 
     const shared = {
       deviceId: device.id,
@@ -767,13 +731,13 @@ class IngestService {
       where: { enrollmentTokenHash: hashEnrollmentToken(enrollmentToken) },
     });
     if (!organization) {
-      throw new EnrollmentError("Invalid enrollment token", 401);
+      throw new EnrollmentError('Invalid enrollment token', 401);
     }
 
     const existing = await prisma.device.findUnique({ where: { deviceId: dto.deviceId } });
 
     if (existing && !existing.isActive) {
-      throw new EnrollmentError("Device has been deactivated by an administrator", 403);
+      throw new EnrollmentError('Device has been deactivated by an administrator', 403);
     }
 
     // A device that re-enrolls (agent reinstalled, key file lost) gets a fresh key. That is
@@ -828,9 +792,9 @@ class IngestService {
       create: {
         organizationId,
         email,
-        name: "Unassigned Devices",
+        name: 'Unassigned Devices',
         department: null,
-        status: "placeholder",
+        status: 'placeholder',
       },
       update: {},
     });
@@ -867,9 +831,7 @@ class IngestService {
    */
   async pruneIngestBatches(client: Prisma.TransactionClient = prisma): Promise<number> {
     const cutoff = new Date(Date.now() - env.INGEST_BATCH_RETENTION_DAYS * MS_PER_DAY);
-    const { count } = await client.ingestBatch.deleteMany({
-      where: { receivedAt: { lt: cutoff } },
-    });
+    const { count } = await client.ingestBatch.deleteMany({ where: { receivedAt: { lt: cutoff } } });
     return count;
   }
 }
@@ -887,7 +849,10 @@ class IngestService {
  * wrote last. Order within the batch is preserved for everything else, so the caller still writes
  * sessions in the sequence the agent sent them.
  *
- * Equal revisions are duplicates of the same snapshot, so the first event remains the winner.
+ * Equal revisions mean the batch carries no ordering: either duplicates of one snapshot, or an
+ * agent old enough that every report is revision 0. Both are settled by the older rule - a close
+ * beats a refresh, and the later of two closes is the more complete report - which is a guess, but
+ * the only one available for reports that do not number themselves.
  */
 function collapseAttendanceBySession(events: AttendanceEventDto[]): AttendanceEventDto[] {
   const bySession = new Map<string, AttendanceEventDto>();
@@ -900,7 +865,13 @@ function collapseAttendanceBySession(events: AttendanceEventDto[]): AttendanceEv
       continue;
     }
 
-    if (event.revision > winner.revision) {
+    if (event.revision !== winner.revision) {
+      if (event.revision > winner.revision) bySession.set(event.sessionId, event);
+      continue;
+    }
+
+    if (event.logoutTime == null) continue;
+    if (winner.logoutTime == null || event.logoutTime > winner.logoutTime) {
       bySession.set(event.sessionId, event);
     }
   }
@@ -916,9 +887,7 @@ function collapseAttendanceBySession(events: AttendanceEventDto[]): AttendanceEv
  * not a security boundary - nothing here is trusted on the strength of the hash alone.
  */
 function hashEventIds(ids: string[]): string {
-  return createHash("sha256")
-    .update([...ids].sort().join(","))
-    .digest("hex");
+  return createHash('sha256').update([...ids].sort().join(',')).digest('hex');
 }
 
 export const ingestService = new IngestService();

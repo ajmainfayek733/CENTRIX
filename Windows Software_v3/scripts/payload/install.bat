@@ -1,6 +1,6 @@
 @echo off
 rem ============================================================================
-rem  CENTRIX Agent - workstation installer
+rem  Employee Monitor Agent - workstation installer
 rem
 rem  Ships inside the deployment bundle produced by
 rem  scripts\Deploy-Agent.ps1 -Action Bundle. The bundle carries the already
@@ -9,7 +9,6 @@ rem  anything and the target workstation needs no .NET runtime and no SDK.
 rem
 rem  Double-click it for a menu, or drive it unattended with one argument:
 rem      install.bat install
-rem      install.bat clean-install
 rem      install.bat reinstall
 rem      install.bat uninstall
 rem      install.bat uninstall-purge
@@ -25,7 +24,7 @@ setlocal EnableExtensions
 rem Delayed expansion stays OFF on purpose: an enrollment token containing '!'
 rem would be silently mangled by it.
 
-set "PRODUCT_NAME=CENTRIX Agent"
+set "PRODUCT_NAME=Employee Monitor Agent"
 set "INSTALL_SCRIPT=%~dp0Install-Agent.ps1"
 set "POWERSHELL=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
 set "SELF=%~f0"
@@ -109,11 +108,6 @@ if /i "%REQUESTED_ACTION%"=="install" (
     set "ARGS=-Interactive"
     goto :run_action
 )
-if /i "%REQUESTED_ACTION%"=="clean-install" (
-    set "ACTION=Install"
-    set "ARGS=-Interactive -CleanInstall"
-    goto :run_action
-)
 if /i "%REQUESTED_ACTION%"=="reinstall" (
     set "ACTION=Reinstall"
     set "ARGS=-Interactive"
@@ -137,7 +131,7 @@ if /i "%REQUESTED_ACTION%"=="status" (
 
 echo.
 echo   ERROR: unknown action "%REQUESTED_ACTION%".
-echo   Valid actions: install, clean-install, reinstall, uninstall, uninstall-purge, status
+echo   Valid actions: install, reinstall, uninstall, uninstall-purge, status
 echo.
 pause
 exit /b %EXIT_USAGE%
@@ -156,43 +150,37 @@ echo.
 echo     Running as administrator.
 echo     Package folder: %~dp0
 echo.
-echo     [1]  Install            - configure and start the agent, keep existing data
-echo     [2]  Clean install      - remove existing data, then install
-echo     [3]  Reinstall          - replace the files, keep collected data
-echo     [4]  Uninstall          - remove the agent, keep collected data
-echo     [5]  Uninstall + purge  - remove the agent and delete all data
-echo     [6]  Status             - show what is installed and enrolled
+echo     [1]  Install            - configure and start the agent
+echo     [2]  Reinstall          - replace the files, keep collected data
+echo     [3]  Uninstall          - remove the agent, keep collected data
+echo     [4]  Uninstall + purge  - remove the agent and delete all data
+echo     [5]  Status             - show what is installed and enrolled
 echo     [Q]  Quit
 echo.
 
-choice /c 123456Q /n /m "   Select an option: "
+choice /c 12345Q /n /m "   Select an option: "
 set "MENU_CHOICE=%errorlevel%"
 
-if "%MENU_CHOICE%"=="7" goto :quit
-if "%MENU_CHOICE%"=="6" (
+if "%MENU_CHOICE%"=="6" goto :quit
+if "%MENU_CHOICE%"=="5" (
     set "ACTION=Status"
     set "ARGS="
     goto :run_action
 )
-if "%MENU_CHOICE%"=="5" (
+if "%MENU_CHOICE%"=="4" (
     set "ACTION=Uninstall"
     set "ARGS=-PurgeData"
     goto :confirm_purge
 )
-if "%MENU_CHOICE%"=="4" (
+if "%MENU_CHOICE%"=="3" (
     set "ACTION=Uninstall"
     set "ARGS="
     goto :run_action
 )
-if "%MENU_CHOICE%"=="3" (
+if "%MENU_CHOICE%"=="2" (
     set "ACTION=Reinstall"
     set "ARGS=-Interactive"
     goto :run_action
-)
-if "%MENU_CHOICE%"=="2" (
-    set "ACTION=Install"
-    set "ARGS=-Interactive -CleanInstall"
-    goto :confirm_clean_install
 )
 if "%MENU_CHOICE%"=="1" (
     set "ACTION=Install"
@@ -200,14 +188,6 @@ if "%MENU_CHOICE%"=="1" (
     goto :run_action
 )
 goto :menu
-
-:confirm_clean_install
-echo.
-echo   This deletes the local telemetry database, screenshot spool,
-echo   agent logs and stored device credential before installation.
-choice /c YN /n /m "   Delete all existing data? [Y/N] "
-if errorlevel 2 goto :menu
-goto :run_action
 
 :confirm_purge
 echo.

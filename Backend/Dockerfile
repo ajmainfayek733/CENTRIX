@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# CENTRIX backend.
+# Employee Monitor backend.
 #
 # Multi-stage so the runtime image carries no TypeScript, no dev dependencies and no source -
 # only compiled JS, production node_modules, and the generated Prisma client.

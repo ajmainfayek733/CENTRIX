@@ -13,7 +13,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-// CENTRIX Agent - service half.
+// Employee Monitor Agent - service half.
 //
 // Runs as LocalSystem in session 0. Owns policy, backend sync, USB events, the SQLite store and
 // supervision of the per-user host. It deliberately never touches the interactive desktop: see
@@ -32,7 +32,7 @@ var builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddWindowsService(options =>
 {
     // Must match the name the installer registers, or the SCM will not find the service.
-    options.ServiceName = "CentrixAgent";
+    options.ServiceName = "EmployeeMonitorAgent";
 });
 
 AgentPaths.EnsureCreated();
@@ -92,7 +92,7 @@ builder.Services.AddHttpClient<BackendClient>((sp, client) =>
     // Generous enough for a screenshot upload on a slow office uplink, short enough that a
     // black-holed connection does not pin a sync cycle open indefinitely.
     client.Timeout = TimeSpan.FromSeconds(100);
-    client.DefaultRequestHeaders.UserAgent.ParseAdd($"CentrixAgent/{DeviceIdentity.GetAgentVersion()}");
+    client.DefaultRequestHeaders.UserAgent.ParseAdd($"EmployeeMonitorAgent/{DeviceIdentity.GetAgentVersion()}");
 });
 
 // IpcServer is both a hosted service and a dependency of UsbWorker (which broadcasts
@@ -110,8 +110,6 @@ builder.Services.AddHostedService<RetentionWorker>();
 builder.Services.AddHostedService<HostSupervisorWorker>();
 
 var host = builder.Build();
-var recoveryLogger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("ServiceRecovery");
-ServiceRecoveryConfigurator.TryEnableNonCrashRecovery(recoveryLogger);
 await host.RunAsync();
 
 return 0;

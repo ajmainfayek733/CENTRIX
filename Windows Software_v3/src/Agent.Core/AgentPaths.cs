@@ -12,7 +12,7 @@ public static class AgentPaths
 {
     public static string RootDirectory { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-        "Centrix");
+        "EmployeeMonitor");
 
     /// <summary>Typed local telemetry store and offline queue.</summary>
     public static string DatabasePath => Path.Combine(RootDirectory, "agent.db");
@@ -33,7 +33,7 @@ public static class AgentPaths
     /// terminal-services sessions, which is required because the two processes live in
     /// different sessions.
     /// </summary>
-    public const string IpcPipeName = @"Global\Centrix.Agent";
+    public const string IpcPipeName = @"Global\EmployeeMonitor.Agent";
 
     /// <summary>
     /// Event Log sources, one per process.
@@ -47,9 +47,9 @@ public static class AgentPaths
     /// Named here rather than written as literals at each sink, so that the name the installer
     /// registers and the name the logger opens cannot drift apart.
     /// </summary>
-    public const string ServiceEventLogSource = "CentrixAgent";
+    public const string ServiceEventLogSource = "EmployeeMonitorAgent";
 
-    public const string HostEventLogSource = "CentrixHost";
+    public const string HostEventLogSource = "EmployeeMonitorHost";
 
     /// <summary>The log both sources write into.</summary>
     public const string EventLogName = "Application";

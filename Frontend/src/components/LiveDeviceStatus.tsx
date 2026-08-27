@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import { useDeviceLiveness, useNow } from "@/components/RealtimeProvider";
-import { formatRelative } from "@/lib/format";
-import { StatusDot, Badge } from "@/components/ui";
+import { useDeviceLiveness } from '@/components/RealtimeProvider';
+import { formatRelative } from '@/lib/format';
+import { StatusDot, Badge } from '@/components/ui';
 
 /**
  * A device's activeness, updated by heartbeat rather than by page refresh.
@@ -40,7 +40,7 @@ export function LiveDeviceStatus({
       <span className="flex items-center justify-end gap-2">
         <StatusDot online />
         <span className="text-sm font-medium text-brand">
-          {liveness.userPresent ? "Active now" : "Online - no user"}
+          {liveness.userPresent ? 'Active now' : 'Online - no user'}
         </span>
       </span>
     );
@@ -71,11 +71,11 @@ export function LiveStatusDot({
   isActive: boolean;
 }) {
   const liveness = useDeviceLiveness(deviceId);
-  const now = useNow();
 
   // With no live channel, fall back to the same window the server's reports use, so a device is
   // not called online here and offline on the overview.
-  const recentlySeen = !!lastSeen && now - new Date(lastSeen).getTime() < FALLBACK_ONLINE_WINDOW_MS;
+  const recentlySeen =
+    !!lastSeen && Date.now() - new Date(lastSeen).getTime() < FALLBACK_ONLINE_WINDOW_MS;
 
   return <StatusDot online={isActive && (liveness?.live ?? recentlySeen)} />;
 }

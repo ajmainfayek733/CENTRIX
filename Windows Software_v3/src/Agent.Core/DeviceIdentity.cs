@@ -16,8 +16,6 @@ namespace Agent.Core;
 /// </summary>
 public static class DeviceIdentity
 {
-    private const int Windows11MinimumBuild = 22000;
-
     /// <summary>
     /// HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid - stable for the life of the OS install
     /// and unchanged by hardware swaps, renames or re-IPing.
@@ -134,17 +132,7 @@ public static class DeviceIdentity
             .OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64)
             .OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion");
 
-        var productName = key?.GetValue("ProductName") as string;
-        if (string.IsNullOrWhiteSpace(productName)) return RuntimeInformation.OSDescription;
-
-        var build = int.TryParse(key?.GetValue("CurrentBuildNumber")?.ToString(), out var parsedBuild)
-            ? parsedBuild
-            : 0;
-
-        return build >= Windows11MinimumBuild &&
-            productName.StartsWith("Windows 10", StringComparison.OrdinalIgnoreCase)
-            ? "Windows 11" + productName["Windows 10".Length..]
-            : productName;
+        return key?.GetValue("ProductName") as string ?? RuntimeInformation.OSDescription;
     }
 
     /// <summary>e.g. "10.0.26200".</summary>

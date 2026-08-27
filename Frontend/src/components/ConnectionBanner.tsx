@@ -21,19 +21,19 @@ const GRACE_PERIOD_MS = 10_000;
 
 export function ConnectionBanner() {
   const { connected } = useRealtime();
-  const [gracePeriodElapsed, setGracePeriodElapsed] = useState(false);
+  const [showBanner, setShowBanner] = useState(false);
 
   useEffect(() => {
     if (connected) {
-      const resetTimer = setTimeout(() => setGracePeriodElapsed(false), 0);
-      return () => clearTimeout(resetTimer);
+      setShowBanner(false);
+      return;
     }
 
-    const timer = setTimeout(() => setGracePeriodElapsed(true), GRACE_PERIOD_MS);
+    const timer = setTimeout(() => setShowBanner(true), GRACE_PERIOD_MS);
     return () => clearTimeout(timer);
   }, [connected]);
 
-  if (connected || !gracePeriodElapsed) return null;
+  if (!showBanner) return null;
 
   return (
     <div

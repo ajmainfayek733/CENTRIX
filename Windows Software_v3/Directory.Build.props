@@ -14,14 +14,14 @@
 
     <!-- Product identity. AgentVersion is reported to the backend on every enrollment and
          shows up in the dashboard's device inventory, so bump it with each release. -->
-    <Version>3.8.0</Version>
-    <AgentVersion>3.8.0</AgentVersion>
-    <Company>CENTRIX</Company>
-    <Product>CENTRIX Agent</Product>
+    <Version>3.5.0</Version>
+    <AgentVersion>3.5.0</AgentVersion>
+    <Company>Employee Monitor</Company>
+    <Product>Employee Monitor Agent</Product>
 
     <!-- The agent must be discoverable, never disguised (spec section 3): no obfuscation,
          no generic process names, and a real entry in Add/Remove Programs. -->
-    <AssemblyTitle>CENTRIX Agent</AssemblyTitle>
+    <AssemblyTitle>Employee Monitor Agent</AssemblyTitle>
   </PropertyGroup>
 
   <ItemGroup>

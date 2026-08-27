@@ -19,7 +19,7 @@ export default function RootNotFound() {
 
         <section className="rounded-lg border border-border bg-surface p-6 sm:p-8">
           <NotFoundPanel
-            title="This address is not part of CENTRIXing & Movement Tracking Application."
+            title="This address is not part of Employee Monitoring & Movement Tracking Application."
             description="The URL you opened does not match any screen in the dashboard. Check for a typo, or sign in and open a page from the navigation."
             hint="If you followed a bookmark or a link from another system, it may point to a report that was moved or removed."
             actions={

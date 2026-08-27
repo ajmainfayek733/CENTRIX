@@ -26,7 +26,7 @@ namespace Agent.Service.Credentials;
 /// </summary>
 public sealed class DeviceCredentialStore(ILogger<DeviceCredentialStore> logger)
 {
-    private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("Centrix.Agent.DeviceApiKey.v3");
+    private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("EmployeeMonitor.Agent.DeviceApiKey.v3");
 
     private readonly ILogger<DeviceCredentialStore> _logger = logger;
 

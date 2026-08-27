@@ -3,9 +3,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <RootNamespace>Agent.Service</RootNamespace>
-    <AssemblyName>Centrix.Service</AssemblyName>
-    <Product>CENTRIX Service</Product>
-    <AssemblyTitle>CENTRIX Service</AssemblyTitle>
+    <AssemblyName>EmployeeMonitor.Service</AssemblyName>
 
     <!-- Self-contained: the 30 target workstations must not need a .NET runtime installed
          (spec section 11). Not trimmed - System.Management resolves WMI types by reflection
