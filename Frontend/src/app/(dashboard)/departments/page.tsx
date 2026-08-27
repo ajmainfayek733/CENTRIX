@@ -1,7 +1,7 @@
-import { PageHeader, StatTile } from '@/components/ui';
-import { TemplateNotice } from '@/components/TemplateNotice';
+import { PageHeader, StatTile } from "@/components/ui";
+import { TemplateNotice } from "@/components/TemplateNotice";
 
-export const metadata = { title: 'Departments - CENTRIX' };
+export const metadata = { title: "Departments - C E N T R I X" };
 
 /**
  * Team structure and headcount, laid out from the blueprint.
@@ -13,10 +13,10 @@ export const metadata = { title: 'Departments - CENTRIX' };
 
 /** Invented. Generic names on purpose - see the note in TemplateNotice. */
 const PLACEHOLDER_DEPARTMENTS = [
-  { name: 'Department A', lead: 'Lead: not set', employees: 0, devices: 0 },
-  { name: 'Department B', lead: 'Lead: not set', employees: 0, devices: 0 },
-  { name: 'Department C', lead: 'Lead: not set', employees: 0, devices: 0 },
-  { name: 'Unassigned', lead: 'No members yet', employees: 0, devices: 0 },
+  { name: "Department A", lead: "Lead: not set", employees: 0, devices: 0 },
+  { name: "Department B", lead: "Lead: not set", employees: 0, devices: 0 },
+  { name: "Department C", lead: "Lead: not set", employees: 0, devices: 0 },
+  { name: "Unassigned", lead: "No members yet", employees: 0, devices: 0 },
 ];
 
 export default function DepartmentsPage() {
@@ -44,13 +44,13 @@ export default function DepartmentsPage() {
             <dl className="mt-3 flex gap-[18px]">
               <div>
                 <dd className="tnum text-lg font-semibold text-text-primary">
-                  {department.employees || '-'}
+                  {department.employees || "-"}
                 </dd>
                 <dt className="mt-0.5 text-[11px] text-text-tertiary">Employees</dt>
               </div>
               <div>
                 <dd className="tnum text-lg font-semibold text-text-primary">
-                  {department.devices || '-'}
+                  {department.devices || "-"}
                 </dd>
                 <dt className="mt-0.5 text-[11px] text-text-tertiary">Devices</dt>
               </div>

@@ -1,18 +1,18 @@
-import type { Metadata } from 'next';
-import { Inter, Geist_Mono } from 'next/font/google';
-import './globals.css';
+import type { Metadata } from "next";
+import { Inter, Geist_Mono } from "next/font/google";
+import "./globals.css";
 
 /*
  * Inter is the blueprint's typeface. It is loaded through next/font rather than the
  * @import url(fonts.googleapis.com) the prototype used: next/font self-hosts the file, so
  * there is no render-blocking request to a third party and no layout shift when it lands.
  */
-const inter = Inter({ variable: '--font-inter', subsets: ['latin'] });
-const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
+const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
+const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'CENTRIX',
-  description: 'Workforce productivity and attendance reporting',
+  title: "C E N T R I X",
+  description: "Workforce productivity and attendance reporting",
 };
 
 /**

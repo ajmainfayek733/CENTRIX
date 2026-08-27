@@ -1,6 +1,6 @@
-import Link from 'next/link';
-import { apiGet } from '@/lib/api-client';
-import { formatDuration, formatPercent, formatRelative } from '@/lib/format';
+import Link from "next/link";
+import { apiGet } from "@/lib/api-client";
+import { formatDuration, formatPercent, formatRelative } from "@/lib/format";
 import {
   Card,
   PageHeader,
@@ -14,28 +14,30 @@ import {
   Td,
   EntityCell,
   EmptyState,
-} from '@/components/ui';
-import { LiveOnlineTile } from '@/components/LiveOnlineTile';
-import { LiveActiveTimeTile } from '@/components/LiveTotals';
-import type { Overview, Roster } from '@/types/api';
+} from "@/components/ui";
+import { LiveOnlineTile } from "@/components/LiveOnlineTile";
+import { LiveActiveTimeTile } from "@/components/LiveTotals";
+import type { Overview, Roster } from "@/types/api";
 
-export const metadata = { title: 'Overview - CENTRIX' };
+export const metadata = { title: "Overview - C E N T R I X" };
 
 // Live operational data. Never served from Next's fetch cache, or a manager sees a stale
 // "who is online now" - see Docs/frontend/session-and-auth.md.
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export default async function OverviewPage() {
   const [overview, roster] = await Promise.all([
-    apiGet<Overview>('/v1/dashboard/reports/overview'),
-    apiGet<Roster>('/v1/dashboard/reports/roster'),
+    apiGet<Overview>("/v1/dashboard/reports/overview"),
+    apiGet<Roster>("/v1/dashboard/reports/roster"),
   ]);
 
   const { totals } = overview;
 
   // Busiest first: on a 30-person team the useful question is who is at the extremes, and the
   // full sortable list is one click away on /employees.
-  const topEmployees = [...roster.employees].sort((a, b) => b.activeSeconds - a.activeSeconds).slice(0, 8);
+  const topEmployees = [...roster.employees]
+    .sort((a, b) => b.activeSeconds - a.activeSeconds)
+    .slice(0, 8);
 
   return (
     <div>
@@ -56,7 +58,7 @@ export default async function OverviewPage() {
           label="Open alerts"
           value={overview.openHighSeverityAlerts}
           hint="High and critical, unresolved"
-          tone={overview.openHighSeverityAlerts > 0 ? 'danger' : 'default'}
+          tone={overview.openHighSeverityAlerts > 0 ? "danger" : "default"}
         />
       </div>
 
@@ -77,11 +79,23 @@ export default async function OverviewPage() {
 
         <Legend
           items={[
-            { key: 'productive', label: 'Productive', value: formatDuration(totals.productiveSeconds) },
-            { key: 'neutral', label: 'Neutral', value: formatDuration(totals.neutralSeconds) },
-            { key: 'unproductive', label: 'Unproductive', value: formatDuration(totals.unproductiveSeconds) },
-            { key: 'blacklisted', label: 'Blacklisted', value: formatDuration(totals.blacklistedSeconds) },
-            { key: 'idle', label: 'Idle', value: formatDuration(totals.idleSeconds) },
+            {
+              key: "productive",
+              label: "Productive",
+              value: formatDuration(totals.productiveSeconds),
+            },
+            { key: "neutral", label: "Neutral", value: formatDuration(totals.neutralSeconds) },
+            {
+              key: "unproductive",
+              label: "Unproductive",
+              value: formatDuration(totals.unproductiveSeconds),
+            },
+            {
+              key: "blacklisted",
+              label: "Blacklisted",
+              value: formatDuration(totals.blacklistedSeconds),
+            },
+            { key: "idle", label: "Idle", value: formatDuration(totals.idleSeconds) },
           ]}
         />
       </Card>
@@ -90,7 +104,7 @@ export default async function OverviewPage() {
         title="Most active"
         action={
           <Link href="/employees" className="text-[13px] font-medium text-brand hover:underline">
-            View all {'->'}
+            View all {"->"}
           </Link>
         }
       >
@@ -119,7 +133,7 @@ export default async function OverviewPage() {
                         href={`/employees/${employee.id}`}
                       />
                     </Td>
-                    <Td muted>{employee.department ?? '-'}</Td>
+                    <Td muted>{employee.department ?? "-"}</Td>
                     <Td align="right" numeric>
                       {formatDuration(employee.activeSeconds)}
                     </Td>

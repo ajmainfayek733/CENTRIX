@@ -1,12 +1,12 @@
-import { apiGet } from '@/lib/api-client';
-import { Card, PageHeader } from '@/components/ui';
-import type { LogPage } from '@/components/LogScroller';
-import type { AlertRow, UsbEventRow } from '@/types/api';
-import { AlertsTable } from './AlertsTable';
-import { UsbTable } from './UsbTable';
+import { apiGet } from "@/lib/api-client";
+import { Card, PageHeader } from "@/components/ui";
+import type { LogPage } from "@/components/LogScroller";
+import type { AlertRow, UsbEventRow } from "@/types/api";
+import { AlertsTable } from "./AlertsTable";
+import { UsbTable } from "./UsbTable";
 
-export const metadata = { title: 'Alerts - CENTRIX' };
-export const dynamic = 'force-dynamic';
+export const metadata = { title: "Alerts - C E N T R I X" };
+export const dynamic = "force-dynamic";
 
 /**
  * Both feeds render their first page on the server, so the tables are populated before any
@@ -15,9 +15,9 @@ export const dynamic = 'force-dynamic';
  */
 export default async function AlertsPage() {
   const [alerts, usb] = await Promise.all([
-    apiGet<LogPage<AlertRow>>('/v1/dashboard/reports/alerts'),
+    apiGet<LogPage<AlertRow>>("/v1/dashboard/reports/alerts"),
     apiGet<LogPage<UsbEventRow> & { period: { start: string; end: string } }>(
-      '/v1/dashboard/reports/usb-events'
+      "/v1/dashboard/reports/usb-events",
     ),
   ]);
 
@@ -33,7 +33,7 @@ export default async function AlertsPage() {
         page is loaded, so a total would be a number this page cannot know - and a wrong count on
         an alerts screen is worse than no count.
       */}
-      <Card title={`Open alerts - showing ${alerts.rows.length}${alerts.hasMore ? '+' : ''}`}>
+      <Card title={`Open alerts - showing ${alerts.rows.length}${alerts.hasMore ? "+" : ""}`}>
         <AlertsTable initial={alerts} />
       </Card>
 

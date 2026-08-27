@@ -1,6 +1,6 @@
-import { apiGet } from '@/lib/api-client';
-import { formatDuration, formatPercent, formatRelative } from '@/lib/format';
-import { getSessionUser } from '@/lib/session';
+import { apiGet } from "@/lib/api-client";
+import { formatDuration, formatPercent, formatRelative } from "@/lib/format";
+import { getSessionUser } from "@/lib/session";
 import {
   Card,
   PageHeader,
@@ -11,12 +11,12 @@ import {
   EntityCell,
   EmptyState,
   ProductivityBar,
-} from '@/components/ui';
-import type { Organization, Roster } from '@/types/api';
-import { EmployeeImport } from './EmployeeImport';
+} from "@/components/ui";
+import type { Organization, Roster } from "@/types/api";
+import { EmployeeImport } from "./EmployeeImport";
 
-export const metadata = { title: 'Employees - CENTRIX' };
-export const dynamic = 'force-dynamic';
+export const metadata = { title: "Employees - C E N T R I X" };
+export const dynamic = "force-dynamic";
 
 export default async function EmployeesPage({
   searchParams,
@@ -26,20 +26,20 @@ export default async function EmployeesPage({
   const params = await searchParams;
 
   const query = new URLSearchParams();
-  if (params.startDate) query.set('startDate', params.startDate);
-  if (params.endDate) query.set('endDate', params.endDate);
-  const suffix = query.size > 0 ? `?${query}` : '';
+  if (params.startDate) query.set("startDate", params.startDate);
+  if (params.endDate) query.set("endDate", params.endDate);
+  const suffix = query.size > 0 ? `?${query}` : "";
 
   const [roster, user] = await Promise.all([
     apiGet<Roster>(`/v1/dashboard/reports/roster${suffix}`),
     getSessionUser(),
   ]);
 
-  const isAdmin = user?.role === 'super_admin';
+  const isAdmin = user?.role === "super_admin";
 
   // Only admins can import, and the endpoint needs an organization id. Single-site deployment,
   // so the first organization is the one being administered - same assumption as Settings.
-  const organizations = isAdmin ? await apiGet<Organization[]>('/v1/dashboard/organizations') : [];
+  const organizations = isAdmin ? await apiGet<Organization[]>("/v1/dashboard/organizations") : [];
   const organizationId = organizations[0]?.id;
 
   return (
@@ -47,7 +47,7 @@ export default async function EmployeesPage({
       <PageHeader
         title="Employees"
         subtitle={`${roster.employees.length} tracked - ${new Date(
-          roster.period.start
+          roster.period.start,
         ).toLocaleDateString()} to ${new Date(roster.period.end).toLocaleDateString()}`}
         action={organizationId ? <EmployeeImport organizationId={organizationId} /> : undefined}
       />
@@ -81,7 +81,7 @@ export default async function EmployeesPage({
                         href={`/employees/${employee.id}`}
                       />
                     </Td>
-                    <Td muted>{employee.department ?? '-'}</Td>
+                    <Td muted>{employee.department ?? "-"}</Td>
                     <Td align="right" numeric muted>
                       {employee.deviceCount}
                     </Td>

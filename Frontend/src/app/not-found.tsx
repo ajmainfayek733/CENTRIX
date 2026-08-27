@@ -1,6 +1,6 @@
-import { NotFoundLink, NotFoundPanel } from '@/components/NotFoundPanel';
+import { NotFoundLink, NotFoundPanel } from "@/components/NotFoundPanel";
 
-export const metadata = { title: '404 Not found - C E N T R I X' };
+export const metadata = { title: "404 Not found - C E N T R I X" };
 
 /**
  * Catches URLs that do not match any route in the app. Wrapped by the root layout only, so

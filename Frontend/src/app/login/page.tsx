@@ -1,7 +1,7 @@
-import { Suspense } from 'react';
-import { LoginForm } from './LoginForm';
+import { Suspense } from "react";
+import { LoginForm } from "./LoginForm";
 
-export const metadata = { title: 'Sign in - C E N T R I X' };
+export const metadata = { title: "Sign in - C E N T R I X" };
 
 export default function LoginPage() {
   return (
@@ -28,8 +28,8 @@ export default function LoginPage() {
         </Suspense>
 
         <p className="mt-6 text-center text-xs tracking-[-0.5px] leading-relaxed text-text-tertiary">
-          Access is logged. Every report you open is recorded against your
-          account in the audit trail.
+          Access is logged. Every report you open is recorded against your account in the audit
+          trail.
         </p>
       </div>
     </main>

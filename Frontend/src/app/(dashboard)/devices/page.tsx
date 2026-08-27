@@ -1,18 +1,28 @@
-import { apiGet } from '@/lib/api-client';
-import { getSessionUser } from '@/lib/session';
-import { Card, PageHeader, Notice, TableWrap, TABLE_CLASS, Th, Td, Badge, EmptyState } from '@/components/ui';
-import { LiveDeviceStatus, LiveStatusDot } from '@/components/LiveDeviceStatus';
-import type { DeviceRow, EmployeeSummary } from '@/types/api';
-import { DeviceActions } from './DeviceActions';
-import { DeviceAssignment } from './DeviceAssignment';
+import { apiGet } from "@/lib/api-client";
+import { getSessionUser } from "@/lib/session";
+import {
+  Card,
+  PageHeader,
+  Notice,
+  TableWrap,
+  TABLE_CLASS,
+  Th,
+  Td,
+  Badge,
+  EmptyState,
+} from "@/components/ui";
+import { LiveDeviceStatus, LiveStatusDot } from "@/components/LiveDeviceStatus";
+import type { DeviceRow, EmployeeSummary } from "@/types/api";
+import { DeviceActions } from "./DeviceActions";
+import { DeviceAssignment } from "./DeviceAssignment";
 
-export const metadata = { title: 'Devices - CENTRIX' };
-export const dynamic = 'force-dynamic';
+export const metadata = { title: "Devices - C E N T R I X" };
+export const dynamic = "force-dynamic";
 
 export default async function DevicesPage() {
   const [devices, employees, user] = await Promise.all([
-    apiGet<DeviceRow[]>('/v1/dashboard/employees/devices'),
-    apiGet<EmployeeSummary[]>('/v1/dashboard/employees'),
+    apiGet<DeviceRow[]>("/v1/dashboard/employees/devices"),
+    apiGet<EmployeeSummary[]>("/v1/dashboard/employees"),
     getSessionUser(),
   ]);
 
@@ -24,10 +34,10 @@ export default async function DevicesPage() {
 
   // Devices enroll themselves and park on a placeholder employee until an admin assigns them,
   // so unassigned ones are surfaced first - they are the actionable set.
-  const unassigned = devices.filter((device) => device.employee.status === 'placeholder');
-  const assigned = devices.filter((device) => device.employee.status !== 'placeholder');
+  const unassigned = devices.filter((device) => device.employee.status === "placeholder");
+  const assigned = devices.filter((device) => device.employee.status !== "placeholder");
 
-  const isAdmin = user?.role === 'super_admin';
+  const isAdmin = user?.role === "super_admin";
 
   return (
     <div className="space-y-3.5">
@@ -41,7 +51,8 @@ export default async function DevicesPage() {
           <Notice tone="warning">
             These workstations enrolled with the org token but are not attached to an employee yet.
             Their telemetry is being stored, but it will not appear in reports until assigned.
-            {employees.length === 0 && ' Create employees first - import a roster from the Employees screen.'}
+            {employees.length === 0 &&
+              " Create employees first - import a roster from the Employees screen."}
           </Notice>
           <div className="mt-3.5">
             <DeviceTable devices={unassigned} employees={assignable} isAdmin={isAdmin} />
@@ -106,23 +117,23 @@ function DeviceTable({
                       deviceId={device.id}
                       employees={employees}
                       currentEmployeeId={device.employee.id}
-                      isUnassigned={device.employee.status === 'placeholder'}
+                      isUnassigned={device.employee.status === "placeholder"}
                     />
-                  ) : device.employee.status === 'placeholder' ? (
+                  ) : device.employee.status === "placeholder" ? (
                     <Badge tone="warning">Unassigned</Badge>
                   ) : (
                     device.employee.name
                   )}
                 </Td>
                 <Td muted>
-                  {device.edition ?? '-'}
-                  <span className="block text-xs">{device.version ?? ''}</span>
+                  {device.edition ?? "-"}
+                  <span className="block text-xs">{device.version ?? ""}</span>
                 </Td>
                 <Td muted>
-                  <span className="font-mono text-xs">{device.macAddress ?? '-'}</span>
+                  <span className="font-mono text-xs">{device.macAddress ?? "-"}</span>
                 </Td>
                 <Td align="right" muted numeric>
-                  {device.agentVersion ?? '-'}
+                  {device.agentVersion ?? "-"}
                 </Td>
                 <Td align="right" muted>
                   <LiveDeviceStatus

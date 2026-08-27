@@ -7,11 +7,11 @@ import {
   TABLE_CLASS,
   Th,
   Td,
-} from '@/components/ui';
-import { DonutChart } from '@/components/charts';
-import { TemplateNotice } from '@/components/TemplateNotice';
+} from "@/components/ui";
+import { DonutChart } from "@/components/charts";
+import { TemplateNotice } from "@/components/TemplateNotice";
 
-export const metadata = { title: 'Performance - CENTRIX' };
+export const metadata = { title: "Performance - C E N T R I X" };
 
 /**
  * Productivity and activity ratings, laid out from the blueprint.
@@ -24,9 +24,9 @@ export const metadata = { title: 'Performance - CENTRIX' };
 
 /** Invented. Generic names on purpose - see the note in TemplateNotice. */
 const PLACEHOLDER_RANKING = [
-  { name: 'Employee A', active: '-', productive: '-', score: '-' },
-  { name: 'Employee B', active: '-', productive: '-', score: '-' },
-  { name: 'Employee C', active: '-', productive: '-', score: '-' },
+  { name: "Employee A", active: "-", productive: "-", score: "-" },
+  { name: "Employee B", active: "-", productive: "-", score: "-" },
+  { name: "Employee C", active: "-", productive: "-", score: "-" },
 ];
 
 export default function PerformancePage() {
@@ -49,10 +49,10 @@ export default function PerformancePage() {
             <DonutChart
               caption="Placeholder productivity distribution; no data is connected yet"
               slices={[
-                { label: 'Productive', value: 0, tone: 'success' },
-                { label: 'Neutral', value: 0, tone: 'neutral' },
-                { label: 'Unproductive', value: 0, tone: 'warning' },
-                { label: 'Idle', value: 0, tone: 'neutral' },
+                { label: "Productive", value: 0, tone: "success" },
+                { label: "Neutral", value: 0, tone: "neutral" },
+                { label: "Unproductive", value: 0, tone: "warning" },
+                { label: "Idle", value: 0, tone: "neutral" },
               ]}
             />
           </div>

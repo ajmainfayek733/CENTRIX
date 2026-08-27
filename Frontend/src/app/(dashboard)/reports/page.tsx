@@ -6,11 +6,11 @@ import {
   ChartColumn,
   Building2,
   type LucideIcon,
-} from 'lucide-react';
-import { PageHeader, Button } from '@/components/ui';
-import { TemplateNotice } from '@/components/TemplateNotice';
+} from "lucide-react";
+import { PageHeader, Button } from "@/components/ui";
+import { TemplateNotice } from "@/components/TemplateNotice";
 
-export const metadata = { title: 'Reports - CENTRIX' };
+export const metadata = { title: "Reports - C E N T R I X" };
 
 /**
  * The report catalogue, laid out from the blueprint.
@@ -23,39 +23,39 @@ export const metadata = { title: 'Reports - CENTRIX' };
 
 const REPORTS: { title: string; description: string; format: string; icon: LucideIcon }[] = [
   {
-    title: 'Employee activity',
-    description: 'Active, idle and productive time per employee for the selected period.',
-    format: 'PDF',
+    title: "Employee activity",
+    description: "Active, idle and productive time per employee for the selected period.",
+    format: "PDF",
     icon: Users,
   },
   {
-    title: 'Attendance summary',
-    description: 'Daily check-in / check-out and presence overview.',
-    format: 'Excel',
+    title: "Attendance summary",
+    description: "Daily check-in / check-out and presence overview.",
+    format: "Excel",
     icon: CalendarDays,
   },
   {
-    title: 'Device inventory',
-    description: 'Enrolled devices, OS versions, agent status and assignment.',
-    format: 'PDF',
+    title: "Device inventory",
+    description: "Enrolled devices, OS versions, agent status and assignment.",
+    format: "PDF",
     icon: Monitor,
   },
   {
-    title: 'Alerts & USB log',
-    description: 'All alerts and removable device connect/disconnect events.',
-    format: 'Excel',
+    title: "Alerts & USB log",
+    description: "All alerts and removable device connect/disconnect events.",
+    format: "Excel",
     icon: Bell,
   },
   {
-    title: 'Productivity mix',
-    description: 'Productive, neutral, unproductive, blacklisted and idle breakdown.',
-    format: 'PDF',
+    title: "Productivity mix",
+    description: "Productive, neutral, unproductive, blacklisted and idle breakdown.",
+    format: "PDF",
     icon: ChartColumn,
   },
   {
-    title: 'Department summary',
-    description: 'Headcount, devices and activity aggregated by department.',
-    format: 'Excel',
+    title: "Department summary",
+    description: "Headcount, devices and activity aggregated by department.",
+    format: "Excel",
     icon: Building2,
   },
 ];

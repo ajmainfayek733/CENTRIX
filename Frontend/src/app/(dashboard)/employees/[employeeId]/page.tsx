@@ -1,8 +1,8 @@
-import Link from 'next/link';
-import { notFound } from 'next/navigation';
-import { apiGet, ApiError } from '@/lib/api-client';
-import { formatDuration, formatPercent, formatTime } from '@/lib/format';
-import { ArrowLeft } from 'lucide-react';
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { apiGet, ApiError } from "@/lib/api-client";
+import { formatDuration, formatPercent, formatTime } from "@/lib/format";
+import { ArrowLeft } from "lucide-react";
 import {
   Card,
   PageHeader,
@@ -17,17 +17,18 @@ import {
   Badge,
   EmptyState,
   ProductivityBar,
-} from '@/components/ui';
-import type { EmployeeDetail, ScreenshotRow, UsbEventRow } from '@/types/api';
-import type { LogPage } from '@/lib/use-log-feed';
-import { getSessionUser, canViewScreenshots } from '@/lib/session';
-import { DateRangePicker } from '@/components/DateRangePicker';
-import { ScreenshotGallery } from '@/components/ScreenshotGallery';
-import { TimelineTable } from './TimelineTable';
-import { EmployeeUsbTable } from './EmployeeUsbTable';
-import { WeeklyAttendance } from './WeeklyAttendance';
+} from "@/components/ui";
+import type { EmployeeDetail, ScreenshotRow, UsbEventRow } from "@/types/api";
+import type { LogPage } from "@/lib/use-log-feed";
+import { getSessionUser, canViewScreenshots } from "@/lib/session";
+import { DateRangePicker } from "@/components/DateRangePicker";
+import { ScreenshotGallery } from "@/components/ScreenshotGallery";
+import { TimelineTable } from "./TimelineTable";
+import { EmployeeUsbTable } from "./EmployeeUsbTable";
+import { WeeklyAttendance } from "./WeeklyAttendance";
 
-export const dynamic = 'force-dynamic';
+export const metadata = { title: "Employee - C E N T R I X" };
+export const dynamic = "force-dynamic";
 
 export default async function EmployeeDetailPage({
   params,
@@ -40,9 +41,9 @@ export default async function EmployeeDetailPage({
   const range = await searchParams;
 
   const query = new URLSearchParams();
-  if (range.startDate) query.set('startDate', range.startDate);
-  if (range.endDate) query.set('endDate', range.endDate);
-  const suffix = query.size > 0 ? `?${query}` : '';
+  if (range.startDate) query.set("startDate", range.startDate);
+  if (range.endDate) query.set("endDate", range.endDate);
+  const suffix = query.size > 0 ? `?${query}` : "";
 
   let detail: EmployeeDetail;
   let user: Awaited<ReturnType<typeof getSessionUser>>;
@@ -76,10 +77,12 @@ export default async function EmployeeDetailPage({
     from people the API is willing to answer.
   */
   const [usbEvents, screenshots] = await Promise.all([
-    apiGet<LogPage<UsbEventRow>>(`/v1/dashboard/reports/employees/${employeeId}/usb-events${suffix}`),
+    apiGet<LogPage<UsbEventRow>>(
+      `/v1/dashboard/reports/employees/${employeeId}/usb-events${suffix}`,
+    ),
     user && canViewScreenshots(user.role)
       ? apiGet<LogPage<ScreenshotRow>>(
-          `/v1/dashboard/reports/employees/${employeeId}/screenshots${suffix}`
+          `/v1/dashboard/reports/employees/${employeeId}/screenshots${suffix}`,
         )
       : Promise.resolve(null),
   ]);
@@ -88,7 +91,7 @@ export default async function EmployeeDetailPage({
     <div className="space-y-3.5">
       <PageHeader
         title={employee.name}
-        subtitle={`${employee.email}${employee.department ? ` - ${employee.department}` : ''}`}
+        subtitle={`${employee.email}${employee.department ? ` - ${employee.department}` : ""}`}
         back={
           <Link
             href="/employees"
@@ -107,7 +110,7 @@ export default async function EmployeeDetailPage({
         <StatTile
           label="Blacklisted"
           value={formatDuration(totals.blacklistedSeconds)}
-          tone={totals.blacklistedSeconds > 0 ? 'danger' : 'default'}
+          tone={totals.blacklistedSeconds > 0 ? "danger" : "default"}
         />
       </div>
 
@@ -133,11 +136,23 @@ export default async function EmployeeDetailPage({
 
         <Legend
           items={[
-            { key: 'productive', label: 'Productive', value: formatDuration(totals.productiveSeconds) },
-            { key: 'neutral', label: 'Neutral', value: formatDuration(totals.neutralSeconds) },
-            { key: 'unproductive', label: 'Unproductive', value: formatDuration(totals.unproductiveSeconds) },
-            { key: 'blacklisted', label: 'Blacklisted', value: formatDuration(totals.blacklistedSeconds) },
-            { key: 'idle', label: 'Idle', value: formatDuration(totals.idleSeconds) },
+            {
+              key: "productive",
+              label: "Productive",
+              value: formatDuration(totals.productiveSeconds),
+            },
+            { key: "neutral", label: "Neutral", value: formatDuration(totals.neutralSeconds) },
+            {
+              key: "unproductive",
+              label: "Unproductive",
+              value: formatDuration(totals.unproductiveSeconds),
+            },
+            {
+              key: "blacklisted",
+              label: "Blacklisted",
+              value: formatDuration(totals.blacklistedSeconds),
+            },
+            { key: "idle", label: "Idle", value: formatDuration(totals.idleSeconds) },
           ]}
         />
       </Card>
@@ -166,7 +181,9 @@ export default async function EmployeeDetailPage({
                   key={`${app.appName}-${app.productivityTag}`}
                   className="flex items-center gap-2.5 py-2.5 text-[13.5px]"
                 >
-                  <span className="min-w-0 flex-1 truncate font-medium">{app.appName ?? 'Unknown'}</span>
+                  <span className="min-w-0 flex-1 truncate font-medium">
+                    {app.appName ?? "Unknown"}
+                  </span>
                   <TagBadge tag={app.productivityTag} />
                   <span className="tnum min-w-[42px] text-right text-[13px] text-text-secondary">
                     {formatDuration(app.seconds)}
@@ -240,8 +257,8 @@ export default async function EmployeeDetailPage({
                       held. Reading it as a recorded clock-out is the mistake this prevents.
                     */}
                     <Td numeric>
-                      {day.status === 'present' ? (
-                        '-'
+                      {day.status === "present" ? (
+                        "-"
                       ) : day.lastLogout && day.logoutEstimated ? (
                         <span
                           className="inline-flex items-center gap-1.5"
@@ -264,9 +281,9 @@ export default async function EmployeeDetailPage({
                       {formatDuration(day.idleSeconds)}
                     </Td>
                     <Td>
-                      {day.status === 'present' ? (
+                      {day.status === "present" ? (
                         <Badge tone="success">Present</Badge>
-                      ) : day.status === 'unknown' ? (
+                      ) : day.status === "unknown" ? (
                         // An open session on a workstation that stopped reporting. Saying "present"
                         // here would show a crashed machine as somebody at their desk.
                         <Badge tone="warning">No logout recorded</Badge>
@@ -307,7 +324,11 @@ export default async function EmployeeDetailPage({
                     <Td>{new Date(row.workDate).toLocaleDateString()}</Td>
                     <Td numeric>{formatTime(row.loginTime)}</Td>
                     <Td numeric>
-                      {row.logoutTime ? formatTime(row.logoutTime) : <Badge tone="success">Still signed in</Badge>}
+                      {row.logoutTime ? (
+                        formatTime(row.logoutTime)
+                      ) : (
+                        <Badge tone="success">Still signed in</Badge>
+                      )}
                     </Td>
                     {/*
                       Per session the end reason and its provenance answer one question together:
@@ -317,8 +338,8 @@ export default async function EmployeeDetailPage({
                     */}
                     <Td muted>
                       <span className="inline-flex items-center gap-1.5">
-                        {row.endReason ?? '-'}
-                        {row.logoutSource === 'Server' && <Badge tone="warning">Estimated</Badge>}
+                        {row.endReason ?? "-"}
+                        {row.logoutSource === "Server" && <Badge tone="warning">Estimated</Badge>}
                       </span>
                     </Td>
                   </tr>
@@ -333,7 +354,7 @@ export default async function EmployeeDetailPage({
         "showing N" rather than "N entries": only the first page is loaded here, so a total is a
         number this page does not have. The window fetches the rest as it is scrolled.
       */}
-      <Card title={`Timeline - showing ${timeline.rows.length}${timeline.hasMore ? '+' : ''}`}>
+      <Card title={`Timeline - showing ${timeline.rows.length}${timeline.hasMore ? "+" : ""}`}>
         <TimelineTable
           initial={timeline}
           employeeId={employee.id}
@@ -347,9 +368,7 @@ export default async function EmployeeDetailPage({
         captures: the timeline says what they were doing, this says what could have left the
         machine while they did it.
       */}
-      <Card
-        title={`USB devices - showing ${usbEvents.rows.length}${usbEvents.hasMore ? '+' : ''}`}
-      >
+      <Card title={`USB devices - showing ${usbEvents.rows.length}${usbEvents.hasMore ? "+" : ""}`}>
         <EmployeeUsbTable
           initial={usbEvents}
           employeeId={employee.id}
@@ -360,7 +379,7 @@ export default async function EmployeeDetailPage({
 
       {screenshots && (
         <Card
-          title={`Screenshots - showing ${screenshots.rows.length}${screenshots.hasMore ? '+' : ''}`}
+          title={`Screenshots - showing ${screenshots.rows.length}${screenshots.hasMore ? "+" : ""}`}
         >
           <ScreenshotGallery
             initial={screenshots}

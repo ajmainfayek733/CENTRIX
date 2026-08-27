@@ -8,11 +8,11 @@ import {
   TABLE_CLASS,
   Th,
   Td,
-} from '@/components/ui';
-import { BarChart } from '@/components/charts';
-import { TemplateNotice } from '@/components/TemplateNotice';
+} from "@/components/ui";
+import { BarChart } from "@/components/charts";
+import { TemplateNotice } from "@/components/TemplateNotice";
 
-export const metadata = { title: 'Attendance - CENTRIX' };
+export const metadata = { title: "Attendance - C E N T R I X" };
 
 /**
  * Team-wide daily attendance, laid out from the blueprint.
@@ -24,20 +24,20 @@ export const metadata = { title: 'Attendance - CENTRIX' };
 
 /** Invented. Generic names on purpose - see the note in TemplateNotice. */
 const PLACEHOLDER_LOG = [
-  { name: 'Employee A', checkIn: '-', status: 'unknown' as const },
-  { name: 'Employee B', checkIn: '-', status: 'unknown' as const },
-  { name: 'Employee C', checkIn: '-', status: 'unknown' as const },
-  { name: 'Employee D', checkIn: '-', status: 'unknown' as const },
+  { name: "Employee A", checkIn: "-", status: "unknown" as const },
+  { name: "Employee B", checkIn: "-", status: "unknown" as const },
+  { name: "Employee C", checkIn: "-", status: "unknown" as const },
+  { name: "Employee D", checkIn: "-", status: "unknown" as const },
 ];
 
 const PLACEHOLDER_WEEK = [
-  { label: 'Mon', value: 0 },
-  { label: 'Tue', value: 0 },
-  { label: 'Wed', value: 0 },
-  { label: 'Thu', value: 0 },
-  { label: 'Fri', value: 0 },
-  { label: 'Sat', value: 0 },
-  { label: 'Sun', value: 0 },
+  { label: "Mon", value: 0 },
+  { label: "Tue", value: 0 },
+  { label: "Wed", value: 0 },
+  { label: "Thu", value: 0 },
+  { label: "Fri", value: 0 },
+  { label: "Sat", value: 0 },
+  { label: "Sun", value: 0 },
 ];
 
 export default function AttendancePage() {
