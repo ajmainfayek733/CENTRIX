@@ -18,19 +18,19 @@ tracker nor a migrations engine.
 ## `AgentPaths` - `AgentPaths.cs`
 
 Static class. Well-known on-disk locations, all rooted at
-`%ProgramData%\EmployeeMonitor`. Only the service touches the database and credential files; the
+`%ProgramData%\Centrix`. Only the service touches the database and credential files; the
 host submits everything over the pipe. That split is what allows the directory ACL to deny
 ordinary users write access to collected data without breaking the host.
 
 | Member                     | Type           | Description                                                                                                                                                                                                       |
 | -------------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `RootDirectory`            | `string`       | `%ProgramData%\EmployeeMonitor`. Computed once at type initialization.                                                                                                                                            |
+| `RootDirectory`            | `string`       | `%ProgramData%\Centrix`. Computed once at type initialization.                                                                                                                                            |
 | `DatabasePath`             | `string`       | `agent.db` - typed local store and offline queue.                                                                                                                                                                 |
 | `ConfigPath`               | `string`       | `agent.config.json` - server URL and enrollment token, written by the installer.                                                                                                                                  |
 | `CredentialPath`           | `string`       | `device.key` - DPAPI-protected device API key, written by the service after enrollment.                                                                                                                           |
 | `ScreenshotSpoolDirectory` | `string`       | `screenshots\` - captures staged here until uploaded, then deleted.                                                                                                                                               |
 | `LogDirectory`             | `string`       | `logs\` - rolling log files from both processes.                                                                                                                                                                  |
-| `IpcPipeName`              | `const string` | `Global\EmployeeMonitor.Agent`. The `Global\` prefix scopes the pipe across terminal-services sessions, which is **required** because the service (session 0) and host (user session) live in different sessions. |
+| `IpcPipeName`              | `const string` | `Global\Centrix.Agent`. The `Global\` prefix scopes the pipe across terminal-services sessions, which is **required** because the service (session 0) and host (user session) live in different sessions. |
 | `EnsureCreated()`          | `void`         | Creates the root, screenshot spool and log directories. Idempotent. Called at service startup, by `LocalStore`'s constructor, by `DeviceCredentialStore.Save`, and before each screenshot write.                  |
 
 ---

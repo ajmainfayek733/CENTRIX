@@ -1,7 +1,7 @@
 import { PageHeader, StatTile } from '@/components/ui';
 import { TemplateNotice } from '@/components/TemplateNotice';
 
-export const metadata = { title: 'Departments - Employee Monitor' };
+export const metadata = { title: 'Departments - CENTRIX' };
 
 /**
  * Team structure and headcount, laid out from the blueprint.

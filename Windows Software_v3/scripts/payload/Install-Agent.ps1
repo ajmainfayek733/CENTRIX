@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Installs, upgrades, removes and inspects the Employee Monitor agent on one workstation.
+    Installs, upgrades, removes and inspects the CENTRIX agent on one workstation.
 
 .DESCRIPTION
     The machine-side half of the deployment story. It ships inside the bundle produced by
@@ -56,7 +56,7 @@
 
 .EXAMPLE
     # Unattended rollout from a GPO startup script, against a copy of the bundle on a share
-    \\fileserver\deploy\EmployeeMonitorAgent\Install-Agent.ps1 -Action Install `
+    \\fileserver\deploy\CentrixAgent\Install-Agent.ps1 -Action Install `
         -ServerUrl https://monitoring.example.com -EnrollmentToken $env:ENROLL_TOKEN
 #>
 [CmdletBinding()]
@@ -76,20 +76,20 @@ param(
 $ErrorActionPreference = 'Stop'
 
 # --- Identity ---------------------------------------------------------------------------------
-$ServiceName      = 'EmployeeMonitorAgent'
-$DisplayName      = 'Employee Monitor Agent'
-$Publisher        = 'Employee Monitor'
-$ServiceExeName   = 'EmployeeMonitor.Service.exe'
-$HostExeName      = 'EmployeeMonitor.Host.exe'
-$HostProcessName  = 'EmployeeMonitor.Host'
+$ServiceName      = 'CentrixAgent'
+$DisplayName      = 'CENTRIX Agent'
+$Publisher        = 'CENTRIX'
+$ServiceExeName   = 'Centrix.Service.exe'
+$HostExeName      = 'Centrix.Host.exe'
+$HostProcessName  = 'Centrix.Host'
 $InstallerBatName = 'install.bat'
 $InstallerPs1Name = 'Install-Agent.ps1'
 
 $ServiceDescription = 'Collects workplace productivity telemetry under company monitoring policy. See the notice in the system tray.'
 
 # --- Locations --------------------------------------------------------------------------------
-$InstallDir      = Join-Path $env:ProgramFiles 'Employee Monitor'
-$DataDir         = Join-Path $env:ProgramData 'EmployeeMonitor'
+$InstallDir      = Join-Path $env:ProgramFiles 'CENTRIX'
+$DataDir         = Join-Path $env:ProgramData 'Centrix'
 $ScreenshotDir   = Join-Path $DataDir 'screenshots'
 $LogDir          = Join-Path $DataDir 'logs'
 $ConfigFileName  = 'agent.config.json'
@@ -699,7 +699,7 @@ if (-not (Test-Elevated)) {
 if ($Action -eq 'Uninstall' -and $PSScriptRoot -and
     $PSScriptRoot.TrimEnd('\') -ieq $InstallDir.TrimEnd('\')) {
 
-    $stagingDir = Join-Path ([IO.Path]::GetTempPath()) "EmployeeMonitorSetup-$([Guid]::NewGuid())"
+    $stagingDir = Join-Path ([IO.Path]::GetTempPath()) "CentrixSetup-$([Guid]::NewGuid())"
     New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
     Copy-Item -LiteralPath $PSCommandPath -Destination (Join-Path $stagingDir $InstallerPs1Name) -Force
 

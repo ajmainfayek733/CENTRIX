@@ -1,4 +1,4 @@
-# Employee Monitor - v3
+# CENTRIX - v3
 
 Windows-native monitoring agent, Express/Postgres backend, and Next.js admin dashboard.
 
@@ -14,7 +14,7 @@ the repository root.
 
 ```
 Windows boot
-  +- EmployeeMonitor.Service      (LocalSystem, session 0)
+  +- Centrix.Service      (LocalSystem, session 0)
        +- policy fetch + heartbeat            ConnectivityWorker
        +- backend sync (offline queue drain)  SyncWorker
        +- USB / WMI device events             UsbWorker
@@ -23,7 +23,7 @@ Windows boot
        +- named pipe  -------------+          IpcServer
                                    |
 User logon                         |
-  +- EmployeeMonitor.Host  --------+          (interactive session)
+  +- Centrix.Host  --------+          (interactive session)
        +- foreground window / activity sessions
        +- idle + active state
        +- key and mouse *counts* (never content)
@@ -62,8 +62,8 @@ These are architectural, not configuration:
 | Project         | Output                        | Role                                                          |
 | --------------- | ----------------------------- | ------------------------------------------------------------- |
 | `Agent.Core`    | library                       | Wire contracts, typed SQLite store, policy model, IPC framing |
-| `Agent.Service` | `EmployeeMonitor.Service.exe` | LocalSystem service                                           |
-| `Agent.Host`    | `EmployeeMonitor.Host.exe`    | WPF app in the user session                                   |
+| `Agent.Service` | `Centrix.Service.exe` | LocalSystem service                                           |
+| `Agent.Host`    | `Centrix.Host.exe`    | WPF app in the user session                                   |
 
 ---
 
@@ -143,7 +143,7 @@ properties for an unattended rollout):
 
 ```powershell
 .\scripts\Deploy-Agent.ps1 -Action Package
-msiexec /i .\artifacts\installer\EmployeeMonitorAgent.msi /qn `
+msiexec /i .\artifacts\installer\CentrixAgent.msi /qn `
         SERVERURL=https://monitoring.example.com ENROLLMENTTOKEN=<token>
 ```
 
@@ -155,8 +155,8 @@ reporting once an admin assigns it to an employee.
 ## On-disk layout (installed)
 
 ```
-%ProgramFiles%\Employee Monitor\        both executables
-%ProgramData%\EmployeeMonitor\
+%ProgramFiles%\CENTRIX\        both executables
+%ProgramData%\Centrix\
     agent.config.json                   server URL + enrollment token (installer-written)
     device.key                          DPAPI-protected device API key, LocalMachine scope
     agent.db                            typed telemetry tables + offline queue
@@ -171,8 +171,8 @@ Users modify rights, because the host writes captures there as the logged-on emp
 yet a standard user should not be able to delete or truncate the agent's history. Ageing files
 out is therefore the service's job - `RetentionWorker` sweeps them after 14 days as SYSTEM.
 
-Both processes also log to the Windows Event Log (`EmployeeMonitorAgent`,
-`EmployeeMonitorHost`). The files are the ones to collect when diagnosing a workstation; the
+Both processes also log to the Windows Event Log (`CentrixAgent`,
+`CentrixHost`). The files are the ones to collect when diagnosing a workstation; the
 Event Log is there for anything that fails before the file sink can open, and for fleet-wide
 monitoring that already scrapes it.
 

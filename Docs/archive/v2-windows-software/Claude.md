@@ -5,7 +5,7 @@
 
 ---
 
-# Project Brief: Windows Employee Monitoring Agent - Claude Code Build Instructions
+# Project Brief: Windows CENTRIXing Agent - Claude Code Build Instructions
 
 ## Scope (read carefully)
 Build **only** the Windows client software (the "Agent") that runs on employee machines and

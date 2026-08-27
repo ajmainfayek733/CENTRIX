@@ -1,6 +1,6 @@
 @echo off
 rem ============================================================================
-rem  Employee Monitor Agent - workstation installer
+rem  CENTRIX Agent - workstation installer
 rem
 rem  Ships inside the deployment bundle produced by
 rem  scripts\Deploy-Agent.ps1 -Action Bundle. The bundle carries the already
@@ -25,7 +25,7 @@ setlocal EnableExtensions
 rem Delayed expansion stays OFF on purpose: an enrollment token containing '!'
 rem would be silently mangled by it.
 
-set "PRODUCT_NAME=Employee Monitor Agent"
+set "PRODUCT_NAME=CENTRIX Agent"
 set "INSTALL_SCRIPT=%~dp0Install-Agent.ps1"
 set "POWERSHELL=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
 set "SELF=%~f0"

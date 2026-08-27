@@ -1,4 +1,4 @@
-# An enterprise employee monitoring application
+# An enterprise CENTRIXing application
 
 A Windows client installed on company-owned workstations as Administrator Elevated that collects workplace productivity telemetry (attendance, application usage, active/idle time, browser navigation, screenshots, USB device activity) and enterprise security alerts, under full employee disclosure. This backend receives that telemetry, stores it, serves admin-controlled policy back to each device, and (out of scope for this spec) presumably powers a reporting dashboard. This Application will also be responsible to protect company assets against unauthorized access and security threats, intellectual property theft.
 

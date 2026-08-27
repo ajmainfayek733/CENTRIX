@@ -4,9 +4,9 @@ The LocalSystem half of the agent, running in session 0. It owns policy, the dev
 the SQLite store, all backend traffic, machine-wide USB events, retention, and supervision of the
 per-user host. It deliberately never touches the interactive desktop.
 
-**Output:** `EmployeeMonitor.Service.exe` (`Microsoft.NET.Sdk.Worker`, self-contained, single-file,
+**Output:** `Centrix.Service.exe` (`Microsoft.NET.Sdk.Worker`, self-contained, single-file,
 untrimmed)
-**Service name:** `EmployeeMonitorAgent` - must match what the installer registers or the SCM
+**Service name:** `CentrixAgent` - must match what the installer registers or the SCM
 will not find it.
 **Dependencies:** `Microsoft.Extensions.Hosting(.WindowsServices)`, `Microsoft.Extensions.Http`,
 `System.Management` (WMI), `Microsoft.Win32.SystemEvents`,
@@ -29,9 +29,9 @@ Top-level statements. Order matters in two places.
    `--configure` the process is not a service at all: it is the installer asking the agent to lay
    out its own ProgramData. See below.
 1. `Host.CreateApplicationBuilder(args)`, then `AddWindowsService` with
-   `ServiceName = "EmployeeMonitorAgent"`.
+   `ServiceName = "CentrixAgent"`.
 2. `AgentPaths.EnsureCreated()` - before anything writes.
-3. Logging: Event Log (`EmployeeMonitorAgent` source) **and** the rolling file sink with prefix
+3. Logging: Event Log (`CentrixAgent` source) **and** the rolling file sink with prefix
    `service`. The Event Log holds warnings and errors well but is a poor place to read a sequence
    of events from, and diagnosing a workstation usually means asking for a file rather than remote
    Event Viewer access.
@@ -50,7 +50,7 @@ Top-level statements. Order matters in two places.
 | `SessionLauncher`                                                                          | singleton                        |                                                                                                                                                                                                                                                                         |
 | `LocalStore`                                                                               | singleton (factory)              | Constructed **eagerly** with `Initialize()` called in the factory, so a schema failure surfaces at startup rather than on the first collector message.                                                                                                                  |
 | `TelemetryQueue`                                                                           | singleton                        |                                                                                                                                                                                                                                                                         |
-| `BackendClient`                                                                            | typed `HttpClient`               | Base address from `BackendClient.BuildBaseAddress`; 100 s timeout - generous enough for a screenshot upload on a slow office uplink, short enough that a black-holed connection cannot pin a sync cycle open indefinitely. User-Agent `EmployeeMonitorAgent/{version}`. |
+| `BackendClient`                                                                            | typed `HttpClient`               | Base address from `BackendClient.BuildBaseAddress`; 100 s timeout - generous enough for a screenshot upload on a slow office uplink, short enough that a black-holed connection cannot pin a sync cycle open indefinitely. User-Agent `CentrixAgent/{version}`. |
 | `IpcServer`                                                                                | singleton **and** hosted service | Registered once and resolved for both roles, because `UsbWorker` depends on it for broadcasts.                                                                                                                                                                          |
 | `ConnectivityWorker`, `SyncWorker`, `UsbWorker`, `RetentionWorker`, `HostSupervisorWorker` | hosted services                  |                                                                                                                                                                                                                                                                         |
 
@@ -59,7 +59,7 @@ Top-level statements. Order matters in two places.
 ## `Setup/InstallConfigurator.cs` - the install-time entry point
 
 ```
-EmployeeMonitor.Service.exe --configure --server-url <url> --enrollment-token <token>
+Centrix.Service.exe --configure --server-url <url> --enrollment-token <token>
                            [--allow-insecure-http]
 ```
 
@@ -80,8 +80,8 @@ is where the MSI log picks them up.
 | HTTPS unless `--allow-insecure-http`             | Spec section 9. Failing at install time means a misconfigured rollout is caught on the machine being installed, rather than sending telemetry in the clear until someone notices |
 | Enrollment token required                        | Without it the agent cannot enroll, and the service refuses to start                                                                                                             |
 
-It also **registers the Event Log sources** for both processes (`EmployeeMonitorAgent`,
-`EmployeeMonitorHost`, named in `AgentPaths` so the registered name and the opened name cannot
+It also **registers the Event Log sources** for both processes (`CentrixAgent`,
+`CentrixHost`, named in `AgentPaths` so the registered name and the opened name cannot
 drift). Creating a source writes under HKLM and takes administrator privileges: the service could
 do it as SYSTEM, but the host runs as the logged-on employee and cannot, and Microsoft's guidance is
 to create sources "as part of an .msi installation". This is not about preventing a crash - .NET
@@ -128,11 +128,11 @@ must read the key at boot, before any user has logged on.
 `device.key` is worthless copied elsewhere. It does **not** restrict decryption to privileged
 callers - Microsoft's wording is that with LocalMachine "any process running on the computer can
 unprotect data", and the caution is to use it "only when you trust every account on a computer".
-The fixed entropy string (`EmployeeMonitor.Agent.DeviceApiKey.v3`) is compiled into an executable
+The fixed entropy string (`Centrix.Agent.DeviceApiKey.v3`) is compiled into an executable
 that ships to every workstation, so it is obfuscation, not a secret.
 
 The control that actually keeps a standard user away from this key is therefore the **ACL on
-`%ProgramData%\EmployeeMonitor`** - SYSTEM and Administrators only. Weaken that ACL and the key is
+`%ProgramData%\Centrix`** - SYSTEM and Administrators only. Weaken that ACL and the key is
 readable by anyone who can run code on the box, DPAPI or not.
 
 Plaintext buffers are zeroed with `CryptographicOperations.ZeroMemory` after use on both paths. The
@@ -426,7 +426,7 @@ uploaded rather than swept as stale, including after a short reboot.
 
 ### `Workers/HostSupervisorWorker.cs`
 
-Keeps exactly one `EmployeeMonitor.Host.exe` alive on the interactive desktop.
+Keeps exactly one `Centrix.Host.exe` alive on the interactive desktop.
 
 Spec section 10 requires auto-start on boot and auto-recovery after a crash. The service half gets
 that from the SCM; the host half gets it from here. Supervising from the service rather than a
@@ -451,7 +451,7 @@ If the host executable is not found next to the service, it logs an error naming
 > subscription.
 > | `EnsureHostRunning(hostPath)` | If the host is not running, distinguishes "died immediately" (relaunched under 30 s ago -> increment the fast-exit counter) from "ran a while then exited" (reset), then launches via `SessionLauncher`. |
 > | `IsHostRunning()` | Checks by **process name**, not a remembered pid: the host can also be started by the shell during development, and a stale pid would make the supervisor launch a duplicate. Disposes every `Process` it enumerates. |
-> | `ResolveHostPath()` | `EmployeeMonitor.Host.exe` next to the service executable - which is why `Deploy-Agent.ps1` publishes both into the same folder. |
+> | `ResolveHostPath()` | `Centrix.Host.exe` next to the service executable - which is why `Deploy-Agent.ps1` publishes both into the same folder. |
 
 ---
 

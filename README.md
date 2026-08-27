@@ -1,6 +1,6 @@
 # Employee Tracker
 
-An in-office employee monitoring system for company-owned Windows workstations: a native agent
+An in-office CENTRIXing system for company-owned Windows workstations: a native agent
 collects activity, an Express/PostgreSQL backend stores it, and a Next.js dashboard reports on it.
 
 **All documentation lives in [`Docs/`](Docs/). Start at [Docs/README.md](Docs/README.md).**

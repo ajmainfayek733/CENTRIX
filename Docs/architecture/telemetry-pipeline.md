@@ -42,7 +42,7 @@ the service, so it looks healthy while collecting nothing.
 
 ### [3] Over the pipe
 
-`HostIpcClient` sends length-prefixed JSON over the named pipe `Global\EmployeeMonitor.Agent`;
+`HostIpcClient` sends length-prefixed JSON over the named pipe `Global\Centrix.Agent`;
 `IpcServer` receives it in the service.
 
 **Screenshots do not travel this way.** The host writes the JPEG into the shared spool directory

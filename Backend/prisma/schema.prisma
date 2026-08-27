@@ -1,4 +1,4 @@
-// Employee Monitoring - v3 schema.
+// CENTRIXing - v3 schema.
 //
 // Hard rule for this schema: NO Json columns. Every telemetry field the Agent sends gets its
 // own typed column, so the database is queryable by the reporting layer without unpacking a

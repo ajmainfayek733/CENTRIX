@@ -52,7 +52,7 @@ stored DPAPI-protected on the workstation and as an HMAC on the server.
 **Enrollment token** - the **org-wide** secret in every install. Traded once per machine for a
 device API key. Returned exactly once at organization creation.
 
-**Host** - `EmployeeMonitor.Host.exe`, running in the interactive user session. Observes. Holds no
+**Host** - `Centrix.Host.exe`, running in the interactive user session. Observes. Holds no
 credential, opens no socket.
 
 **Idempotency, layer 1 / layer 2** - batch-level (`ingest_batches` plus a hash of the sorted
@@ -92,7 +92,7 @@ answered without redoing the work. Reported back as `replay: true`, and contribu
 **Rollup** - `daily_activity_rollups`. One row per employee per day per device, incremented at
 ingest time. What every aggregate report reads.
 
-**Service** - `EmployeeMonitor.Service.exe`, LocalSystem in session 0. Decides and persists. Owns
+**Service** - `Centrix.Service.exe`, LocalSystem in session 0. Decides and persists. Owns
 the database, the credential, policy and all backend traffic.
 
 **Session 0** - the Windows session where services run. Has no desktop, so it cannot read window

@@ -4,7 +4,7 @@
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
 
   <!--
-    Employee Monitor Agent installer.
+    CENTRIX Agent installer.
 
     What it does that a file copy does not: registers the SYSTEM service with the SCM and its
     recovery actions, writes the install-time configuration through the agent's own
@@ -17,18 +17,18 @@
       Silent      - the same values arrive as public properties, which is how a real fleet is
                     deployed (GPO, Intune, ConfigMgr):
 
-        msiexec /i EmployeeMonitorAgent.msi /qn ^
+        msiexec /i CentrixAgent.msi /qn ^
                 SERVERURL=https://monitoring.example.com ENROLLMENTTOKEN=<token>
   -->
 
-  <Package Name="Employee Monitor Agent"
-           Manufacturer="Employee Monitor"
+  <Package Name="CENTRIX Agent"
+           Manufacturer="CENTRIX"
            Version="$(AgentVersion)"
            UpgradeCode="1E9665BB-025A-4F53-A342-B1EE3C6CBDEA"
            Scope="perMachine"
            Compressed="yes">
 
-    <SummaryInformation Description="Employee Monitor Agent - workplace productivity telemetry under company monitoring policy" />
+    <SummaryInformation Description="CENTRIX Agent - workplace productivity telemetry under company monitoring policy" />
 
     <!-- AllowSameVersionUpgrades so a rebuild of the same version replaces the installed one
          rather than installing alongside it, which is what happens during a pilot. -->
@@ -61,7 +61,7 @@
     <Launch Condition="Installed OR UILevel = 5 OR SERVERURL ~&lt;&lt; &quot;https://&quot; OR ALLOWINSECUREHTTP = &quot;1&quot;"
             Message="SERVERURL must be HTTPS. Pass ALLOWINSECUREHTTP=1 only for a local test server." />
 
-    <Feature Id="AgentFeature" Title="Employee Monitor Agent" Level="1">
+    <Feature Id="AgentFeature" Title="CENTRIX Agent" Level="1">
       <ComponentGroupRef Id="AgentBinaries" />
       <ComponentRef Id="AgentServiceComponent" />
     </Feature>
@@ -98,7 +98,7 @@
            After="CostFinalize"
            Sequence="execute"
            Condition="CLEANINSTALL = &quot;1&quot; OR PURGEDATA = &quot;1&quot;"
-           Value="[CommonAppDataFolder]EmployeeMonitor" />
+           Value="[CommonAppDataFolder]Centrix" />
 
     <!--
       Install-time configuration.
@@ -158,7 +158,7 @@
   <!-- ==================================================================== -->
   <Fragment>
     <StandardDirectory Id="ProgramFiles64Folder">
-      <Directory Id="INSTALLFOLDER" Name="Employee Monitor" />
+      <Directory Id="INSTALLFOLDER" Name="CENTRIX" />
     </StandardDirectory>
 
     <!--
@@ -170,7 +170,7 @@
     <ComponentGroup Id="AgentBinaries" Directory="INSTALLFOLDER">
       <Files Include="$(AgentPublishDir)**">
         <!-- Carried by its own component below, for the service registration. -->
-        <Exclude Files="$(AgentPublishDir)EmployeeMonitor.Service.exe" />
+        <Exclude Files="$(AgentPublishDir)Centrix.Service.exe" />
 
         <!-- Symbols are a debugging aid, not a deliverable. They roughly double the payload and
              hand out the internals of software that runs as SYSTEM on every workstation. Kept in
@@ -190,7 +190,7 @@
   <!-- ==================================================================== -->
   <Fragment>
     <Component Id="AgentServiceComponent" Directory="INSTALLFOLDER" Guid="*">
-      <File Id="ServiceExecutable" Source="$(AgentPublishDir)EmployeeMonitor.Service.exe" KeyPath="yes" />
+      <File Id="ServiceExecutable" Source="$(AgentPublishDir)Centrix.Service.exe" KeyPath="yes" />
 
       <util:RemoveFolderEx Id="RemoveAgentDataOnCleanInstall"
                            On="install"
@@ -207,8 +207,8 @@
         services session. Nothing here runs on the interactive desktop.
       -->
       <ServiceInstall Id="AgentServiceInstall"
-                      Name="EmployeeMonitorAgent"
-                      DisplayName="Employee Monitor Agent"
+                      Name="CentrixAgent"
+                      DisplayName="CENTRIX Agent"
                       Description="Collects workplace productivity telemetry under company monitoring policy. See the notice in the system tray."
                       Type="ownProcess"
                       Start="auto"
@@ -237,7 +237,7 @@
         synchronous enough for that to be true.
       -->
       <ServiceControl Id="AgentServiceControl"
-                      Name="EmployeeMonitorAgent"
+                      Name="CentrixAgent"
                       Start="install"
                       Stop="both"
                       Remove="uninstall"

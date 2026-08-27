@@ -8,7 +8,7 @@ It holds **no credentials** and writes **nothing durable** except screenshot JPE
 spool directory. Observations go to the service over the named pipe; the service owns storage and
 upload.
 
-**Output:** `EmployeeMonitor.Host.exe` (WPF + Windows Forms, self-contained, single-file,
+**Output:** `Centrix.Host.exe` (WPF + Windows Forms, self-contained, single-file,
 untrimmed)
 **Dependencies:** `Microsoft.Extensions.Hosting`, `Agent.Core`. Screenshot capture uses
 `System.Drawing`, which ships in the Windows Desktop SDK - no package needed.
@@ -36,7 +36,7 @@ the palette (replaced wholesale by `ThemeManager` at runtime) and **slot 1** is 
 
 ### `OnStartup`
 
-1. **Single-instance guard.** A `Local\EmployeeMonitor.Host` mutex. Scope is `Local\`, not
+1. **Single-instance guard.** A `Local\Centrix.Host` mutex. Scope is `Local\`, not
    `Global\`: one host per interactive session is correct, and a global mutex would wrongly block a
    second user during fast user switching. A second instance shuts down immediately. Without this,
    a race between the supervisor's process check and its launch could start two hosts and
@@ -55,7 +55,7 @@ the palette (replaced wholesale by `ThemeManager` at runtime) and **slot 1** is 
 
 `Host.CreateApplicationBuilder()` with:
 
-- Event Log logging (`EmployeeMonitorHost` source).
+- Event Log logging (`CentrixHost` source).
 - The rolling file sink with prefix **`host-s{SessionId}`** - per terminal-services session, not
   per process. Fast user switching runs one host per logged-on user simultaneously, and they must
   not append to the same handle; the single-instance mutex guarantees at most one writer per
@@ -455,7 +455,7 @@ every WPF tray library wraps this same control.
 | Member                           | Description                                                                                                                                                                                                                                                                                                                                                 |
 | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `OpenRequested`                  | `event Action` - raised by the context menu item and by double-click.                                                                                                                                                                                                                                                                                       |
-| `Initialize()`                   | Builds the context menu and shows the icon with tooltip `Employee Monitor - monitoring is active`.                                                                                                                                                                                                                                                          |
+| `Initialize()`                   | Builds the context menu and shows the icon with tooltip `CENTRIX - monitoring is active`.                                                                                                                                                                                                                                                          |
 | `ShowNotification(notification)` | Maps severity to a `ToolTipIcon` and shows a balloon. The timeout argument has been ignored by Windows since Vista - the shell decides how long a balloon stays up - and is passed for API compatibility only.                                                                                                                                              |
 | `BuildIcon()` (private static)   | Draws a green ring with a filled centre at 32x32 rather than shipping a `.ico`, which keeps the single-file publish free of an embedded resource for what is a filled circle. `Icon.FromHandle` does not own the GDI handle, so the icon is cloned and the original handle destroyed via `NativeIcon.DestroyIcon` - otherwise every construction leaks one. |
 | `Dispose()`                      | Hides and disposes the icon.                                                                                                                                                                                                                                                                                                                                |

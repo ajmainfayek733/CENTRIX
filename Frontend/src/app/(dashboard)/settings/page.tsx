@@ -6,7 +6,7 @@ import type { CategoryRow, Organization, Policy } from '@/types/api';
 import { PolicyForm } from './PolicyForm';
 import { CategoryEditor } from './CategoryEditor';
 
-export const metadata = { title: 'Settings - Employee Monitor' };
+export const metadata = { title: 'Settings - CENTRIX' };
 export const dynamic = 'force-dynamic';
 
 export default async function SettingsPage() {
