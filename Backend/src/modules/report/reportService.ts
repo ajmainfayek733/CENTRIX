@@ -1,6 +1,6 @@
-import { ActivityType, LogoutSource } from '@prisma/client';
-import { prisma } from '../../config/db';
-import { currentOrganizationId } from '../../config/tenant';
+import { ActivityType, LogoutSource } from "@prisma/client";
+import { prisma } from "../../config/db";
+import { currentOrganizationId } from "../../config/tenant";
 import {
   decodeCursor,
   newestFirst,
@@ -8,7 +8,7 @@ import {
   resolvePageSize,
   resolveScreenshotPageSize,
   toPage,
-} from './pagination';
+} from "./pagination";
 
 /**
  * Dashboard read path (spec section 5).
@@ -46,6 +46,7 @@ const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Last representable instant of a day, so a date-only bound includes the day it names. */
 const END_OF_DAY_MS = 24 * 60 * 60 * 1000 - 1;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const DEFAULT_RANGE_DAYS = 7;
 
@@ -72,10 +73,12 @@ const DEFAULT_RANGE_DAYS = 7;
  */
 export function resolveRange(startDate?: string, endDate?: string) {
   const end = endDate ? new Date(endDate) : new Date();
-  const start = startDate ? new Date(startDate) : new Date(end.getTime() - DEFAULT_RANGE_DAYS * 86400_000);
+  const start = startDate
+    ? new Date(startDate)
+    : new Date(end.getTime() - DEFAULT_RANGE_DAYS * 86400_000);
 
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    throw { statusCode: 400, message: 'startDate/endDate must be valid ISO dates' };
+    throw { statusCode: 400, message: "startDate/endDate must be valid ISO dates" };
   }
 
   if (endDate !== undefined && DATE_ONLY.test(endDate)) {
@@ -107,6 +110,12 @@ const emptyTotals = (): Totals => ({
 function productivityPercent(t: Totals): number {
   if (t.activeSeconds <= 0) return 0;
   return Math.round((t.productiveSeconds / t.activeSeconds) * 1000) / 10;
+}
+
+function reportDays(start: Date, end: Date): number {
+  const firstDay = startOfUtcDay(start).getTime();
+  const lastDay = startOfUtcDay(end).getTime();
+  return Math.max(1, Math.floor((lastDay - firstDay) / DAY_MS) + 1);
 }
 
 /** The later of two instants, either of which may be missing. */
@@ -145,7 +154,7 @@ interface AttendanceDay {
   idleSeconds: number;
   /** How many stretches of presence made up the day (a lock or a suspend ends one). */
   sessionCount: number;
-  status: 'present' | 'ended' | 'unknown';
+  status: "present" | "ended" | "unknown";
   /**
    * True when `lastLogout` was inferred by the server rather than observed by the workstation -
    * the session the day ends on was abandoned, and the reaper closed it from the last evidence
@@ -160,7 +169,7 @@ export class ReportService {
   async getScreenshotPath(deviceId: string, clientEventId: string) {
     const screenshot = await prisma.screenshot.findUnique({ where: { clientEventId } });
     if (!screenshot || screenshot.deviceId !== deviceId) {
-      throw { statusCode: 404, message: 'Screenshot not found' };
+      throw { statusCode: 404, message: "Screenshot not found" };
     }
     return screenshot.storagePath;
   }
@@ -173,9 +182,16 @@ export class ReportService {
    * this method grouped activity_sessions instead, which is the same answer computed from
    * millions of rows on every page load.
    */
-  private async totalsByEmployee(start: Date, end: Date, employeeIds?: string[]) {
+  private async totalsByEmployee(
+    start: Date,
+    end: Date,
+    employeeIds?: string[],
+    averagePerDay = false,
+  ) {
+    const days = reportDays(start, end);
+    const divisor = averagePerDay && days >= 2 ? days : 1;
     const grouped = await prisma.dailyActivityRollup.groupBy({
-      by: ['employeeId'],
+      by: ["employeeId"],
       where: {
         workDate: { gte: startOfUtcDay(start), lte: startOfUtcDay(end) },
         ...(employeeIds ? { employeeId: { in: employeeIds } } : {}),
@@ -194,12 +210,12 @@ export class ReportService {
 
     for (const row of grouped) {
       totals.set(row.employeeId, {
-        activeSeconds: row._sum.activeSeconds ?? 0,
-        idleSeconds: row._sum.idleSeconds ?? 0,
-        productiveSeconds: row._sum.productiveSeconds ?? 0,
-        unproductiveSeconds: row._sum.unproductiveSeconds ?? 0,
-        neutralSeconds: row._sum.neutralSeconds ?? 0,
-        blacklistedSeconds: row._sum.blacklistedSeconds ?? 0,
+        activeSeconds: Math.round((row._sum.activeSeconds ?? 0) / divisor),
+        idleSeconds: Math.round((row._sum.idleSeconds ?? 0) / divisor),
+        productiveSeconds: Math.round((row._sum.productiveSeconds ?? 0) / divisor),
+        unproductiveSeconds: Math.round((row._sum.unproductiveSeconds ?? 0) / divisor),
+        neutralSeconds: Math.round((row._sum.neutralSeconds ?? 0) / divisor),
+        blacklistedSeconds: Math.round((row._sum.blacklistedSeconds ?? 0) / divisor),
       });
     }
 
@@ -217,7 +233,7 @@ export class ReportService {
    */
   private async dailyTotals(start: Date, end: Date, employeeId: string) {
     const grouped = await prisma.dailyActivityRollup.groupBy({
-      by: ['workDate'],
+      by: ["workDate"],
       where: { employeeId, workDate: { gte: startOfUtcDay(start), lte: startOfUtcDay(end) } },
       _sum: { activeSeconds: true, idleSeconds: true },
       _max: { lastActivityAt: true },
@@ -231,7 +247,7 @@ export class ReportService {
           idleSeconds: row._sum.idleSeconds ?? 0,
           lastActivityAt: row._max.lastActivityAt ?? null,
         },
-      ])
+      ]),
     );
   }
 
@@ -257,9 +273,12 @@ export class ReportService {
       workDate: Date;
       deviceId: string;
     }[],
-    dailyTotals: Map<string, { activeSeconds: number; idleSeconds: number; lastActivityAt: Date | null }>,
+    dailyTotals: Map<
+      string,
+      { activeSeconds: number; idleSeconds: number; lastActivityAt: Date | null }
+    >,
     lastSeenByDevice: Map<string, Date | null>,
-    now: number
+    now: number,
   ): AttendanceDay[] {
     const byDate = new Map<string, AttendanceDay & { openAndLive: boolean; hasOpen: boolean }>();
 
@@ -275,7 +294,7 @@ export class ReportService {
         activeSeconds: totals?.activeSeconds ?? 0,
         idleSeconds: totals?.idleSeconds ?? 0,
         sessionCount: 0,
-        status: 'ended' as const,
+        status: "ended" as const,
         logoutEstimated: false,
         openAndLive: false,
         hasOpen: false,
@@ -305,7 +324,11 @@ export class ReportService {
         // that has gone quiet: the logout was never observed, so fall back to the last activity the
         // rollup saw rather than inventing one - and say so, instead of showing the employee as
         // present days later.
-        const status: AttendanceDay['status'] = openAndLive ? 'present' : hasOpen ? 'unknown' : 'ended';
+        const status: AttendanceDay["status"] = openAndLive
+          ? "present"
+          : hasOpen
+            ? "unknown"
+            : "ended";
         const lastActivityAt = dailyTotals.get(day.workDate)?.lastActivityAt ?? null;
 
         // On an `ended` day the last logout is authoritative and activity recorded after it is the
@@ -314,10 +337,10 @@ export class ReportService {
         // saw - taking the logout alone would report a day as ending before work it has already
         // counted.
         const endedAt =
-          status === 'present'
+          status === "present"
             ? new Date(now)
-            : status === 'unknown'
-              ? latest(day.lastLogout, lastActivityAt) ?? day.firstLogin
+            : status === "unknown"
+              ? (latest(day.lastLogout, lastActivityAt) ?? day.firstLogin)
               : (day.lastLogout ?? lastActivityAt ?? day.firstLogin);
 
         const elapsedMs = endedAt.getTime() - day.firstLogin.getTime();
@@ -338,9 +361,9 @@ export class ReportService {
     const today = startOfUtcDay(new Date());
 
     const [totals, employees, onlineDevices, todaysAttendance, openAlerts] = await Promise.all([
-      this.totalsByEmployee(start, end),
+      this.totalsByEmployee(start, end, undefined, true),
       prisma.employee.findMany({
-        where: { status: { not: 'placeholder' } },
+        where: { status: { not: "placeholder" } },
         select: { id: true, name: true, department: true },
       }),
       prisma.device.count({ where: { isActive: true, lastSeen: { gte: onlineSince } } }),
@@ -348,7 +371,7 @@ export class ReportService {
         where: { workDate: today },
         select: { userSid: true, loginTime: true, logoutTime: true, deviceId: true },
       }),
-      prisma.alert.count({ where: { resolvedAt: null, severity: { in: ['High', 'Critical'] } } }),
+      prisma.alert.count({ where: { resolvedAt: null, severity: { in: ["High", "Critical"] } } }),
     ]);
 
     const team = emptyTotals();
@@ -373,7 +396,7 @@ export class ReportService {
       attendanceToday: {
         checkedIn: new Set(todaysAttendance.map((a) => a.userSid)).size,
         stillActive: new Set(
-          todaysAttendance.filter((a) => a.logoutTime === null).map((a) => a.userSid)
+          todaysAttendance.filter((a) => a.logoutTime === null).map((a) => a.userSid),
         ).size,
       },
       totals: { ...team, productivityPercent: productivityPercent(team) },
@@ -386,10 +409,10 @@ export class ReportService {
     const onlineSince = new Date(Date.now() - ONLINE_WINDOW_MS);
 
     const [totals, employees] = await Promise.all([
-      this.totalsByEmployee(start, end),
+      this.totalsByEmployee(start, end, undefined, true),
       prisma.employee.findMany({
-        where: { status: { not: 'placeholder' } },
-        orderBy: { name: 'asc' },
+        where: { status: { not: "placeholder" } },
+        orderBy: { name: "asc" },
         select: {
           id: true,
           name: true,
@@ -446,11 +469,12 @@ export class ReportService {
         devices: { select: { id: true, deviceName: true, lastSeen: true, agentVersion: true } },
       },
     });
-    if (!employee) throw { statusCode: 404, message: 'Employee not found' };
+    if (!employee) throw { statusCode: 404, message: "Employee not found" };
 
-    const { start, end } = startDate || endDate
-      ? resolveRange(startDate, endDate)
-      : { start: startOfUtcDay(new Date()), end: new Date() };
+    const { start, end } =
+      startDate || endDate
+        ? resolveRange(startDate, endDate)
+        : { start: startOfUtcDay(new Date()), end: new Date() };
 
     const deviceIds = employee.devices.map((d) => d.id);
     if (deviceIds.length === 0) {
@@ -469,45 +493,46 @@ export class ReportService {
     const deviceScope = { deviceId: { in: deviceIds } };
     const inRange = { ...deviceScope, startTime: { gte: start, lte: end } };
 
-    const [totalsByEmployee, dailyTotals, timeline, appGroups, domainGroups, attendance] = await Promise.all([
-      // Totals come from the rollup, not from the timeline page. Deriving them from whatever
-      // rows happened to be on screen is how a "productivity %" silently becomes "productivity %
-      // of the first fifty rows".
-      this.totalsByEmployee(start, end, [employeeId]),
-      this.dailyTotals(start, end, employeeId),
-      this.getActivityLog(employeeId, { startDate, endDate }),
-      prisma.activitySession.groupBy({
-        by: ['appName', 'productivityTag'],
-        where: { ...inRange, type: ActivityType.Application },
-        _sum: { durationSeconds: true },
-        orderBy: { _sum: { durationSeconds: 'desc' } },
-        take: TOP_LIST_SIZE,
-      }),
-      prisma.browserActivity.groupBy({
-        by: ['domain', 'productivityTag'],
-        where: inRange,
-        _sum: { durationSeconds: true },
-        orderBy: { _sum: { durationSeconds: 'desc' } },
-        take: TOP_LIST_SIZE,
-      }),
-      prisma.attendanceSession.findMany({
-        where: { ...deviceScope, loginTime: { gte: start, lte: end } },
-        orderBy: { loginTime: 'asc' },
-        select: {
-          sessionId: true,
-          loginTime: true,
-          logoutTime: true,
-          endReason: true,
-          // Whether the logout was observed by the workstation or inferred by the server after the
-          // machine stopped answering. A payroll figure has to be able to say which it is.
-          logoutSource: true,
-          workDate: true,
-          // Which workstation the session ran on, so an open row can be tested against that
-          // device's liveness rather than reported as presence on its own.
-          deviceId: true,
-        },
-      }),
-    ]);
+    const [totalsByEmployee, dailyTotals, timeline, appGroups, domainGroups, attendance] =
+      await Promise.all([
+        // Totals come from the rollup, not from the timeline page. Deriving them from whatever
+        // rows happened to be on screen is how a "productivity %" silently becomes "productivity %
+        // of the first fifty rows".
+        this.totalsByEmployee(start, end, [employeeId]),
+        this.dailyTotals(start, end, employeeId),
+        this.getActivityLog(employeeId, { startDate, endDate }),
+        prisma.activitySession.groupBy({
+          by: ["appName", "productivityTag"],
+          where: { ...inRange, type: ActivityType.Application },
+          _sum: { durationSeconds: true },
+          orderBy: { _sum: { durationSeconds: "desc" } },
+          take: TOP_LIST_SIZE,
+        }),
+        prisma.browserActivity.groupBy({
+          by: ["domain", "productivityTag"],
+          where: inRange,
+          _sum: { durationSeconds: true },
+          orderBy: { _sum: { durationSeconds: "desc" } },
+          take: TOP_LIST_SIZE,
+        }),
+        prisma.attendanceSession.findMany({
+          where: { ...deviceScope, loginTime: { gte: start, lte: end } },
+          orderBy: { loginTime: "asc" },
+          select: {
+            sessionId: true,
+            loginTime: true,
+            logoutTime: true,
+            endReason: true,
+            // Whether the logout was observed by the workstation or inferred by the server after the
+            // machine stopped answering. A payroll figure has to be able to say which it is.
+            logoutSource: true,
+            workDate: true,
+            // Which workstation the session ran on, so an open row can be tested against that
+            // device's liveness rather than reported as presence on its own.
+            deviceId: true,
+          },
+        }),
+      ]);
 
     const totals = totalsByEmployee.get(employeeId) ?? emptyTotals();
     const lastSeenByDevice = new Map(employee.devices.map((d) => [d.id, d.lastSeen]));
@@ -528,7 +553,12 @@ export class ReportService {
         seconds: g._sum.durationSeconds ?? 0,
       })),
       attendance,
-      attendanceDays: this.summarizeAttendance(attendance, dailyTotals, lastSeenByDevice, Date.now()),
+      attendanceDays: this.summarizeAttendance(
+        attendance,
+        dailyTotals,
+        lastSeenByDevice,
+        Date.now(),
+      ),
     };
   }
 
@@ -550,11 +580,12 @@ export class ReportService {
    */
   async getActivityLog(
     employeeId: string,
-    options: { startDate?: string; endDate?: string; cursor?: string; limit?: number } = {}
+    options: { startDate?: string; endDate?: string; cursor?: string; limit?: number } = {},
   ) {
-    const { start, end } = options.startDate || options.endDate
-      ? resolveRange(options.startDate, options.endDate)
-      : { start: startOfUtcDay(new Date()), end: new Date() };
+    const { start, end } =
+      options.startDate || options.endDate
+        ? resolveRange(options.startDate, options.endDate)
+        : { start: startOfUtcDay(new Date()), end: new Date() };
 
     const organizationId = await currentOrganizationId();
     const pageSize = await resolvePageSize(organizationId, options.limit);
@@ -567,9 +598,9 @@ export class ReportService {
       where: {
         deviceId: { in: devices.map((d) => d.id) },
         startTime: { gte: start, lte: end },
-        ...olderThan('startTime', cursor),
+        ...olderThan("startTime", cursor),
       },
-      orderBy: newestFirst('startTime'),
+      orderBy: newestFirst("startTime"),
       // One extra row, purely to answer "is there more?" without a second COUNT over the same
       // predicate - which on a log table costs as much as the page itself.
       take: pageSize + 1,
@@ -592,7 +623,7 @@ export class ReportService {
 
     const visits = await prisma.browserActivity.findMany({
       where: { activitySessionId: { in: page.rows.map((r) => r.activitySessionId) } },
-      orderBy: { startTime: 'asc' },
+      orderBy: { startTime: "asc" },
       select: {
         id: true,
         activitySessionId: true,
@@ -617,7 +648,10 @@ export class ReportService {
 
     return {
       ...page,
-      rows: page.rows.map((r) => ({ ...r, visits: visitsBySession.get(r.activitySessionId) ?? [] })),
+      rows: page.rows.map((r) => ({
+        ...r,
+        visits: visitsBySession.get(r.activitySessionId) ?? [],
+      })),
     };
   }
 
@@ -630,9 +664,9 @@ export class ReportService {
     const rows = await prisma.alert.findMany({
       where: {
         ...(options.includeResolved ? {} : { resolvedAt: null }),
-        ...olderThan('triggeredAt', cursor),
+        ...olderThan("triggeredAt", cursor),
       },
-      orderBy: newestFirst('triggeredAt'),
+      orderBy: newestFirst("triggeredAt"),
       take: pageSize + 1,
       include: {
         device: { select: { deviceName: true, employee: { select: { id: true, name: true } } } },
@@ -659,7 +693,7 @@ export class ReportService {
       endDate?: string;
       cursor?: string;
       limit?: number;
-    } = {}
+    } = {},
   ) {
     const { start, end } = resolveRange(options.startDate, options.endDate);
 
@@ -671,9 +705,9 @@ export class ReportService {
       where: {
         eventTime: { gte: start, lte: end },
         ...(options.employeeId ? { device: { employeeId: options.employeeId } } : {}),
-        ...olderThan('eventTime', cursor),
+        ...olderThan("eventTime", cursor),
       },
-      orderBy: newestFirst('eventTime'),
+      orderBy: newestFirst("eventTime"),
       take: pageSize + 1,
       include: {
         device: { select: { deviceName: true, employee: { select: { id: true, name: true } } } },
@@ -708,7 +742,7 @@ export class ReportService {
    */
   async getScreenshots(
     employeeId: string,
-    options: { startDate?: string; endDate?: string; cursor?: string; limit?: number } = {}
+    options: { startDate?: string; endDate?: string; cursor?: string; limit?: number } = {},
   ) {
     const { start, end } = resolveRange(options.startDate, options.endDate);
 
@@ -728,9 +762,9 @@ export class ReportService {
       where: {
         deviceId: { in: devices.map((d) => d.id) },
         capturedAt: { gte: start, lte: end },
-        ...olderThan('capturedAt', cursor),
+        ...olderThan("capturedAt", cursor),
       },
-      orderBy: newestFirst('capturedAt'),
+      orderBy: newestFirst("capturedAt"),
       take: pageSize + 1,
       select: {
         id: true,

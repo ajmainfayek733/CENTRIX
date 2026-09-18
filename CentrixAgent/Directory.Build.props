@@ -14,8 +14,8 @@
 
     <!-- Product identity. AgentVersion is reported to the backend on every enrollment and
          shows up in the dashboard's device inventory, so bump it with each release. -->
-    <Version>3.8.3</Version>
-    <AgentVersion>3.8.3</AgentVersion>
+    <Version>3.8.3.1</Version>
+    <AgentVersion>3.8.3.1</AgentVersion>
     <Company>CENTRIX</Company>
     <Product>CENTRIX Agent</Product>
 

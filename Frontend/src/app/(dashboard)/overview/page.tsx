@@ -17,6 +17,8 @@ import {
 } from "@/components/ui";
 import { LiveOnlineTile } from "@/components/LiveOnlineTile";
 import { LiveActiveTimeTile } from "@/components/LiveTotals";
+import { OverviewRangeSelect } from "@/components/OverviewRangeSelect";
+import { isoDate } from "@/lib/format";
 import type { Overview, Roster } from "@/types/api";
 
 export const metadata = { title: "Overview - C E N T R I X" };
@@ -25,13 +27,27 @@ export const metadata = { title: "Overview - C E N T R I X" };
 // "who is online now" - see Docs/frontend/session-and-auth.md.
 export const dynamic = "force-dynamic";
 
-export default async function OverviewPage() {
+export default async function OverviewPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ startDate?: string; endDate?: string }>;
+}) {
+  const params = await searchParams;
+  const today = isoDate(new Date());
+  const startDate = params.startDate ?? today;
+  const endDate = params.endDate ?? today;
+  const query = new URLSearchParams({ startDate, endDate });
+  const suffix = `?${query}`;
+
   const [overview, roster] = await Promise.all([
-    apiGet<Overview>("/v1/dashboard/reports/overview"),
-    apiGet<Roster>("/v1/dashboard/reports/roster"),
+    apiGet<Overview>(`/v1/dashboard/reports/overview${suffix}`),
+    apiGet<Roster>(`/v1/dashboard/reports/roster${suffix}`),
   ]);
 
   const { totals } = overview;
+  const isToday = startDate === today && endDate === today;
+  const selectedDays = Math.round((Date.parse(endDate) - Date.parse(startDate)) / 86_400_000) + 1;
+  const rangeLabel = isToday ? "Today" : selectedDays === 7 ? "Last 7 days" : "Last 15 days";
 
   // Busiest first: on a 30-person team the useful question is who is at the extremes, and the
   // full sortable list is one click away on /employees.
@@ -43,7 +59,8 @@ export default async function OverviewPage() {
     <div>
       <PageHeader
         title="Overview"
-        subtitle={`Last 7 days - ${overview.employeesTracked} of ${overview.headcount} employees reporting`}
+        subtitle={`${rangeLabel}${isToday ? "" : " average per day"} - ${overview.employeesTracked} of ${overview.headcount} employees reporting`}
+        action={<OverviewRangeSelect startDate={startDate} endDate={endDate} />}
       />
 
       <div className="mb-3.5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -112,7 +129,7 @@ export default async function OverviewPage() {
           <EmptyState message="No activity recorded yet. Once an agent enrolls and an employee signs in, their time appears here." />
         ) : (
           <TableWrap>
-            <table className={`${TABLE_CLASS} min-w-[620px]`}>
+            <table className={`${TABLE_CLASS} min-w-155`}>
               <thead>
                 <tr>
                   <Th>Employee</Th>
