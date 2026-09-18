@@ -38,6 +38,40 @@ internal static partial class NativeMethods
         return copied > 0 ? buffer.ToString() : string.Empty;
     }
 
+    // -- Accessibility event hooks ------------------------------------------
+
+    /// <summary>
+    /// Raised when the foreground window changes. An out-of-context hook delivers callbacks on
+    /// the registering thread's message loop, so the host registers it on WPF's UI thread and
+    /// does no collection work in the callback itself.
+    /// </summary>
+    internal const uint EVENT_SYSTEM_FOREGROUND = 0x0003;
+    internal const uint WINEVENT_OUTOFCONTEXT = 0x0000;
+    internal const uint WINEVENT_SKIPOWNPROCESS = 0x0002;
+
+    internal delegate void WinEventProc(
+        IntPtr hook,
+        uint eventType,
+        IntPtr windowHandle,
+        int objectId,
+        int childId,
+        uint eventThreadId,
+        uint eventTime);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern IntPtr SetWinEventHook(
+        uint eventMin,
+        uint eventMax,
+        IntPtr module,
+        WinEventProc callback,
+        uint processId,
+        uint threadId,
+        uint flags);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool UnhookWinEvent(IntPtr hook);
+
     // -- Process identity ----------------------------------------------------
 
     /// <summary>

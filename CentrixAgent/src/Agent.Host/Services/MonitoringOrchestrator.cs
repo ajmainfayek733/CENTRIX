@@ -97,6 +97,13 @@ public sealed class MonitoringOrchestrator(
     /// </summary>
     private readonly SemaphoreSlim _stateGate = new(1, 1);
 
+    /// <summary>
+    /// Coalesces foreground-change callbacks until the monitor consumes them. A foreground event
+    /// wakes the loop immediately; ordinary polling remains the recovery path when Windows or a
+    /// third-party window fails to issue an event.
+    /// </summary>
+    private readonly SemaphoreSlim _foregroundChanged = new(0, 1);
+
     private ActivitySegment? _current;
     private BrowserSegment? _currentVisit;
 
@@ -226,6 +233,7 @@ public sealed class MonitoringOrchestrator(
         _sessionEvents.SessionSuspended += OnSessionSuspended;
         _sessionEvents.SessionResumed += OnSessionResumed;
         _sessionEvents.SessionEndConfirmed += OnSessionEndConfirmed;
+        _foreground.ForegroundChanged += OnForegroundChanged;
 
         _ipc.ScreenshotRequested += () => _ = CaptureScreenshotAsync(CancellationToken.None);
 
@@ -273,7 +281,15 @@ public sealed class MonitoringOrchestrator(
 
             try
             {
-                await Task.Delay(remaining, stoppingToken).ConfigureAwait(false);
+                // SetWinEventHook signals this semaphore when focus changes. A foreground
+                // boundary is therefore processed promptly instead of waiting for the next poll;
+                // the delay still provides recovery when an event is absent.
+                using var waitCancellation = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                var foregroundSignal = _foregroundChanged.WaitAsync(waitCancellation.Token);
+                await Task.WhenAny(
+                    Task.Delay(remaining, stoppingToken),
+                    foregroundSignal).ConfigureAwait(false);
+                waitCancellation.Cancel();
             }
             catch (OperationCanceledException)
             {
@@ -384,6 +400,20 @@ public sealed class MonitoringOrchestrator(
         finally
         {
             _stateGate.Release();
+        }
+    }
+
+    private void OnForegroundChanged()
+    {
+        try
+        {
+            _foregroundChanged.Release();
+        }
+        catch (SemaphoreFullException)
+        {
+            // Several focus changes can arrive before the monitor has processed the first one.
+            // One immediate reconciliation sees the final foreground window, so extra signals add
+            // no precision and must not turn a callback into an exception path.
         }
     }
 
@@ -1029,10 +1059,12 @@ public sealed class MonitoringOrchestrator(
 
     public override void Dispose()
     {
+        _foreground.ForegroundChanged -= OnForegroundChanged;
         _sessionEvents.SessionSuspended -= OnSessionSuspended;
         _sessionEvents.SessionResumed -= OnSessionResumed;
         _sessionEvents.SessionEndConfirmed -= OnSessionEndConfirmed;
         _stateGate.Dispose();
+        _foregroundChanged.Dispose();
         _screenshotGate.Dispose();
         base.Dispose();
     }

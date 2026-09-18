@@ -41,9 +41,9 @@ public sealed record ForegroundSnapshot
 ///      per process instance, and the friendly name once per executable, because neither can
 ///      change while a process is alive.
 /// </summary>
-public sealed class ForegroundWindowTracker(ILogger<ForegroundWindowTracker> logger)
+public sealed class ForegroundWindowTracker : IDisposable
 {
-    private readonly ILogger<ForegroundWindowTracker> _logger = logger;
+    private readonly ILogger<ForegroundWindowTracker> _logger;
 
     /// <summary>
     /// Process names we can extract a URL from. Matched case-insensitively against the process
@@ -90,6 +90,66 @@ public sealed class ForegroundWindowTracker(ILogger<ForegroundWindowTracker> log
     private uint _lastPid;
     private ProcessIdentity _lastIdentity;
     private string? _lastDescription;
+
+    // The delegate is retained for exactly as long as Windows may call it. Passing an unrooted
+    // managed delegate to SetWinEventHook permits the GC to collect it, after which Windows can
+    // call a stale function pointer and terminate the host.
+    private readonly NativeMethods.WinEventProc _foregroundChangedCallback;
+    private IntPtr _foregroundChangedHook;
+    private bool _disposed;
+
+    /// <summary>
+    /// Raised immediately after Windows reports a foreground-window transition. Subscribers must
+    /// only signal work: WinEvent callbacks run on the WPF dispatcher and must remain reentrancy-
+    /// safe and non-blocking.
+    /// </summary>
+    public event Action? ForegroundChanged;
+
+    public ForegroundWindowTracker(ILogger<ForegroundWindowTracker> logger)
+    {
+        _logger = logger;
+        _foregroundChangedCallback = OnWinEvent;
+    }
+
+    /// <summary>
+    /// Starts foreground change notifications on the caller's message-loop thread. The WPF app
+    /// calls this during startup, before the background monitoring worker starts.
+    /// </summary>
+    public void Start()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_foregroundChangedHook != IntPtr.Zero) return;
+
+        _foregroundChangedHook = NativeMethods.SetWinEventHook(
+            NativeMethods.EVENT_SYSTEM_FOREGROUND,
+            NativeMethods.EVENT_SYSTEM_FOREGROUND,
+            IntPtr.Zero,
+            _foregroundChangedCallback,
+            processId: 0,
+            threadId: 0,
+            NativeMethods.WINEVENT_OUTOFCONTEXT | NativeMethods.WINEVENT_SKIPOWNPROCESS);
+
+        if (_foregroundChangedHook == IntPtr.Zero)
+        {
+            _logger.LogWarning("Could not register the foreground-window event hook; polling remains active");
+            return;
+        }
+
+        _logger.LogInformation("Foreground-window event hook started");
+    }
+
+    private void OnWinEvent(
+        IntPtr hook,
+        uint eventType,
+        IntPtr windowHandle,
+        int objectId,
+        int childId,
+        uint eventThreadId,
+        uint eventTime)
+    {
+        if (_disposed || eventType != NativeMethods.EVENT_SYSTEM_FOREGROUND) return;
+        ForegroundChanged?.Invoke();
+    }
 
     public static Agent.Core.Contracts.BrowserKind ClassifyBrowser(string? processName) =>
         processName is not null && KnownBrowsers.TryGetValue(processName, out var kind)
@@ -202,5 +262,21 @@ public sealed class ForegroundWindowTracker(ILogger<ForegroundWindowTracker> log
         _descriptionCache[path] = description;
 
         return description;
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        if (_foregroundChangedHook != IntPtr.Zero)
+        {
+            if (!NativeMethods.UnhookWinEvent(_foregroundChangedHook))
+            {
+                _logger.LogDebug("Could not remove the foreground-window event hook");
+            }
+
+            _foregroundChangedHook = IntPtr.Zero;
+        }
     }
 }

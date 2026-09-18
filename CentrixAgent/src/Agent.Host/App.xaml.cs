@@ -66,6 +66,7 @@ public partial class App : System.Windows.Application
         // Input hooks must be installed from a thread with a message pump, which is this one.
         // Installing them from a background worker yields hooks that never fire.
         _host.Services.GetRequiredService<InputCounter>().Start();
+        _host.Services.GetRequiredService<ForegroundWindowTracker>().Start();
 
         _connectCts = new CancellationTokenSource();
         _ = ConnectLoopAsync(_connectCts.Token);
@@ -145,6 +146,7 @@ public partial class App : System.Windows.Application
         _tray?.Dispose();
 
         _host?.Services.GetService<InputCounter>()?.Dispose();
+        _host?.Services.GetService<ForegroundWindowTracker>()?.Dispose();
         _host?.Services.GetService<SessionEventMonitor>()?.Dispose();
         _host?.Services.GetService<BrowserUrlExtractor>()?.Dispose();
 
