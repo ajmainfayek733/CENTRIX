@@ -327,19 +327,22 @@ public sealed class BackendClient(
     /// reach the same conclusion - at exactly the moment a fleet is replaying a backlog and can
     /// least afford it.
     ///
-    /// Hashing the sorted event ids means the same set of events always produces the same batch
-    /// id, whichever order the queue handed them over, so the server can answer from its ledger.
+    /// Hashing the sorted serialized events means the same snapshot is always recognized on retry,
+    /// whichever order the queue handed it over. This must include the payload, not only the event
+    /// ids: attendance reuses its client event id while its revision and totals change over time.
+    /// If only ids were hashed, a newer attendance snapshot would be incorrectly treated as a
+    /// replay and would never reach the server's revision-aware upsert.
     ///
     /// The digest is shaped into an RFC 4122 version-5 UUID because the server validates the
     /// field as a uuid; the version and variant nibbles are not decoration.
     /// </summary>
     private static Guid DeterministicBatchId<T>(IEnumerable<T> events) where T : ITelemetryEvent
     {
-        var ids = events
-            .Select(e => e.ClientEventId.ToString("D"))
-            .OrderBy(id => id, StringComparer.Ordinal);
+        var payloads = events
+            .Select(AgentJson.Serialize)
+            .OrderBy(payload => payload, StringComparer.Ordinal);
 
-        var digest = SHA256.HashData(Encoding.UTF8.GetBytes(string.Join(",", ids)));
+        var digest = SHA256.HashData(Encoding.UTF8.GetBytes(string.Join(",", payloads)));
 
         Span<byte> uuid = stackalloc byte[16];
         digest.AsSpan(0, 16).CopyTo(uuid);

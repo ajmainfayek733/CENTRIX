@@ -50,12 +50,14 @@ export class IngestController {
   async pushEvents(req: DeviceAuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       const channel = req.params.channel as Channel;
+      if (channel === "activity-session") console.log(req.body);
       const { acknowledged, replay } = await ingestService.pushEvents(
         req.device!,
         channel,
         req.body.batchId,
         req.body.events,
       );
+      if (channel === "activity-session") console.log(acknowledged, replay);
       return res.status(200).json({ acknowledgedEventIds: acknowledged, replay });
     } catch (error) {
       next(error);
