@@ -492,6 +492,42 @@ public sealed class TelemetryQueue(LocalStore store, ILogger<TelemetryQueue> log
         transaction.Commit();
     }
 
+    /// <summary>
+    /// Marks an attendance snapshot sent only when the row is still the exact revision that was
+    /// uploaded. A host write can close a session while its earlier open snapshot is in flight;
+    /// accepting that older acknowledgement must not mark the unsent logout revision delivered.
+    /// </summary>
+    public void MarkAttendanceSent(IReadOnlyCollection<AttendanceEvent> sentEvents,
+        IReadOnlyCollection<Guid> acknowledgedClientEventIds)
+    {
+        if (sentEvents.Count == 0 || acknowledgedClientEventIds.Count == 0) return;
+
+        var acknowledged = acknowledgedClientEventIds.ToHashSet();
+
+        using var connection = _store.Open();
+        using var transaction = connection.BeginTransaction();
+
+        foreach (var sentEvent in sentEvents)
+        {
+            if (!acknowledged.Contains(sentEvent.ClientEventId)) continue;
+
+            using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = """
+                UPDATE attendance_sessions
+                SET sent_utc = $now
+                WHERE client_event_id = $clientEventId
+                  AND revision = $revision;
+                """;
+            command.Parameters.AddWithValue("$now", SqlTime.Now());
+            command.Parameters.AddWithValue("$clientEventId", sentEvent.ClientEventId.ToString());
+            command.Parameters.AddWithValue("$revision", sentEvent.Revision);
+            command.ExecuteNonQuery();
+        }
+
+        transaction.Commit();
+    }
+
     public void MarkScreenshotSent(Guid clientEventId)
     {
         using var connection = _store.Open();

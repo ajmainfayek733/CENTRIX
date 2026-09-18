@@ -138,7 +138,17 @@ public sealed class SyncWorker(
         // resent verbatim; the server deduplicates on the client event id.
         if (result.Acknowledged.Count > 0)
         {
-            _queue.MarkSent(channel, result.Acknowledged);
+            if (channel == TelemetryChannel.Attendance)
+            {
+                // Attendance is mutable until logout. Match the acknowledgement to the exact
+                // revision sent so a final logout written while this request was in flight stays
+                // pending rather than being swept as though the older snapshot included it.
+                _queue.MarkAttendanceSent(events.Cast<AttendanceEvent>().ToList(), result.Acknowledged);
+            }
+            else
+            {
+                _queue.MarkSent(channel, result.Acknowledged);
+            }
             _logger.LogInformation("Synced {Acked}/{Total} {Channel} event(s)",
                 result.Acknowledged.Count, events.Count, channel);
         }
