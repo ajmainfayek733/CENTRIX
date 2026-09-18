@@ -26,6 +26,9 @@ public static class AgentPaths
     /// <summary>Screenshots staged here until they upload, then deleted.</summary>
     public static string ScreenshotSpoolDirectory => Path.Combine(RootDirectory, "screenshots");
 
+    /// <summary>Host-side backlog for IPC messages that could not be sent while the service pipe was down.</summary>
+    public static string HostIpcQueuePath => Path.Combine(RootDirectory, "host-ipc-queue.jsonl");
+
     public static string LogDirectory => Path.Combine(RootDirectory, "logs");
 
     /// <summary>

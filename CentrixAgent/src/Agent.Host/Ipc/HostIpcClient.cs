@@ -12,21 +12,21 @@ namespace Agent.Host.Ipc;
 /// <summary>
 /// The host's connection to the service.
 ///
-/// Everything the host observes is sent here; nothing is written to disk or uploaded from this
-/// process. If the pipe is down, submissions are dropped rather than buffered in the host: the
-/// service owns the durable queue, and duplicating that here would mean two stores that can
-/// disagree. A dropped submission costs at most one polling interval of data, because the
-/// service is restarted by the SCM far faster than a session lasts.
+/// Observations move here first; they are persisted locally if the service pipe is unavailable so
+/// a brief disconnect does not silently lose a boundary or browser segment. The service still owns
+/// the durable backend store and upload queue; this is only the per-host replay buffer.
 /// </summary>
 public sealed class HostIpcClient(ILogger<HostIpcClient> logger) : IAsyncDisposable
 {
     private readonly ILogger<HostIpcClient> _logger = logger;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
+    private readonly HostMessageQueue _pendingMessages = new();
 
     private NamedPipeClientStream? _pipe;
     private CancellationTokenSource? _readerCts;
 
     public bool IsConnected => _pipe?.IsConnected == true;
+    public int PendingMessageCount => _pendingMessages.PendingCount;
 
     /// <summary>Latest policy pushed by the service. Starts at Features.md defaults.</summary>
     public AgentPolicy Policy { get; private set; } = new();
@@ -75,6 +75,8 @@ public sealed class HostIpcClient(ILogger<HostIpcClient> logger) : IAsyncDisposa
 
             _readerCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             _ = Task.Run(() => ReadLoopAsync(_readerCts.Token), _readerCts.Token);
+
+            await FlushPendingMessagesAsync(ct).ConfigureAwait(false);
 
             ConnectionStateChanged?.Invoke(true);
             _logger.LogInformation("Connected to the agent service");
@@ -144,7 +146,10 @@ public sealed class HostIpcClient(ILogger<HostIpcClient> logger) : IAsyncDisposa
     /// </summary>
     public async Task<bool> SendAsync(IpcMessage message, CancellationToken ct = default)
     {
-        if (_pipe is not { IsConnected: true }) return false;
+        if (_pipe is not { IsConnected: true })
+        {
+            return await TryPersistAsync(message, ct).ConfigureAwait(false);
+        }
 
         await _writeLock.WaitAsync(ct).ConfigureAwait(false);
         try
@@ -154,9 +159,58 @@ public sealed class HostIpcClient(ILogger<HostIpcClient> logger) : IAsyncDisposa
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException)
         {
-            _logger.LogWarning(ex, "Lost the connection to the agent service");
+            _logger.LogWarning(ex, "Lost the connection to the agent service; message will be queued for retry");
             ConnectionStateChanged?.Invoke(false);
-            return false;
+            return await TryPersistAsync(message, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    internal async Task<bool> TryPersistAsync(IpcMessage message, CancellationToken ct = default)
+    {
+        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            _pendingMessages.Enqueue(message);
+            _logger.LogWarning("Queued IPC message {Type} because the service pipe is unavailable", message.GetType().Name);
+            return true;
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    private async Task FlushPendingMessagesAsync(CancellationToken ct)
+    {
+        var pending = _pendingMessages.DequeueAll();
+        if (pending.Count == 0) return;
+
+        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (_pipe is not { IsConnected: true })
+            {
+                _pendingMessages.EnqueueRange(pending);
+                return;
+            }
+
+            foreach (var message in pending)
+            {
+                try
+                {
+                    await IpcChannel.WriteMessageAsync(_pipe, message, ct).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+                {
+                    _logger.LogWarning(ex, "Could not replay queued IPC message {Type}; it remains queued", message.GetType().Name);
+                    _pendingMessages.EnqueueRange(pending.SkipWhile(m => !ReferenceEquals(m, message)));
+                    return;
+                }
+            }
         }
         finally
         {
