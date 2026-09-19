@@ -1,28 +1,31 @@
-import { z } from 'zod';
-import dotenv from 'dotenv';
+import { z } from "zod";
+import dotenv from "dotenv";
 
 // quiet: dotenv prints a randomized promotional "tip" line on every load otherwise (harmless,
 // just log noise - see dotenv's own lib/main.js TIPS array).
 dotenv.config({ quiet: true });
 
 const envSchema = z.object({
-  PORT: z.string().default('5000').transform((val) => parseInt(val, 10)),
-  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
-  BETTER_AUTH_SECRET: z.string().min(16, 'BETTER_AUTH_SECRET must be at least 16 characters'),
-  BETTER_AUTH_URL: z.string().url().default('http://localhost:3000'),
-  FRONTEND_URL: z.string().url().default('http://localhost:3000'),
+  PORT: z
+    .string()
+    .default("5000")
+    .transform((val) => parseInt(val, 10)),
+  NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+  DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+  BETTER_AUTH_SECRET: z.string().min(16, "BETTER_AUTH_SECRET must be at least 16 characters"),
+  BETTER_AUTH_URL: z.string().url().default("http://localhost:3000"),
+  FRONTEND_URL: z.string().url().default("http://localhost:3000"),
   // Pepper for hashing Agent device API keys (HMAC-SHA256). Required in production - a default
   // is provided only so local dev works out of the box; never rely on it beyond that.
-  DEVICE_TOKEN_PEPPER: z.string().min(16).default('dev-only-device-token-pepper-change-me'),
+  DEVICE_TOKEN_PEPPER: z.string().min(16).default("dev-only-device-token-pepper-change-me"),
   // Local filesystem root for uploaded screenshots (spec section 6). Swap for blob storage (S3/Azure
   // Blob) behind the same ScreenshotStorage interface if volume grows beyond the ~30-device
   // deployment this was built for (spec section 7.1).
-  SCREENSHOT_STORAGE_DIR: z.string().default('./storage/screenshots'),
+  SCREENSHOT_STORAGE_DIR: z.string().default("./storage/screenshots"),
   // Base URL used to build the `remoteUri` returned from POST /api/v1/screenshots. The Agent
   // only logs this value locally - it is never read back - so it does not need to be publicly
   // resolvable, just stable.
-  PUBLIC_BASE_URL: z.string().url().default('http://localhost:5000'),
+  PUBLIC_BASE_URL: z.string().url().default("http://localhost:5000"),
   // Maximum JSON request body. Express defaults to 100kb, which a legitimate agent batch
   // exceeds: 500 activity sessions carrying window titles and executable paths is comfortably
   // over that, and the agent saw 413s in normal operation.
@@ -30,7 +33,7 @@ const envSchema = z.object({
   // This is the *ceiling*. The agent packs each request to stay under its own smaller budget
   // (BackendClient.MaxRequestBytes), so the headroom between the two absorbs the difference
   // between the agent's estimate and the exact encoded size.
-  JSON_BODY_LIMIT: z.string().default('2mb'),
+  JSON_BODY_LIMIT: z.string().default("2mb"),
 
   // -- Deployment topology ---------------------------------------------------
   // How many reverse proxies sit in front of this server, or a value Express's `trust proxy`
@@ -40,7 +43,7 @@ const envSchema = z.object({
   // so per-IP limits apply to the whole world at once. Set too high - or 'true' with no proxy -
   // and clients can forge x-forwarded-for to dodge those limits. Default 'false' is the safe
   // end: direct exposure, header ignored.
-  TRUST_PROXY: z.string().default('false'),
+  TRUST_PROXY: z.string().default("false"),
 
   // -- Rate limits -----------------------------------------------------------
   // Enrollment mints a credential, so it stays tight - but it is keyed per MachineGuid, not per
@@ -90,9 +93,9 @@ const envSchema = z.object({
   // The jobs are safe to leave on everywhere regardless: each takes a Postgres advisory lock,
   // so only one instance sweeps at a time.
   MAINTENANCE_JOBS_ENABLED: z
-    .enum(['true', 'false'])
-    .default('true')
-    .transform((value) => value === 'true'),
+    .enum(["true", "false"])
+    .default("true")
+    .transform((value) => value === "true"),
 
   // -- Attendance closure ----------------------------------------------------
   // How often the server looks for attendance sessions nothing is ever going to close. Well
@@ -111,6 +114,9 @@ const envSchema = z.object({
   // therefore waits several times longer before inferring anything, and what it writes stays
   // correctable: `logoutSource = Server` lets the agent's own report overwrite it later.
   ATTENDANCE_ABANDON_AFTER_SECONDS: z.coerce.number().int().positive().default(2_700),
+
+  BROWSER_SUMMARY_JOB_INTERVAL_SECONDS: z.coerce.number().int().positive().default(60),
+  BROWSER_SUMMARY_JOB_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
 
   // Hard ceiling on how long any attendance session may stay open, however healthy the device
   // looks. A row this old is a bug or a missed rotation, not a shift - and left alone it
@@ -135,14 +141,19 @@ const envSchema = z.object({
 const _env = envSchema.safeParse(process.env);
 
 if (!_env.success) {
-  console.error('X Invalid environment variables:', _env.error.format());
-  throw new Error('Invalid environment configuration');
+  console.error("X Invalid environment variables:", _env.error.format());
+  throw new Error("Invalid environment configuration");
 }
 
 export const env = _env.data;
 
 // The schema default exists only so local dev works without a .env file. Shipping it in
 // production would let anyone forge a device API key hash offline, so fail closed instead.
-if (env.NODE_ENV === 'production' && env.DEVICE_TOKEN_PEPPER === 'dev-only-device-token-pepper-change-me') {
-  throw new Error('DEVICE_TOKEN_PEPPER must be set to a unique secret in production (see .env.example)');
+if (
+  env.NODE_ENV === "production" &&
+  env.DEVICE_TOKEN_PEPPER === "dev-only-device-token-pepper-change-me"
+) {
+  throw new Error(
+    "DEVICE_TOKEN_PEPPER must be set to a unique secret in production (see .env.example)",
+  );
 }

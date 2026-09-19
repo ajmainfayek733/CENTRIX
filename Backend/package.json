@@ -8,7 +8,8 @@
     "start": "node dist/server.js",
     "migrate:deploy": "prisma migrate deploy",
     "test": "tsx scripts/smoke.ts",
-    "seed": "tsx scripts/seed.ts"
+    "seed": "tsx scripts/seed.ts",
+    "aggregate:browser": "tsx scripts/aggregate-browser-history.ts"
   },
   "dependencies": {
     "@better-auth/prisma-adapter": "^1.6.23",

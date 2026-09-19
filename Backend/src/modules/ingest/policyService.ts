@@ -1,5 +1,5 @@
-import { Policy } from '@prisma/client';
-import { prisma } from '../../config/db';
+import { Policy } from "@prisma/client";
+import { prisma } from "../../config/db";
 
 /**
  * Policy is stored as one typed row per organization (see the Policy model). This module maps
@@ -25,6 +25,7 @@ export interface AgentPolicyDto {
     maxRetryAttempts: number;
     urlRefreshSeconds: number;
   };
+  browserSummaryScheduleTimeLocal: string;
   screenshot: { enabled: boolean; intervalSeconds: number; jpegQuality: number };
   usb: { enabled: boolean; reconciliationIntervalSeconds: number; alertOnInsertion: boolean };
   alert: {
@@ -60,12 +61,17 @@ export interface AgentPolicyDto {
   workingHours: { startLocal: string; endLocal: string; workingDays: string[] };
   /// Blacklist and productivity rules, flattened from the categories table so the agent can
   /// raise a local notification without a round trip.
-  categories: Array<{ pattern: string; target: 'Application' | 'Domain'; tag: string; isBlacklisted: boolean }>;
+  categories: Array<{
+    pattern: string;
+    target: "Application" | "Domain";
+    tag: string;
+    isBlacklisted: boolean;
+  }>;
 }
 
 export function toAgentPolicy(
   policy: Policy,
-  categories: AgentPolicyDto['categories']
+  categories: AgentPolicyDto["categories"],
 ): AgentPolicyDto {
   return {
     version: policy.version,
@@ -84,6 +90,7 @@ export function toAgentPolicy(
       maxRetryAttempts: policy.browserMaxRetryAttempts,
       urlRefreshSeconds: policy.browserUrlRefreshSeconds,
     },
+    browserSummaryScheduleTimeLocal: policy.browserSummaryScheduleTimeLocal,
     screenshot: {
       enabled: policy.screenshotEnabled,
       intervalSeconds: policy.screenshotIntervalSeconds,
@@ -145,7 +152,7 @@ export async function getOrCreatePolicy(organizationId: string): Promise<AgentPo
     prisma.category.findMany({
       where: { organizationId },
       select: { pattern: true, target: true, tag: true, isBlacklisted: true },
-      orderBy: { pattern: 'asc' },
+      orderBy: { pattern: "asc" },
     }),
   ]);
 

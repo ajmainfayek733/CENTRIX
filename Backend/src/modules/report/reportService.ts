@@ -1,4 +1,4 @@
-import { ActivityType, LogoutSource } from "@prisma/client";
+import { ActivityType, LogoutSource, ProductivityTag } from "@prisma/client";
 import { prisma } from "../../config/db";
 import { currentOrganizationId } from "../../config/tenant";
 import {
@@ -33,6 +33,69 @@ import {
  * while an agent syncs happily over HTTP, so it answers a different question entirely.
  */
 const ONLINE_WINDOW_MS = 5 * 60 * 1000;
+
+function dominantProductivityTag(seconds: {
+  productiveSeconds: number | null;
+  unproductiveSeconds: number | null;
+  neutralSeconds: number | null;
+  blacklistedSeconds: number | null;
+}) {
+  const values = [
+    ["Productive", seconds.productiveSeconds ?? 0],
+    ["Unproductive", seconds.unproductiveSeconds ?? 0],
+    ["Blacklisted", seconds.blacklistedSeconds ?? 0],
+    ["Neutral", seconds.neutralSeconds ?? 0],
+  ] as const;
+  return values.reduce((best, current) => (current[1] > best[1] ? current : best))[0] as
+    | "Productive"
+    | "Unproductive"
+    | "Blacklisted"
+    | "Neutral";
+}
+
+interface BrowserDomainTotals {
+  domain: string;
+  durationSeconds: number;
+  productiveSeconds: number;
+  unproductiveSeconds: number;
+  neutralSeconds: number;
+  blacklistedSeconds: number;
+}
+
+function emptyBrowserDomain(domain: string): BrowserDomainTotals {
+  return {
+    domain,
+    durationSeconds: 0,
+    productiveSeconds: 0,
+    unproductiveSeconds: 0,
+    neutralSeconds: 0,
+    blacklistedSeconds: 0,
+  };
+}
+
+function addBrowserDomain(
+  totals: Map<string, BrowserDomainTotals>,
+  domain: string,
+  tag: ProductivityTag,
+  seconds: number,
+) {
+  const row = totals.get(domain) ?? emptyBrowserDomain(domain);
+  row.durationSeconds += seconds;
+  switch (tag) {
+    case ProductivityTag.Productive:
+      row.productiveSeconds += seconds;
+      break;
+    case ProductivityTag.Unproductive:
+      row.unproductiveSeconds += seconds;
+      break;
+    case ProductivityTag.Blacklisted:
+      row.blacklistedSeconds += seconds;
+      break;
+    default:
+      row.neutralSeconds += seconds;
+  }
+  totals.set(domain, row);
+}
 
 /** How many apps/domains the "top" lists show. Not a page - a fixed leaderboard. */
 const TOP_LIST_SIZE = 15;
@@ -165,6 +228,76 @@ interface AttendanceDay {
 }
 
 export class ReportService {
+  private async getBrowserDomainGroups(
+    employeeId: string,
+    deviceIds: string[],
+    start: Date,
+    end: Date,
+  ): Promise<BrowserDomainTotals[]> {
+    const today = startOfUtcDay(new Date());
+    const startDay = startOfUtcDay(start);
+    const endDay = startOfUtcDay(end);
+    const singleDay = startDay.getTime() === endDay.getTime();
+    const totals = new Map<string, BrowserDomainTotals>();
+
+    // A one-day request is an audit view, so it always reads the immutable visit log. For a range,
+    // only the current day remains raw; completed days come from the bounded daily summary.
+    const rawStart = singleDay ? start : startDay >= today ? start : today;
+    const rawEnd = singleDay ? end : end;
+    const hasRawRange = rawStart <= rawEnd;
+    const summaryEnd = new Date(Math.min(endDay.getTime(), today.getTime() - 24 * 60 * 60 * 1000));
+    const hasSummaryRange = !singleDay && startDay <= summaryEnd;
+
+    const [rawGroups, summaryGroups] = await Promise.all([
+      hasRawRange
+        ? prisma.browserActivity.groupBy({
+            by: ["domain", "productivityTag"],
+            where: { deviceId: { in: deviceIds }, startTime: { gte: rawStart, lte: rawEnd } },
+            _sum: { durationSeconds: true },
+          })
+        : Promise.resolve([]),
+      hasSummaryRange
+        ? prisma.browserDailySummary.groupBy({
+            by: ["domain"],
+            where: {
+              employeeId,
+              workDate: { gte: startDay, lte: summaryEnd },
+            },
+            _sum: {
+              durationSeconds: true,
+              productiveSeconds: true,
+              unproductiveSeconds: true,
+              neutralSeconds: true,
+              blacklistedSeconds: true,
+            },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    for (const group of rawGroups) {
+      addBrowserDomain(
+        totals,
+        group.domain,
+        group.productivityTag,
+        group._sum.durationSeconds ?? 0,
+      );
+    }
+
+    for (const group of summaryGroups) {
+      const row = totals.get(group.domain) ?? emptyBrowserDomain(group.domain);
+      row.durationSeconds += group._sum.durationSeconds ?? 0;
+      row.productiveSeconds += group._sum.productiveSeconds ?? 0;
+      row.unproductiveSeconds += group._sum.unproductiveSeconds ?? 0;
+      row.neutralSeconds += group._sum.neutralSeconds ?? 0;
+      row.blacklistedSeconds += group._sum.blacklistedSeconds ?? 0;
+      totals.set(group.domain, row);
+    }
+
+    return [...totals.values()]
+      .sort((left, right) => right.durationSeconds - left.durationSeconds)
+      .slice(0, TOP_LIST_SIZE);
+  }
+
   /** Backs the authenticated screenshot viewer route. */
   async getScreenshotPath(deviceId: string, clientEventId: string) {
     const screenshot = await prisma.screenshot.findUnique({ where: { clientEventId } });
@@ -508,13 +641,7 @@ export class ReportService {
           orderBy: { _sum: { durationSeconds: "desc" } },
           take: TOP_LIST_SIZE,
         }),
-        prisma.browserActivity.groupBy({
-          by: ["domain", "productivityTag"],
-          where: inRange,
-          _sum: { durationSeconds: true },
-          orderBy: { _sum: { durationSeconds: "desc" } },
-          take: TOP_LIST_SIZE,
-        }),
+        this.getBrowserDomainGroups(employeeId, deviceIds, start, end),
         prisma.attendanceSession.findMany({
           where: { ...deviceScope, loginTime: { gte: start, lte: end } },
           orderBy: { loginTime: "asc" },
@@ -549,8 +676,8 @@ export class ReportService {
       })),
       topDomains: domainGroups.map((g) => ({
         domain: g.domain,
-        productivityTag: g.productivityTag,
-        seconds: g._sum.durationSeconds ?? 0,
+        productivityTag: dominantProductivityTag(g),
+        seconds: g.durationSeconds,
       })),
       attendance,
       attendanceDays: this.summarizeAttendance(

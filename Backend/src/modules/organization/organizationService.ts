@@ -1,9 +1,27 @@
-import { prisma } from '../../config/db';
-import { categoryService } from '../report/categoryService';
-import { toAgentPolicy } from '../ingest/policyService';
-import { generateEnrollmentToken, hashEnrollmentToken } from '../../utils/token';
-import { broadcastPolicyUpdated } from '../../realtime';
-import { CreateOrganizationDto, UpdatePolicyDto, UpsertCategoryDto } from './organization.dto';
+import { prisma } from "../../config/db";
+import { categoryService } from "../report/categoryService";
+import { toAgentPolicy } from "../ingest/policyService";
+import { generateEnrollmentToken, hashEnrollmentToken } from "../../utils/token";
+import { broadcastPolicyUpdated } from "../../realtime";
+import { CreateOrganizationDto, UpdatePolicyDto, UpsertCategoryDto } from "./organization.dto";
+
+const DEFAULT_WORKING_HOURS_START = "09:00";
+const DEFAULT_WORKING_HOURS_END = "17:00";
+
+function timeToMinutes(value: string): number {
+  const [hours, minutes] = value.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+function isWithinWorkingHours(time: string, start: string, end: string): boolean {
+  const value = timeToMinutes(time);
+  const startMinutes = timeToMinutes(start);
+  const endMinutes = timeToMinutes(end);
+
+  if (startMinutes === endMinutes) return true;
+  if (startMinutes < endMinutes) return value >= startMinutes && value < endMinutes;
+  return value >= startMinutes || value < endMinutes;
+}
 
 export class OrganizationService {
   /**
@@ -29,7 +47,7 @@ export class OrganizationService {
       ...organization,
       enrollmentTokenHash: undefined,
       enrollmentToken,
-      note: 'Store this enrollment token in the agent installer config. It will not be shown again.',
+      note: "Store this enrollment token in the agent installer config. It will not be shown again.",
     };
   }
 
@@ -43,12 +61,12 @@ export class OrganizationService {
       data: { enrollmentTokenHash: hashEnrollmentToken(enrollmentToken) },
     });
 
-    return { enrollmentToken, note: 'Existing device API keys are unaffected.' };
+    return { enrollmentToken, note: "Existing device API keys are unaffected." };
   }
 
   async getAllOrganizations() {
     return prisma.organization.findMany({
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       select: { id: true, name: true, createdAt: true },
     });
   }
@@ -59,7 +77,7 @@ export class OrganizationService {
       select: { id: true, name: true, createdAt: true },
     });
     if (!org) {
-      throw { statusCode: 404, message: 'Organization not found' };
+      throw { statusCode: 404, message: "Organization not found" };
     }
     return org;
   }
@@ -88,6 +106,35 @@ export class OrganizationService {
   async updatePolicy(organizationId: string, dto: UpdatePolicyDto) {
     await this.getOrganizationById(organizationId);
 
+    if (
+      dto.browserSummaryScheduleTimeLocal ||
+      dto.workingHoursStartLocal ||
+      dto.workingHoursEndLocal
+    ) {
+      const current = await prisma.policy.findUnique({
+        where: { organizationId },
+        select: {
+          workingHoursStartLocal: true,
+          workingHoursEndLocal: true,
+          browserSummaryScheduleTimeLocal: true,
+        },
+      });
+      const start =
+        dto.workingHoursStartLocal ??
+        current?.workingHoursStartLocal ??
+        DEFAULT_WORKING_HOURS_START;
+      const end =
+        dto.workingHoursEndLocal ?? current?.workingHoursEndLocal ?? DEFAULT_WORKING_HOURS_END;
+      const schedule =
+        dto.browserSummaryScheduleTimeLocal ?? current?.browserSummaryScheduleTimeLocal ?? "23:00";
+      if (isWithinWorkingHours(schedule, start, end)) {
+        throw {
+          statusCode: 400,
+          message: "Browser summary schedule must be outside working hours",
+        };
+      }
+    }
+
     const updated = await prisma.policy.upsert({
       where: { organizationId },
       create: { organizationId, ...dto },
@@ -115,7 +162,7 @@ export class OrganizationService {
     await this.getOrganizationById(organizationId);
     return prisma.category.findMany({
       where: { organizationId },
-      orderBy: [{ target: 'asc' }, { pattern: 'asc' }],
+      orderBy: [{ target: "asc" }, { pattern: "asc" }],
     });
   }
 
@@ -126,7 +173,13 @@ export class OrganizationService {
 
     const row = await prisma.category.upsert({
       where: { organizationId_target_pattern: { organizationId, target: dto.target, pattern } },
-      create: { organizationId, pattern, target: dto.target, tag: dto.tag, isBlacklisted: dto.isBlacklisted },
+      create: {
+        organizationId,
+        pattern,
+        target: dto.target,
+        tag: dto.tag,
+        isBlacklisted: dto.isBlacklisted,
+      },
       update: { tag: dto.tag, isBlacklisted: dto.isBlacklisted },
     });
 
@@ -141,7 +194,7 @@ export class OrganizationService {
   async deleteCategory(organizationId: string, categoryId: string) {
     const existing = await prisma.category.findUnique({ where: { id: categoryId } });
     if (!existing || existing.organizationId !== organizationId) {
-      throw { statusCode: 404, message: 'Category not found' };
+      throw { statusCode: 404, message: "Category not found" };
     }
 
     await prisma.category.delete({ where: { id: categoryId } });

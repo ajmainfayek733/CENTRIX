@@ -149,6 +149,7 @@ model Organization {
   policy       Policy?
   categories   Category[]
   dailyRollups DailyActivityRollup[]
+  browserDailySummaries BrowserDailySummary[]
 
   @@map("organizations")
 }
@@ -165,6 +166,7 @@ model Employee {
 
   devices      Device[]
   dailyRollups DailyActivityRollup[]
+  browserDailySummaries BrowserDailySummary[]
 
   @@index([organizationId])
   @@map("employees")
@@ -332,6 +334,40 @@ model DailyActivityRollup {
   /// Org-wide overview for a range.
   @@index([organizationId, workDate])
   @@map("daily_activity_rollups")
+}
+
+// ---------------------------------------------------------------------------
+// Browser activity daily summary - one row per employee, work date and domain.
+// Raw browser visits remain available for the timeline, while range reports read this bounded
+// table instead of grouping every visit in the requested period.
+// ---------------------------------------------------------------------------
+
+model BrowserDailySummary {
+  id String @id @default(uuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  workDate DateTime @db.Date
+  domain   String
+
+  durationSeconds     Int @default(0)
+  visitCount          Int @default(0)
+  productiveSeconds   Int @default(0)
+  unproductiveSeconds Int @default(0)
+  neutralSeconds      Int @default(0)
+  blacklistedSeconds  Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workDate, employeeId, domain])
+  @@index([employeeId, workDate])
+  @@index([organizationId, workDate])
+  @@map("browser_daily_summaries")
 }
 
 // ---------------------------------------------------------------------------
@@ -707,6 +743,8 @@ model Policy {
   /// a title. Lower is more precise about time-per-site and costs proportionally more CPU on
   /// every monitored workstation.
   browserUrlRefreshSeconds Int    @default(10)
+  /// Server-local time at which completed browser activity is summarized.
+  browserSummaryScheduleTimeLocal String @default("23:00")
 
   // -- Screenshots --------------------------------------------------------
   /// Features.md: enabled by default for testing, flipped off before publish.

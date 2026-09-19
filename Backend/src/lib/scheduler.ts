@@ -1,6 +1,6 @@
-import { Prisma } from '@prisma/client';
-import { prisma } from '../config/db';
-import { env } from '../config/env';
+import { Prisma } from "@prisma/client";
+import { prisma } from "../config/db";
+import { env } from "../config/env";
 
 /**
  * The server's own housekeeping loop.
@@ -38,6 +38,7 @@ const ADVISORY_LOCK_NAMESPACE = 0x656d746b;
 const JOB_LOCK_KEY = {
   attendanceReap: 1,
   ingestBatchPrune: 2,
+  browserSummary: 3,
 } as const;
 
 export type JobName = keyof typeof JOB_LOCK_KEY;
@@ -75,7 +76,7 @@ async function runExclusively(job: ScheduledJob): Promise<boolean> {
 
       return true;
     },
-    { timeout: job.timeoutMs }
+    { timeout: job.timeoutMs },
   );
 }
 
@@ -100,7 +101,7 @@ async function tick(job: ScheduledJob): Promise<void> {
  */
 export function startMaintenanceJobs(jobs: ScheduledJob[]): void {
   if (!env.MAINTENANCE_JOBS_ENABLED) {
-    console.log('scheduler: maintenance jobs disabled (MAINTENANCE_JOBS_ENABLED=false)');
+    console.log("scheduler: maintenance jobs disabled (MAINTENANCE_JOBS_ENABLED=false)");
     return;
   }
 
@@ -126,7 +127,7 @@ export function defineJob(
   name: JobName,
   intervalSeconds: number,
   timeoutMs: number,
-  run: ScheduledJob['run']
+  run: ScheduledJob["run"],
 ): ScheduledJob {
   return { name, intervalMs: intervalSeconds * MS_PER_SECOND, timeoutMs, run };
 }

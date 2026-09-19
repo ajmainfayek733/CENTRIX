@@ -15,6 +15,12 @@
 
 ---
 
+## Schema
+
+- Do not write migration.sql. It will be auto generated via `npx prisma migrate`
+
+---
+
 ## Development sequence
 
 1. Plan the outline and analyze trade-offs

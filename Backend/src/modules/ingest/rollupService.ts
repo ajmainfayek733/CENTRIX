@@ -1,5 +1,5 @@
-import { Prisma, ProductivityTag } from '@prisma/client';
-import { isActiveType, isIdleType } from '../report/activityClassification';
+import { Prisma, ProductivityTag } from "@prisma/client";
+import { isActiveType, isIdleType } from "../report/activityClassification";
 
 /**
  * Ingest-time aggregation into daily_activity_rollups.
@@ -41,6 +41,15 @@ export interface RollupDelta {
   lastActivityAt: Date | null;
 }
 
+interface BrowserDomainDelta {
+  durationSeconds: number;
+  visitCount: number;
+  productiveSeconds: number;
+  unproductiveSeconds: number;
+  neutralSeconds: number;
+  blacklistedSeconds: number;
+}
+
 export function emptyDelta(): RollupDelta {
   return {
     activeSeconds: 0,
@@ -68,6 +77,7 @@ export function emptyDelta(): RollupDelta {
  */
 export class RollupAccumulator {
   private readonly byDate = new Map<string, RollupDelta>();
+  private readonly browserByDateAndDomain = new Map<string, Map<string, BrowserDomainDelta>>();
 
   private forDate(workDate: string): RollupDelta {
     let delta = this.byDate.get(workDate);
@@ -86,11 +96,11 @@ export class RollupAccumulator {
 
   addActivitySession(
     workDate: string,
-    type: Prisma.ActivitySessionCreateManyInput['type'],
+    type: Prisma.ActivitySessionCreateManyInput["type"],
     tag: ProductivityTag,
     durationSeconds: number,
     startTime: Date,
-    endTime: Date
+    endTime: Date,
   ) {
     const delta = this.forDate(workDate);
     delta.activitySessionCount += 1;
@@ -124,13 +134,50 @@ export class RollupAccumulator {
     this.touchSpan(delta, windowEnd, windowEnd);
   }
 
-  addBrowserVisit(workDate: string, startTime: Date, endTime: Date) {
+  addBrowserVisit(
+    workDate: string,
+    domain: string,
+    tag: ProductivityTag,
+    durationSeconds: number,
+    startTime: Date,
+    endTime: Date,
+  ) {
     // Browser time is deliberately NOT added to activeSeconds: the browser was already the
     // foreground application for that interval, and its ActivitySession has counted it. Adding
     // it again would report more working time than the day contains.
     const delta = this.forDate(workDate);
     delta.browserVisitCount += 1;
     this.touchSpan(delta, startTime, endTime);
+
+    let domains = this.browserByDateAndDomain.get(workDate);
+    if (!domains) {
+      domains = new Map();
+      this.browserByDateAndDomain.set(workDate, domains);
+    }
+    const domainDelta = domains.get(domain) ?? {
+      durationSeconds: 0,
+      visitCount: 0,
+      productiveSeconds: 0,
+      unproductiveSeconds: 0,
+      neutralSeconds: 0,
+      blacklistedSeconds: 0,
+    };
+    domainDelta.durationSeconds += durationSeconds;
+    domainDelta.visitCount += 1;
+    switch (tag) {
+      case ProductivityTag.Productive:
+        domainDelta.productiveSeconds += durationSeconds;
+        break;
+      case ProductivityTag.Unproductive:
+        domainDelta.unproductiveSeconds += durationSeconds;
+        break;
+      case ProductivityTag.Blacklisted:
+        domainDelta.blacklistedSeconds += durationSeconds;
+        break;
+      default:
+        domainDelta.neutralSeconds += durationSeconds;
+    }
+    domains.set(domain, domainDelta);
   }
 
   addUsbEvent(workDate: string, eventTime: Date) {
@@ -156,6 +203,14 @@ export class RollupAccumulator {
 
   entries(): [string, RollupDelta][] {
     return [...this.byDate.entries()];
+  }
+
+  browserDomainEntries(): [string, string, BrowserDomainDelta][] {
+    return [...this.browserByDateAndDomain.entries()].flatMap(([workDate, domains]) =>
+      [...domains.entries()].map(
+        ([domain, delta]): [string, string, BrowserDomainDelta] => [workDate, domain, delta],
+      ),
+    );
   }
 
   /** The days this batch touched, for the realtime hint sent to dashboards. */
@@ -203,7 +258,7 @@ export class RollupAccumulator {
 export async function applyRollup(
   tx: Prisma.TransactionClient,
   scope: { organizationId: string; employeeId: string; deviceId: string },
-  accumulator: RollupAccumulator
+  accumulator: RollupAccumulator,
 ): Promise<void> {
   for (const [workDate, delta] of accumulator.entries()) {
     // ON CONFLICT targets the (workDate, deviceId, employeeId) unique index. Two batches from
@@ -246,9 +301,35 @@ export async function applyRollup(
         "updatedAt"            = NOW()
     `;
   }
+
+  for (const [workDate, domain, delta] of accumulator.browserDomainEntries()) {
+    // The current day is intentionally left in browser_activity. Reports use that raw data for
+    // exact audits; the scheduler folds completed days after the configured work window.
+    if (workDate >= utcWorkDate(new Date())) continue;
+
+    await tx.$executeRaw`
+      INSERT INTO browser_daily_summaries (
+        id, "organizationId", "employeeId", "workDate", "domain",
+        "durationSeconds", "visitCount", "productiveSeconds", "unproductiveSeconds",
+        "neutralSeconds", "blacklistedSeconds", "createdAt", "updatedAt"
+      ) VALUES (
+        gen_random_uuid(), ${scope.organizationId}, ${scope.employeeId}, ${workDate}::date, ${domain},
+        ${delta.durationSeconds}, ${delta.visitCount}, ${delta.productiveSeconds},
+        ${delta.unproductiveSeconds}, ${delta.neutralSeconds}, ${delta.blacklistedSeconds}, NOW(), NOW()
+      )
+      ON CONFLICT ("workDate", "employeeId", "domain") DO UPDATE SET
+        "durationSeconds"     = browser_daily_summaries."durationSeconds" + EXCLUDED."durationSeconds",
+        "visitCount"          = browser_daily_summaries."visitCount" + EXCLUDED."visitCount",
+        "productiveSeconds"   = browser_daily_summaries."productiveSeconds" + EXCLUDED."productiveSeconds",
+        "unproductiveSeconds" = browser_daily_summaries."unproductiveSeconds" + EXCLUDED."unproductiveSeconds",
+        "neutralSeconds"      = browser_daily_summaries."neutralSeconds" + EXCLUDED."neutralSeconds",
+        "blacklistedSeconds"  = browser_daily_summaries."blacklistedSeconds" + EXCLUDED."blacklistedSeconds",
+        "updatedAt"           = NOW()
+    `;
+  }
 }
 
 /** Formats a timestamp as the UTC calendar date, the fallback when no local work date is known. */
 export function utcWorkDate(timestamp: Date): string {
-  return timestamp.toISOString().slice(0, 'YYYY-MM-DD'.length);
+  return timestamp.toISOString().slice(0, "YYYY-MM-DD".length);
 }

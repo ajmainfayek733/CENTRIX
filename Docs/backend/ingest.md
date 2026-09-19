@@ -193,6 +193,10 @@ hold locks indefinitely.
 `daily_activity_rollups`, one row per `(workDate, deviceId, employeeId)`, maintained at ingest
 time. Reports read this and never scan the log tables (AD-05).
 
+Browser visits also maintain `browser_daily_summaries`, one row per `(workDate, employeeId, domain)`.
+It stores total duration, visit count, and duration buckets by productivity tag so monthly domain
+reports merge visits across devices without scanning `browser_activity`.
+
 **Counters are incremented, never recomputed.** Counting one event twice corrupts that day
 permanently and silently - there is no recomputation pass that would fix it. Two things guarantee
 it does not happen:

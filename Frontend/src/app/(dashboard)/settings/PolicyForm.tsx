@@ -1,16 +1,16 @@
-'use client';
+"use client";
 
-import { useEffect, useRef, useState, useTransition } from 'react';
-import { Button, Card } from '@/components/ui';
-import { cn } from '@/lib/utils';
-import type { Policy } from '@/types/api';
-import { updatePolicy, type PolicyFormValues } from './actions';
+import { useEffect, useRef, useState, useTransition } from "react";
+import { Button, Card } from "@/components/ui";
+import { cn } from "@/lib/utils";
+import type { Policy } from "@/types/api";
+import { updatePolicy, type PolicyFormValues } from "./actions";
 
 /** Solid fill so the control stays readable over the page gradient in both themes. */
 const SAVE_PRIMARY_CLASS =
-  'border border-brand-strong bg-brand-strong text-brand-contrast shadow-none hover:bg-brand hover:text-brand-contrast';
+  "border border-brand-strong bg-brand-strong text-brand-contrast shadow-none hover:bg-brand hover:text-brand-contrast";
 
-type FormStatus = { tone: 'success' | 'danger'; message: string };
+type FormStatus = { tone: "success" | "danger"; message: string };
 
 /**
  * The settings screen, split by who a setting acts on.
@@ -34,6 +34,7 @@ function toFormValues(policy: Policy): PolicyFormValues {
     appSessionEnabled: policy.appSession.enabled,
     browserMonitorEnabled: policy.browserMonitor.enabled,
     browserUrlRefreshSeconds: policy.browserMonitor.urlRefreshSeconds,
+    browserSummaryScheduleTimeLocal: policy.browserSummaryScheduleTimeLocal,
     screenshotEnabled: policy.screenshot.enabled,
     screenshotIntervalSeconds: policy.screenshot.intervalSeconds,
     screenshotJpegQuality: policy.screenshot.jpegQuality,
@@ -97,7 +98,7 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
 
   useEffect(() => {
     if (!status) return;
-    statusRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    statusRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [status]);
 
   function set<K extends keyof PolicyFormValues>(key: K, value: PolicyFormValues[K]) {
@@ -113,8 +114,8 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
       values.alertIdleModerateSeconds >= values.alertIdleSevereSeconds
     ) {
       setStatus({
-        tone: 'danger',
-        message: 'Idle thresholds must increase: normal < moderate < severe.',
+        tone: "danger",
+        message: "Idle thresholds must increase: normal < moderate < severe.",
       });
       return;
     }
@@ -126,13 +127,13 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
         // Connected agents are signalled immediately; the heartbeat is the fallback for any
         // that were offline, so the message describes the guarantee rather than the fast path.
         setStatus({
-          tone: 'success',
-          message: 'Saved. Connected agents apply this now; others on their next heartbeat.',
+          tone: "success",
+          message: "Saved. Connected agents apply this now; others on their next heartbeat.",
         });
       } catch {
         setStatus({
-          tone: 'danger',
-          message: 'Could not save. Check that the API is reachable.',
+          tone: "danger",
+          message: "Could not save. Check that the API is reachable.",
         });
       }
     });
@@ -145,10 +146,10 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
           ref={statusRef}
           role="status"
           className={cn(
-            'rounded-md border px-4 py-3 text-sm leading-relaxed',
-            status.tone === 'success'
-              ? 'border-success/40 bg-success/10 text-success'
-              : 'border-danger/40 bg-danger/10 text-danger'
+            "rounded-md border px-4 py-3 text-sm leading-relaxed",
+            status.tone === "success"
+              ? "border-success/40 bg-success/10 text-success"
+              : "border-danger/40 bg-danger/10 text-danger",
           )}
         >
           {status.message}
@@ -166,37 +167,37 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
               label="Attendance"
               hint="First sign-in and last sign-out per day"
               checked={values.attendanceEnabled}
-              onChange={(v) => set('attendanceEnabled', v)}
+              onChange={(v) => set("attendanceEnabled", v)}
             />
             <Toggle
               label="Application tracking"
               hint="Foreground app and window title"
               checked={values.appSessionEnabled}
-              onChange={(v) => set('appSessionEnabled', v)}
+              onChange={(v) => set("appSessionEnabled", v)}
             />
             <Toggle
               label="Active / idle"
               hint="Split working time from inactivity"
               checked={values.activityEnabled}
-              onChange={(v) => set('activityEnabled', v)}
+              onChange={(v) => set("activityEnabled", v)}
             />
             <Toggle
               label="Website tracking"
               hint="Domains visited and time per site"
               checked={values.browserMonitorEnabled}
-              onChange={(v) => set('browserMonitorEnabled', v)}
+              onChange={(v) => set("browserMonitorEnabled", v)}
             />
             <Toggle
               label="USB devices"
               hint="Connection and removal only - never contents"
               checked={values.usbEnabled}
-              onChange={(v) => set('usbEnabled', v)}
+              onChange={(v) => set("usbEnabled", v)}
             />
             <Toggle
               label="Screenshots"
               hint="The most invasive setting. Off is the recommended default."
               checked={values.screenshotEnabled}
-              onChange={(v) => set('screenshotEnabled', v)}
+              onChange={(v) => set("screenshotEnabled", v)}
             />
           </Section>
 
@@ -214,7 +215,7 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
               value={values.screenshotIntervalSeconds / SECONDS_PER_MINUTE}
               min={LIMITS.screenshotIntervalMinutes.min}
               max={LIMITS.screenshotIntervalMinutes.max}
-              onChange={(v) => set('screenshotIntervalSeconds', v * SECONDS_PER_MINUTE)}
+              onChange={(v) => set("screenshotIntervalSeconds", v * SECONDS_PER_MINUTE)}
               disabled={!values.screenshotEnabled}
             />
             <NumberField
@@ -224,7 +225,7 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
               value={values.screenshotJpegQuality}
               min={LIMITS.screenshotJpegQuality.min}
               max={LIMITS.screenshotJpegQuality.max}
-              onChange={(v) => set('screenshotJpegQuality', v)}
+              onChange={(v) => set("screenshotJpegQuality", v)}
               disabled={!values.screenshotEnabled}
             />
           </Section>
@@ -237,7 +238,7 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
               value={values.idleThresholdSeconds / SECONDS_PER_MINUTE}
               min={LIMITS.idleThresholdMinutes.min}
               max={LIMITS.idleThresholdMinutes.max}
-              onChange={(v) => set('idleThresholdSeconds', v * SECONDS_PER_MINUTE)}
+              onChange={(v) => set("idleThresholdSeconds", v * SECONDS_PER_MINUTE)}
             />
           </Section>
 
@@ -255,7 +256,7 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
               min={LIMITS.browserUrlRefreshSeconds.min}
               max={LIMITS.browserUrlRefreshSeconds.max}
               disabled={!values.browserMonitorEnabled}
-              onChange={(v) => set('browserUrlRefreshSeconds', v)}
+              onChange={(v) => set("browserUrlRefreshSeconds", v)}
             />
           </Section>
 
@@ -263,30 +264,30 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
             <Toggle
               label="Alerts enabled"
               checked={values.alertEnabled}
-              onChange={(v) => set('alertEnabled', v)}
+              onChange={(v) => set("alertEnabled", v)}
             />
             <Toggle
               label="Idle escalation"
               hint="Warn as inactivity crosses each threshold"
               checked={values.alertIdleEnabled}
-              onChange={(v) => set('alertIdleEnabled', v)}
+              onChange={(v) => set("alertIdleEnabled", v)}
             />
             <Toggle
               label="Blacklist warnings"
               hint="Warn on a blacklisted app or site"
               checked={values.alertBlacklistEnabled}
-              onChange={(v) => set('alertBlacklistEnabled', v)}
+              onChange={(v) => set("alertBlacklistEnabled", v)}
             />
             <Toggle
               label="Alert on USB insertion"
               checked={values.usbAlertOnInsertion}
-              onChange={(v) => set('usbAlertOnInsertion', v)}
+              onChange={(v) => set("usbAlertOnInsertion", v)}
             />
             <Toggle
               label="Notify outside working hours"
               hint="Off means no desktop popups on an employee's own time"
               checked={values.alertOutsideWorkingHours}
-              onChange={(v) => set('alertOutsideWorkingHours', v)}
+              onChange={(v) => set("alertOutsideWorkingHours", v)}
             />
           </Section>
 
@@ -297,7 +298,7 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
               value={values.alertIdleNormalSeconds / SECONDS_PER_MINUTE}
               min={LIMITS.idleLadderMinutes.min}
               disabled={!values.alertIdleEnabled}
-              onChange={(v) => set('alertIdleNormalSeconds', v * SECONDS_PER_MINUTE)}
+              onChange={(v) => set("alertIdleNormalSeconds", v * SECONDS_PER_MINUTE)}
             />
             <NumberField
               label="Moderate"
@@ -305,7 +306,7 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
               value={values.alertIdleModerateSeconds / SECONDS_PER_MINUTE}
               min={LIMITS.idleLadderMinutes.min}
               disabled={!values.alertIdleEnabled}
-              onChange={(v) => set('alertIdleModerateSeconds', v * SECONDS_PER_MINUTE)}
+              onChange={(v) => set("alertIdleModerateSeconds", v * SECONDS_PER_MINUTE)}
             />
             <NumberField
               label="Severe"
@@ -313,7 +314,7 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
               value={values.alertIdleSevereSeconds / SECONDS_PER_MINUTE}
               min={LIMITS.idleLadderMinutes.min}
               disabled={!values.alertIdleEnabled}
-              onChange={(v) => set('alertIdleSevereSeconds', v * SECONDS_PER_MINUTE)}
+              onChange={(v) => set("alertIdleSevereSeconds", v * SECONDS_PER_MINUTE)}
             />
           </Section>
 
@@ -321,12 +322,12 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
             <TimeField
               label="Start"
               value={values.workingHoursStartLocal}
-              onChange={(v) => set('workingHoursStartLocal', v)}
+              onChange={(v) => set("workingHoursStartLocal", v)}
             />
             <TimeField
               label="End"
               value={values.workingHoursEndLocal}
-              onChange={(v) => set('workingHoursEndLocal', v)}
+              onChange={(v) => set("workingHoursEndLocal", v)}
             />
           </Section>
         </div>
@@ -346,7 +347,7 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
             value={values.logPageSize}
             min={LIMITS.logPageSize.min}
             max={LIMITS.logPageSize.max}
-            onChange={(v) => set('logPageSize', v)}
+            onChange={(v) => set("logPageSize", v)}
           />
           <NumberField
             label="Screenshots per page"
@@ -355,7 +356,7 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
             value={values.screenshotPageSize}
             min={LIMITS.screenshotPageSize.min}
             max={LIMITS.screenshotPageSize.max}
-            onChange={(v) => set('screenshotPageSize', v)}
+            onChange={(v) => set("screenshotPageSize", v)}
           />
         </Section>
       </Card>
@@ -368,6 +369,14 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
         to turn screenshots off.
       */}
       <AdvancedGroup>
+        <Section title="Schedule jobs">
+          <TimeField
+            label="Browser summary time"
+            value={values.browserSummaryScheduleTimeLocal}
+            onChange={(v) => set("browserSummaryScheduleTimeLocal", v)}
+          />
+        </Section>
+
         <Section title="Retention">
           <NumberField
             label="Data retention"
@@ -376,7 +385,7 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
             value={values.retentionDays}
             min={LIMITS.retentionDays.min}
             max={LIMITS.retentionDays.max}
-            onChange={(v) => set('retentionDays', v)}
+            onChange={(v) => set("retentionDays", v)}
           />
         </Section>
 
@@ -388,7 +397,7 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
             value={values.syncMaxBatchSize}
             min={LIMITS.syncMaxBatchSize.min}
             max={LIMITS.syncMaxBatchSize.max}
-            onChange={(v) => set('syncMaxBatchSize', v)}
+            onChange={(v) => set("syncMaxBatchSize", v)}
           />
           <NumberField
             label="Sync interval"
@@ -397,7 +406,7 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
             value={values.syncBatchIntervalSeconds}
             min={LIMITS.syncBatchIntervalSeconds.min}
             max={LIMITS.syncBatchIntervalSeconds.max}
-            onChange={(v) => set('syncBatchIntervalSeconds', v)}
+            onChange={(v) => set("syncBatchIntervalSeconds", v)}
           />
         </Section>
 
@@ -406,7 +415,7 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
             label="Realtime updates"
             hint="Off falls back to polling - data still arrives, just not instantly"
             checked={values.realtimeEnabled}
-            onChange={(v) => set('realtimeEnabled', v)}
+            onChange={(v) => set("realtimeEnabled", v)}
           />
           <NumberField
             label="Presence heartbeat"
@@ -416,7 +425,7 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
             min={LIMITS.presenceHeartbeatSeconds.min}
             max={LIMITS.presenceHeartbeatSeconds.max}
             disabled={!values.realtimeEnabled}
-            onChange={(v) => set('presenceHeartbeatSeconds', v)}
+            onChange={(v) => set("presenceHeartbeatSeconds", v)}
           />
         </Section>
       </AdvancedGroup>
@@ -430,7 +439,7 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
           onClick={save}
           disabled={pending || !dirty}
         >
-          {pending ? 'Saving...' : 'Save changes'}
+          {pending ? "Saving..." : "Save changes"}
         </Button>
       </div>
     </div>
@@ -508,7 +517,9 @@ function Toggle({
       />
       <span className="min-w-0">
         <span className="block text-[13px] font-medium text-text-primary">{label}</span>
-        {hint && <span className="mt-0.5 block text-xs leading-snug text-text-secondary">{hint}</span>}
+        {hint && (
+          <span className="mt-0.5 block text-xs leading-snug text-text-secondary">{hint}</span>
+        )}
       </span>
     </label>
   );
@@ -535,7 +546,7 @@ function NumberField({
   onChange: (value: number) => void;
 }) {
   return (
-    <label className={`block ${disabled ? 'opacity-50' : ''}`}>
+    <label className={`block ${disabled ? "opacity-50" : ""}`}>
       <span className="mb-1.5 block text-[12.5px] font-medium text-text-secondary">{label}</span>
       {hint && <span className="mb-1.5 block text-xs text-text-tertiary">{hint}</span>}
       <span className="flex items-center gap-2">

@@ -12,6 +12,7 @@ import { initRealtime } from "./realtime";
 import { defineJob, startMaintenanceJobs } from "./lib/scheduler";
 import { closeAbandonedSessions, describeReap } from "./modules/attendance/attendanceReaper";
 import { ingestService } from "./modules/ingest/ingestService";
+import { runBrowserSummarySchedule } from "./modules/report/browserSummaryService";
 
 import ingestRoutes from "./modules/ingest";
 import authRoutes from "./modules/auth";
@@ -24,7 +25,7 @@ const app = express();
 // Must be set before any middleware reads req.ip. Drives whether x-forwarded-for is believed at
 // all - see TRUST_PROXY in config/env.ts. Numeric values mean "this many proxies in front".
 const trustProxy = /^\d+$/.test(env.TRUST_PROXY) ? Number(env.TRUST_PROXY) : env.TRUST_PROXY;
-app.set('trust proxy', trustProxy === 'false' ? false : trustProxy === 'true' ? true : trustProxy);
+app.set("trust proxy", trustProxy === "false" ? false : trustProxy === "true" ? true : trustProxy);
 
 // Security and Logging middleware
 app.use(helmet());
@@ -107,19 +108,25 @@ export const io = initRealtime(server);
  */
 startMaintenanceJobs([
   defineJob(
-    'attendanceReap',
+    "attendanceReap",
     env.ATTENDANCE_REAP_INTERVAL_SECONDS,
     env.ATTENDANCE_REAP_TIMEOUT_MS,
-    async (tx) => describeReap(await closeAbandonedSessions(tx))
+    async (tx) => describeReap(await closeAbandonedSessions(tx)),
   ),
   defineJob(
-    'ingestBatchPrune',
+    "ingestBatchPrune",
     env.INGEST_BATCH_PRUNE_INTERVAL_SECONDS,
     env.INGEST_TRANSACTION_TIMEOUT_MS,
     async (tx) => {
       const pruned = await ingestService.pruneIngestBatches(tx);
       return pruned === 0 ? null : `pruned ${pruned} expired batch ledger row(s)`;
-    }
+    },
+  ),
+  defineJob(
+    "browserSummary",
+    env.BROWSER_SUMMARY_JOB_INTERVAL_SECONDS,
+    env.BROWSER_SUMMARY_JOB_TIMEOUT_MS,
+    (tx) => runBrowserSummarySchedule(tx),
   ),
 ]);
 

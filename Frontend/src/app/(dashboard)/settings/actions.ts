@@ -1,8 +1,8 @@
-'use server';
+"use server";
 
-import { revalidatePath } from 'next/cache';
-import { apiSend } from '@/lib/api-client';
-import type { CategoryTarget, ProductivityTag } from '@/types/api';
+import { revalidatePath } from "next/cache";
+import { apiSend } from "@/lib/api-client";
+import type { CategoryTarget, ProductivityTag } from "@/types/api";
 
 /**
  * Policy and category mutations (Features.md "Configuring Policies").
@@ -54,22 +54,23 @@ export interface PolicyFormValues {
   syncMaxBatchSize: number;
   realtimeEnabled: boolean;
   presenceHeartbeatSeconds: number;
+  browserSummaryScheduleTimeLocal: string;
 }
 
 export async function updatePolicy(organizationId: string, values: PolicyFormValues) {
-  await apiSend(`/v1/dashboard/organizations/${organizationId}/policy`, 'PATCH', values);
-  revalidatePath('/settings');
+  await apiSend(`/v1/dashboard/organizations/${organizationId}/policy`, "PATCH", values);
+  revalidatePath("/settings");
 }
 
 export async function upsertCategory(
   organizationId: string,
-  rule: { pattern: string; target: CategoryTarget; tag: ProductivityTag; isBlacklisted: boolean }
+  rule: { pattern: string; target: CategoryTarget; tag: ProductivityTag; isBlacklisted: boolean },
 ) {
-  await apiSend(`/v1/dashboard/organizations/${organizationId}/categories`, 'PUT', rule);
-  revalidatePath('/settings');
+  await apiSend(`/v1/dashboard/organizations/${organizationId}/categories`, "PUT", rule);
+  revalidatePath("/settings");
 }
 
 export async function deleteCategory(organizationId: string, categoryId: string) {
-  await apiSend(`/v1/dashboard/organizations/${organizationId}/categories/${categoryId}`, 'DELETE');
-  revalidatePath('/settings');
+  await apiSend(`/v1/dashboard/organizations/${organizationId}/categories/${categoryId}`, "DELETE");
+  revalidatePath("/settings");
 }

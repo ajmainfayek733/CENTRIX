@@ -545,7 +545,16 @@ class IngestService {
         : undefined;
       const workDate = (parentSession && workDates.get(parentSession)) ?? utcWorkDate(e.startTime);
 
-      accumulator.addBrowserVisit(workDate, e.startTime, e.endTime);
+      const domain = e.domain.toLowerCase();
+      const productivityTag = match ? match.tag : (e.productivityTag as ProductivityTag);
+      accumulator.addBrowserVisit(
+        workDate,
+        domain,
+        productivityTag,
+        e.durationSeconds,
+        e.startTime,
+        e.endTime,
+      );
 
       rows.push({
         deviceId: device.id,
@@ -557,7 +566,7 @@ class IngestService {
         browser: e.browser,
         browserVersion: e.browserVersion ?? null,
         profileName: e.profileName ?? null,
-        domain: e.domain.toLowerCase(),
+        domain,
         rawUrl: e.rawUrl,
         windowTitle: e.windowTitle ?? null,
         pageTitle: e.pageTitle ?? null,
@@ -565,7 +574,7 @@ class IngestService {
         startTime: e.startTime,
         endTime: e.endTime,
         durationSeconds: e.durationSeconds,
-        productivityTag: match ? match.tag : (e.productivityTag as ProductivityTag),
+        productivityTag,
       });
     }
 

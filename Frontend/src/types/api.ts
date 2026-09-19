@@ -5,11 +5,17 @@
  * Treat any contract change as a two-repo commit, as Docs/frontend/spec.md section 8 says.
  */
 
-export type ProductivityTag = 'Productive' | 'Unproductive' | 'Blacklisted' | 'Neutral';
-export type ActivityType = 'Application' | 'Desktop' | 'Locked' | 'Idle' | 'Sleeping' | 'Disconnected';
-export type AlertSeverity = 'Information' | 'Warning' | 'High' | 'Critical';
-export type AlertState = 'New' | 'Shown' | 'Acknowledged' | 'Resolved' | 'Archived';
-export type CategoryTarget = 'Application' | 'Domain';
+export type ProductivityTag = "Productive" | "Unproductive" | "Blacklisted" | "Neutral";
+export type ActivityType =
+  | "Application"
+  | "Desktop"
+  | "Locked"
+  | "Idle"
+  | "Sleeping"
+  | "Disconnected";
+export type AlertSeverity = "Information" | "Warning" | "High" | "Critical";
+export type AlertState = "New" | "Shown" | "Acknowledged" | "Resolved" | "Archived";
+export type CategoryTarget = "Application" | "Domain";
 
 export interface Totals {
   activeSeconds: number;
@@ -103,7 +109,7 @@ export interface AttendanceRow {
    * power mid-session. Null on an open session, and on sessions closed before the backend could
    * record the distinction.
    */
-  logoutSource: 'Agent' | 'Server' | null;
+  logoutSource: "Agent" | "Server" | null;
   workDate: string;
   deviceId: string;
 }
@@ -126,7 +132,7 @@ export interface AttendanceDay {
   activeSeconds: number;
   idleSeconds: number;
   sessionCount: number;
-  status: 'present' | 'ended' | 'unknown';
+  status: "present" | "ended" | "unknown";
   /**
    * True when `lastLogout` was inferred by the backend rather than observed by the workstation.
    * The figure is the best one available and it is approximate - a screen these numbers reach
@@ -141,7 +147,12 @@ export interface EmployeeDetail {
     name: string;
     email: string;
     department: string | null;
-    devices: Array<{ id: string; deviceName: string; lastSeen: string | null; agentVersion: string | null }>;
+    devices: Array<{
+      id: string;
+      deviceName: string;
+      lastSeen: string | null;
+      agentVersion: string | null;
+    }>;
   };
   period: { start: string; end: string };
   totals: Totals;
@@ -196,7 +207,7 @@ export interface AlertRow {
 
 export interface UsbEventRow {
   id: string;
-  eventType: 'Connected' | 'Disconnected';
+  eventType: "Connected" | "Disconnected";
   deviceType: string;
   friendlyName: string | null;
   manufacturer: string | null;
@@ -257,6 +268,7 @@ export interface Policy {
     maxRetryAttempts: number;
     urlRefreshSeconds: number;
   };
+  browserSummaryScheduleTimeLocal: string;
   screenshot: { enabled: boolean; intervalSeconds: number; jpegQuality: number };
   usb: { enabled: boolean; reconciliationIntervalSeconds: number; alertOnInsertion: boolean };
   alert: {

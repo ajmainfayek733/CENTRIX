@@ -2,14 +2,14 @@
 
 Everything under `/v1/dashboard/reports/*`. Source: `Backend/src/modules/report/`.
 
-| File | Responsibility |
-|---|---|
-| `report.routes.ts` | Route table with `requireRole` and `auditLogger` on every entry |
-| `reportController.ts` | Query-parameter parsing, response shaping |
-| `reportService.ts` | The queries |
-| `pagination.ts` | Keyset cursors, page-size resolution |
-| `categoryService.ts` | App/domain -> productivity tag matching |
-| `activityClassification.ts` | Which `ActivityType` values count as active vs idle |
+| File                        | Responsibility                                                  |
+| --------------------------- | --------------------------------------------------------------- |
+| `report.routes.ts`          | Route table with `requireRole` and `auditLogger` on every entry |
+| `reportController.ts`       | Query-parameter parsing, response shaping                       |
+| `reportService.ts`          | The queries                                                     |
+| `pagination.ts`             | Keyset cursors, page-size resolution                            |
+| `categoryService.ts`        | App/domain -> productivity tag matching                         |
+| `activityClassification.ts` | Which `ActivityType` values count as active vs idle             |
 
 ---
 
@@ -17,16 +17,36 @@ Everything under `/v1/dashboard/reports/*`. Source: `Backend/src/modules/report/
 
 **This is the rule that keeps the read path from degrading as history accumulates.**
 
-| | Aggregates | Logs |
-|---|---|---|
-| Endpoints | overview, roster, employee totals | timeline, alerts, USB, screenshots |
-| Reads | `daily_activity_rollups` | The raw tables |
-| Bound | One row per employee per day | One keyset page |
-| Cost as history grows | Flat | Flat |
+|                       | Aggregates                                          | Logs                               |
+| --------------------- | --------------------------------------------------- | ---------------------------------- |
+| Endpoints             | overview, roster, employee totals                   | timeline, alerts, USB, screenshots |
+| Reads                 | `daily_activity_rollups`, `browser_daily_summaries` | The raw tables                     |
+| Bound                 | One row per employee per day                        | One keyset page                    |
+| Cost as history grows | Flat                                                | Flat                               |
 
 Aggregates **never touch the log tables**. One indexed `GROUP BY` over at most
 (employees x days) rows - 100 employees over a month is ~3,000 rows, and that ceiling does not
 move as telemetry accumulates.
+
+Browser top-domain reports read `browser_daily_summaries`, one row per employee, work date and
+domain. The row stores duration by productivity bucket so a domain remains a single row even when
+its classification changes during the day.
+
+Employee detail uses a hybrid rule: a one-day audit reads raw `browser_activity`; a multi-day
+range reads raw rows for today and daily summaries for completed days. The response is normalized
+to the existing `topDomains` shape, so the frontend does not need to know which storage tier was
+used.
+
+### Historical backfill
+
+When `browser_daily_summaries` is empty after deployment, rebuild completed dates with:
+
+```bash
+npm run aggregate:browser
+```
+
+The command excludes today by default. Limit a rerun with `--from=YYYY-MM-DD` and
+`--to=YYYY-MM-DD`, or target one organization with `--organization-id=<id>`.
 
 The version this replaced grouped `activity_sessions` instead: the same answer computed from
 millions of ten-second app switches on every page load, degrading with **history** rather than
@@ -39,7 +59,7 @@ adding the problem back.
 
 `?startDate=&endDate=` resolve through `resolveRange`. **A date-only `endDate` is inclusive of the
 day it names** - it is snapped to `23:59:59.999Z`, because `new Date('2026-08-15')` is midnight at
-the *start* of the 15th and taking that literally makes `startDate=endDate` a zero-width window.
+the _start_ of the 15th and taking that literally makes `startDate=endDate` a zero-width window.
 That is what the "Today" preset sends, and the failure was invisible in the worst way: totals still
 rendered, because they read the rollup through `startOfUtcDay` on both bounds, while attendance,
 sessions and the timeline came back empty on a day full of activity.
@@ -75,10 +95,10 @@ stale bookmark should serve the first page, not a 500.
 
 ### Page sizes
 
-| Setting | Policy field | Default | Hard ceiling |
-|---|---|---|---|
-| Log feeds | `logPageSize` | 50 | 500 |
-| Screenshot gallery | `screenshotPageSize` | 12 | 60 |
+| Setting            | Policy field         | Default | Hard ceiling |
+| ------------------ | -------------------- | ------- | ------------ |
+| Log feeds          | `logPageSize`        | 50      | 500          |
+| Screenshot gallery | `screenshotPageSize` | 12      | 60           |
 
 Read from policy so an admin can change them without a redeploy, and clamped so a bad value
 cannot turn one scroll into an unbounded read. A caller may request **fewer**, never more.
@@ -92,23 +112,23 @@ disagreeing about what "a page" means.
 
 ## 3. The endpoints
 
-| Endpoint | Reads | Notes |
-|---|---|---|
-| `GET /overview` | Rollup | Team totals, productivity, who is online, attendance |
-| `GET /roster` | Rollup | All staff with active/idle/productivity at a glance |
-| `GET /employees/:id` | Rollup + one page | Totals, active/idle split, top apps and domains, first timeline page, attendance by day and by session |
-| `GET /employees/:id/activity` | Raw, keyset | Timeline pages behind the scroll window |
-| `GET /alerts` | Raw, keyset | `includeResolved` filter |
-| `GET /usb-events` | Raw, keyset | Audit trail, org-wide |
-| `GET /employees/:id/usb-events` | Raw, keyset | The same trail, one employee's machines |
-| `GET /employees/:id/screenshots` | Raw, keyset | Index only, never bytes |
-| `GET /screenshots/:deviceId/:file` | Filesystem | One image, audited individually |
+| Endpoint                           | Reads             | Notes                                                                                                  |
+| ---------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------ |
+| `GET /overview`                    | Rollup            | Team totals, productivity, who is online, attendance                                                   |
+| `GET /roster`                      | Rollup            | All staff with active/idle/productivity at a glance                                                    |
+| `GET /employees/:id`               | Rollup + one page | Totals, active/idle split, top apps and domains, first timeline page, attendance by day and by session |
+| `GET /employees/:id/activity`      | Raw, keyset       | Timeline pages behind the scroll window                                                                |
+| `GET /alerts`                      | Raw, keyset       | `includeResolved` filter                                                                               |
+| `GET /usb-events`                  | Raw, keyset       | Audit trail, org-wide                                                                                  |
+| `GET /employees/:id/usb-events`    | Raw, keyset       | The same trail, one employee's machines                                                                |
+| `GET /employees/:id/screenshots`   | Raw, keyset       | Index only, never bytes                                                                                |
+| `GET /screenshots/:deviceId/:file` | Filesystem        | One image, audited individually                                                                        |
 
 The employee detail endpoint and the activity feed are separate so that scrolling fetches **rows
 only**, not the totals and leaderboards that do not change between pages.
 
 Browser visits are attached to the app session that contained them, so the UI can expand a
-"Chrome - 2h" row into the sites that made it up - fetched for the rows on *this page* only.
+"Chrome - 2h" row into the sites that made it up - fetched for the rows on _this page_ only.
 
 Top-app and top-domain lists are a fixed leaderboard, not a page.
 
@@ -122,19 +142,19 @@ and what ended each stretch".
 
 `attendanceDays` folds those into **one row per work date**, which is the attendance report proper:
 
-| Field | Where it comes from |
-|---|---|
-| `firstLogin` / `lastLogout` | Earliest and latest across that date's sessions. `lastLogout` is null while a session is still open. |
-| `sessionSeconds` | First login to last logout - or to *now* while the day is still running. |
-| `activeSeconds` / `idleSeconds` | The **daily rollup**, not the attendance rows. |
-| `sessionCount` | How many stretches of presence made up the day. |
-| `status` | `present`, `ended`, or `unknown`. |
-| `logoutEstimated` | Whether `lastLogout` was inferred by the server rather than observed. |
+| Field                           | Where it comes from                                                                                  |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `firstLogin` / `lastLogout`     | Earliest and latest across that date's sessions. `lastLogout` is null while a session is still open. |
+| `sessionSeconds`                | First login to last logout - or to _now_ while the day is still running.                             |
+| `activeSeconds` / `idleSeconds` | The **daily rollup**, not the attendance rows.                                                       |
+| `sessionCount`                  | How many stretches of presence made up the day.                                                      |
+| `status`                        | `present`, `ended`, or `unknown`.                                                                    |
+| `logoutEstimated`               | Whether `lastLogout` was inferred by the server rather than observed.                                |
 
 Three things here are deliberate and easy to get wrong.
 
 **The seconds come from the rollup, not from summing the attendance rows.** The rollup counts the
-activity log, which includes the locked and suspended stretches *between* sessions; an attendance
+activity log, which includes the locked and suspended stretches _between_ sessions; an attendance
 row deliberately counts only the presence inside itself. Adding the rows up reports a day with a
 lunch break as shorter than it was. It also follows that `sessionSeconds` can exceed
 `activeSeconds + idleSeconds` - time when the workstation was off was observed by nobody and is
@@ -150,7 +170,7 @@ shows yesterday's crash as somebody still at their desk.
 **A logout can be an estimate, and the report says which.** When a workstation stops answering
 without recording an end, the backend closes the session itself from the last evidence it holds
 (`logoutSource = Server` - see [ingest.md](ingest.md) section 9). `attendance[].logoutSource`
-carries that per session and `attendanceDays[].logoutEstimated` says whether the day's *last*
+carries that per session and `attendanceDays[].logoutEstimated` says whether the day's _last_
 logout is one - assigned from whichever session supplies it, not OR-ed across the day, because an
 estimate at lunchtime says nothing about the time the day ended on. The UI marks both. These
 numbers reach payroll, and an approximate figure presented as a recorded clock-out is worse than
@@ -171,11 +191,11 @@ reach it". The overview screen wants the first. See [realtime.md](realtime.md) f
 Every route carries `requireRole` and `auditLogger`. The audit entry is written for **reads**,
 not just writes - who looked at whom is the point.
 
-| Role | Reports | Screenshots |
-|---|---|---|
-| `super_admin` | Yes | Yes |
-| `manager` | Yes | Yes |
-| `auditor` | Yes | **No** |
+| Role          | Reports | Screenshots |
+| ------------- | ------- | ----------- |
+| `super_admin` | Yes     | Yes         |
+| `manager`     | Yes     | Yes         |
+| `auditor`     | Yes     | **No**      |
 
 Auditor exclusion from screenshots is deliberate and structural (AD-12): aggregate reports and
 the audit log, never a picture of someone's desktop. It applies to both the index and the image.
@@ -195,15 +215,15 @@ Categories also drive blacklist alerts, via `isBlacklisted`.
 
 ## Failure modes
 
-| Symptom | Likely cause | Check |
-|---|---|---|
-| Overview slow, worsening over months | An aggregate query reading a log table | Look for `activity_sessions` in an aggregate method |
-| A page repeats or skips rows | `newestFirst` and `olderThan` disagree on the field | Both must name the same column |
-| Scrolling stops early | `hasMore` false because over-fetch was dropped | Caller must ask for `limit + 1` |
-| Employee shows zero, device is online | Device on the "Unassigned" placeholder | Devices screen |
-| Totals disagree with the timeline | Expected - the timeline is one page, totals are the range | Not a bug |
-| Totals render but attendance and timeline are empty | The range resolved to a zero-width window | `period` in the response - if `start` equals `end`, `resolveRange` did not snap a date-only `endDate` (section 1) |
-| Auditor gets 403 on screenshots | Working as designed (AD-12) | - |
+| Symptom                                             | Likely cause                                              | Check                                                                                                             |
+| --------------------------------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Overview slow, worsening over months                | An aggregate query reading a log table                    | Look for `activity_sessions` in an aggregate method                                                               |
+| A page repeats or skips rows                        | `newestFirst` and `olderThan` disagree on the field       | Both must name the same column                                                                                    |
+| Scrolling stops early                               | `hasMore` false because over-fetch was dropped            | Caller must ask for `limit + 1`                                                                                   |
+| Employee shows zero, device is online               | Device on the "Unassigned" placeholder                    | Devices screen                                                                                                    |
+| Totals disagree with the timeline                   | Expected - the timeline is one page, totals are the range | Not a bug                                                                                                         |
+| Totals render but attendance and timeline are empty | The range resolved to a zero-width window                 | `period` in the response - if `start` equals `end`, `resolveRange` did not snap a date-only `endDate` (section 1) |
+| Auditor gets 403 on screenshots                     | Working as designed (AD-12)                               | -                                                                                                                 |
 
 ---
 
