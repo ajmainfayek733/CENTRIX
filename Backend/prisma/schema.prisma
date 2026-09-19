@@ -150,6 +150,8 @@ model Organization {
   categories   Category[]
   dailyRollups DailyActivityRollup[]
   browserDailySummaries BrowserDailySummary[]
+  activityMetricDailySummaries ActivityMetricDailySummary[]
+  activitySessionDailySummaries ActivitySessionDailySummary[]
 
   @@map("organizations")
 }
@@ -167,6 +169,8 @@ model Employee {
   devices      Device[]
   dailyRollups DailyActivityRollup[]
   browserDailySummaries BrowserDailySummary[]
+  activityMetricDailySummaries ActivityMetricDailySummary[]
+  activitySessionDailySummaries ActivitySessionDailySummary[]
 
   @@index([organizationId])
   @@map("employees")
@@ -368,6 +372,74 @@ model BrowserDailySummary {
   @@index([employeeId, workDate])
   @@index([organizationId, workDate])
   @@map("browser_daily_summaries")
+}
+
+// ---------------------------------------------------------------------------
+// Activity metric daily summary - one row per employee and work date.
+// Raw metric samples remain available for exact audits, while range reports read this bounded
+// table instead of summing every input sample.
+// ---------------------------------------------------------------------------
+
+model ActivityMetricDailySummary {
+  id String @id @default(uuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  workDate DateTime @db.Date
+
+  sampleCount          Int @default(0)
+  keyCount             Int @default(0)
+  mouseCount           Int @default(0)
+  mouseLeftKeyCount    Int @default(0)
+  mouseRightKeyCount   Int @default(0)
+  mouseMiddleKeyCount  Int @default(0)
+  mouseOtherKeyCount   Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workDate, employeeId])
+  @@index([employeeId, workDate])
+  @@index([organizationId, workDate])
+  @@map("activity_metric_daily_summaries")
+}
+
+// ---------------------------------------------------------------------------
+// Activity session daily summary - one row per employee, work date and application.
+// Raw sessions remain available for exact audits, while range leaderboards read this bounded
+// table. Productivity buckets keep one application row even when its classification varies.
+// ---------------------------------------------------------------------------
+
+model ActivitySessionDailySummary {
+  id String @id @default(uuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  workDate DateTime @db.Date
+  appName  String
+
+  durationSeconds     Int @default(0)
+  sessionCount        Int @default(0)
+  productiveSeconds   Int @default(0)
+  unproductiveSeconds Int @default(0)
+  neutralSeconds      Int @default(0)
+  blacklistedSeconds  Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workDate, employeeId, appName])
+  @@index([employeeId, workDate])
+  @@index([organizationId, workDate])
+  @@map("activity_session_daily_summaries")
 }
 
 // ---------------------------------------------------------------------------
@@ -743,8 +815,8 @@ model Policy {
   /// a title. Lower is more precise about time-per-site and costs proportionally more CPU on
   /// every monitored workstation.
   browserUrlRefreshSeconds Int    @default(10)
-  /// Server-local time at which completed browser activity is summarized.
-  browserSummaryScheduleTimeLocal String @default("23:00")
+  /// Server-local time at which completed browser, metric, and application activity is summarized.
+  reportSummaryScheduleTimeLocal String @default("23:00") @map("browserSummaryScheduleTimeLocal")
 
   // -- Screenshots --------------------------------------------------------
   /// Features.md: enabled by default for testing, flipped off before publish.

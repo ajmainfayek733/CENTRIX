@@ -30,9 +30,7 @@ export const updatePolicySchema = z
     // the behaviour this setting exists to prevent; beyond five minutes, time-per-site stops
     // being a measurement and becomes a sample.
     browserUrlRefreshSeconds: seconds.min(1).max(300),
-    browserSummaryScheduleTimeLocal: z
-      .string()
-      .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Expected HH:mm"),
+    reportSummaryScheduleTimeLocal: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Expected HH:mm"),
 
     screenshotEnabled: z.boolean(),
     screenshotIntervalSeconds: seconds.min(60).max(86_400),

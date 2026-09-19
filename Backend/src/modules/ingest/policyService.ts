@@ -1,6 +1,9 @@
 import { Policy } from "@prisma/client";
 import { prisma } from "../../config/db";
 
+const DEFAULT_REPORT_SUMMARY_SCHEDULE_TIME = "23:00";
+const LOCAL_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 /**
  * Policy is stored as one typed row per organization (see the Policy model). This module maps
  * that row to the wire shape the Agent consumes and back again.
@@ -25,7 +28,7 @@ export interface AgentPolicyDto {
     maxRetryAttempts: number;
     urlRefreshSeconds: number;
   };
-  browserSummaryScheduleTimeLocal: string;
+  reportSummaryScheduleTimeLocal: string;
   screenshot: { enabled: boolean; intervalSeconds: number; jpegQuality: number };
   usb: { enabled: boolean; reconciliationIntervalSeconds: number; alertOnInsertion: boolean };
   alert: {
@@ -90,7 +93,9 @@ export function toAgentPolicy(
       maxRetryAttempts: policy.browserMaxRetryAttempts,
       urlRefreshSeconds: policy.browserUrlRefreshSeconds,
     },
-    browserSummaryScheduleTimeLocal: policy.browserSummaryScheduleTimeLocal,
+    reportSummaryScheduleTimeLocal: LOCAL_TIME_PATTERN.test(policy.reportSummaryScheduleTimeLocal)
+      ? policy.reportSummaryScheduleTimeLocal
+      : DEFAULT_REPORT_SUMMARY_SCHEDULE_TIME,
     screenshot: {
       enabled: policy.screenshotEnabled,
       intervalSeconds: policy.screenshotIntervalSeconds,

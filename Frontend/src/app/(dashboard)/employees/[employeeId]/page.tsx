@@ -60,6 +60,7 @@ export default async function EmployeeDetailPage({
   const { employee, period, totals, timeline, topApps, topDomains, attendance, attendanceDays } =
     detail;
   const { startDate, endDate } = range;
+  console.log("Employee Data", detail, range);
 
   /*
     Screenshots are the most invasive surface in the product and the Auditor role is excluded from
@@ -179,15 +180,54 @@ export default async function EmployeeDetailPage({
               {topApps.map((app) => (
                 <li
                   key={`${app.appName}-${app.productivityTag}`}
-                  className="flex items-center gap-2.5 py-2.5 text-[13.5px]"
+                  className="flex items-start justify-between gap-4 py-2.5 text-[13.5px]"
                 >
-                  <span className="min-w-0 flex-1 truncate font-medium">
-                    {app.appName ?? "Unknown"}
-                  </span>
-                  <TagBadge tag={app.productivityTag} />
-                  <span className="tnum min-w-[42px] text-right text-[13px] text-text-secondary">
-                    {formatDuration(app.seconds)}
-                  </span>
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate font-medium text-text-primary">
+                        {app.appName ?? "Unknown"}
+                      </span>
+                      <TagBadge tag={app.productivityTag} />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-text-secondary">
+                      {app.productiveSeconds > 0 && (
+                        <span className="inline-flex items-center gap-1.5" title="Productive">
+                          <span className="h-2 w-2 shrink-0 rounded-full bg-success-vivid" aria-hidden />
+                          <span className="tnum font-medium text-text-primary">{formatDuration(app.productiveSeconds)}</span>
+                          <span className="text-text-muted">Productive</span>
+                        </span>
+                      )}
+                      {app.neutralSeconds > 0 && (
+                        <span className="inline-flex items-center gap-1.5" title="Neutral">
+                          <span className="h-2 w-2 shrink-0 rounded-full bg-neutral-dot" aria-hidden />
+                          <span className="tnum font-medium text-text-primary">{formatDuration(app.neutralSeconds)}</span>
+                          <span className="text-text-muted">Neutral</span>
+                        </span>
+                      )}
+                      {app.unproductiveSeconds > 0 && (
+                        <span className="inline-flex items-center gap-1.5" title="Unproductive">
+                          <span className="h-2 w-2 shrink-0 rounded-full bg-warning" aria-hidden />
+                          <span className="tnum font-medium text-text-primary">{formatDuration(app.unproductiveSeconds)}</span>
+                          <span className="text-text-muted">Unproductive</span>
+                        </span>
+                      )}
+                      {app.blacklistedSeconds > 0 && (
+                        <span className="inline-flex items-center gap-1.5" title="Blacklisted">
+                          <span className="h-2 w-2 shrink-0 rounded-full bg-danger" aria-hidden />
+                          <span className="tnum font-medium text-danger">{formatDuration(app.blacklistedSeconds)}</span>
+                          <span className="text-text-muted">Blacklisted</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <span className="tnum block text-[13.5px] font-semibold text-text-primary">
+                      {formatDuration(app.seconds)}
+                    </span>
+                    <span className="block text-[10.5px] uppercase tracking-wider text-text-muted">
+                      Total
+                    </span>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -202,13 +242,52 @@ export default async function EmployeeDetailPage({
               {topDomains.map((site) => (
                 <li
                   key={`${site.domain}-${site.productivityTag}`}
-                  className="flex items-center gap-2.5 py-2.5 text-[13.5px]"
+                  className="flex items-start justify-between gap-4 py-2.5 text-[13.5px]"
                 >
-                  <span className="min-w-0 flex-1 truncate font-medium">{site.domain}</span>
-                  <TagBadge tag={site.productivityTag} />
-                  <span className="tnum min-w-[42px] text-right text-[13px] text-text-secondary">
-                    {formatDuration(site.seconds)}
-                  </span>
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate font-medium text-text-primary">{site.domain}</span>
+                      <TagBadge tag={site.productivityTag} />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-text-secondary">
+                      {site.productiveSeconds > 0 && (
+                        <span className="inline-flex items-center gap-1.5" title="Productive">
+                          <span className="h-2 w-2 shrink-0 rounded-full bg-success-vivid" aria-hidden />
+                          <span className="tnum font-medium text-text-primary">{formatDuration(site.productiveSeconds)}</span>
+                          <span className="text-text-muted">Productive</span>
+                        </span>
+                      )}
+                      {site.neutralSeconds > 0 && (
+                        <span className="inline-flex items-center gap-1.5" title="Neutral">
+                          <span className="h-2 w-2 shrink-0 rounded-full bg-neutral-dot" aria-hidden />
+                          <span className="tnum font-medium text-text-primary">{formatDuration(site.neutralSeconds)}</span>
+                          <span className="text-text-muted">Neutral</span>
+                        </span>
+                      )}
+                      {site.unproductiveSeconds > 0 && (
+                        <span className="inline-flex items-center gap-1.5" title="Unproductive">
+                          <span className="h-2 w-2 shrink-0 rounded-full bg-warning" aria-hidden />
+                          <span className="tnum font-medium text-text-primary">{formatDuration(site.unproductiveSeconds)}</span>
+                          <span className="text-text-muted">Unproductive</span>
+                        </span>
+                      )}
+                      {site.blacklistedSeconds > 0 && (
+                        <span className="inline-flex items-center gap-1.5" title="Blacklisted">
+                          <span className="h-2 w-2 shrink-0 rounded-full bg-danger" aria-hidden />
+                          <span className="tnum font-medium text-danger">{formatDuration(site.blacklistedSeconds)}</span>
+                          <span className="text-text-muted">Blacklisted</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <span className="tnum block text-[13.5px] font-semibold text-text-primary">
+                      {formatDuration(site.seconds)}
+                    </span>
+                    <span className="block text-[10.5px] uppercase tracking-wider text-text-muted">
+                      Total
+                    </span>
+                  </div>
                 </li>
               ))}
             </ul>

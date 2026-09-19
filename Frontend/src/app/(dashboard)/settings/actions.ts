@@ -54,7 +54,7 @@ export interface PolicyFormValues {
   syncMaxBatchSize: number;
   realtimeEnabled: boolean;
   presenceHeartbeatSeconds: number;
-  browserSummaryScheduleTimeLocal: string;
+  reportSummaryScheduleTimeLocal: string;
 }
 
 export async function updatePolicy(organizationId: string, values: PolicyFormValues) {

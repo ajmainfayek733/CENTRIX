@@ -1,6 +1,10 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../src/config/db";
-import { summarizeBrowserDay } from "../src/modules/report/browserSummaryService";
+import {
+  summarizeActivityMetricDay,
+  summarizeActivitySessionDay,
+  summarizeBrowserDay,
+} from "../src/modules/report/browserSummaryService";
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_MS = 24 * 60 * 60 * 1_000;
@@ -9,10 +13,11 @@ interface Options {
   from?: string;
   to?: string;
   organizationId?: string;
+  type: "browser" | "activity-metrics" | "activity-sessions";
 }
 
 function parseOptions(args: string[]): Options {
-  const options: Options = {};
+  const options: Options = { type: "browser" };
 
   for (const arg of args) {
     const separator = arg.indexOf("=");
@@ -31,6 +36,12 @@ function parseOptions(args: string[]): Options {
         break;
       case "--organization-id":
         options.organizationId = value;
+        break;
+      case "--type":
+        if (value !== "browser" && value !== "activity-metrics" && value !== "activity-sessions") {
+          throw new Error("--type must be browser, activity-metrics, or activity-sessions.");
+        }
+        options.type = value;
         break;
       default:
         throw new Error(`Unknown argument '${name}'.`);
@@ -65,24 +76,45 @@ function addDays(date: Date, days: number): Date {
   return new Date(date.getTime() + days * DAY_MS);
 }
 
-async function historicalBounds(organizationId?: string) {
+async function historicalBounds(type: Options["type"], organizationId?: string) {
+  const table =
+    type === "browser"
+      ? "browser_activity"
+      : type === "activity-metrics"
+        ? "activity_metrics"
+        : "activity_sessions";
+  const alias =
+    type === "browser" ? "browser" : type === "activity-metrics" ? "metric" : "activity";
+  const timestamp = type === "activity-metrics" ? 'metric."windowEndUtc"' : `${alias}."startTime"`;
+  const sessionJoin =
+    type === "browser"
+      ? Prisma.sql`LEFT JOIN activity_sessions activity ON activity."activitySessionId" = browser."activitySessionId"
+                   LEFT JOIN attendance_sessions attendance ON attendance."sessionId" = activity."sessionId"`
+      : Prisma.sql`LEFT JOIN attendance_sessions attendance ON attendance."sessionId" = metric."sessionId"`;
+
+  const joins =
+    type === "browser"
+      ? sessionJoin
+      : type === "activity-metrics"
+        ? sessionJoin
+        : Prisma.sql`LEFT JOIN attendance_sessions attendance ON attendance."sessionId" = activity."sessionId"`;
+
   return prisma.$queryRaw<{ minDate: string | null; maxDate: string | null }[]>`
     SELECT
-      MIN(COALESCE(attendance."workDate", browser."startTime"::date))::text AS "minDate",
-      MAX(COALESCE(attendance."workDate", browser."startTime"::date))::text AS "maxDate"
-    FROM browser_activity browser
-    JOIN devices device ON device.id = browser."deviceId"
-    LEFT JOIN activity_sessions activity ON activity."activitySessionId" = browser."activitySessionId"
-    LEFT JOIN attendance_sessions attendance ON attendance."sessionId" = activity."sessionId"
+      MIN(COALESCE(attendance."workDate", ${Prisma.raw(timestamp)}::date))::text AS "minDate",
+      MAX(COALESCE(attendance."workDate", ${Prisma.raw(timestamp)}::date))::text AS "maxDate"
+    FROM ${Prisma.raw(table)} ${Prisma.raw(alias)}
+    JOIN devices device ON device.id = ${Prisma.raw(`${alias}."deviceId"`)}
+    ${joins}
     WHERE ${organizationId ? Prisma.sql`device."organizationId" = ${organizationId}` : Prisma.sql`TRUE`}
-      AND COALESCE(attendance."workDate", browser."startTime"::date) < CURRENT_DATE
+      AND COALESCE(attendance."workDate", ${Prisma.raw(timestamp)}::date) < CURRENT_DATE
   `;
 }
 
 async function main() {
   const options = parseOptions(process.argv.slice(2));
   const yesterday = yesterdayUtc();
-  const bounds = await historicalBounds(options.organizationId);
+  const bounds = await historicalBounds(options.type, options.organizationId);
   const firstStoredDate = bounds[0]?.minDate
     ? parseDate(bounds[0].minDate, "stored minimum date")
     : null;
@@ -91,13 +123,13 @@ async function main() {
   const to = options.to ? parseDate(options.to, "--to") : yesterday;
 
   if (!from) {
-    console.log("No previous browser activity dates found. Nothing to aggregate.");
+    console.log(`No previous ${options.type} dates found. Nothing to aggregate.`);
     return;
   }
   if (from > to) throw new Error("--from must be on or before --to.");
   if (to > yesterday) throw new Error("--to cannot be today or a future date.");
 
-  console.log(`Aggregating browser activity from ${formatDate(from)} through ${formatDate(to)}`);
+  console.log(`Aggregating ${options.type} from ${formatDate(from)} through ${formatDate(to)}`);
   if (options.organizationId) console.log(`Organization: ${options.organizationId}`);
 
   let date = from;
@@ -107,7 +139,11 @@ async function main() {
   while (date <= to) {
     const workDate = formatDate(date);
     const rows = await prisma.$transaction((tx) =>
-      summarizeBrowserDay(tx, workDate, options.organizationId),
+      options.type === "browser"
+        ? summarizeBrowserDay(tx, workDate, options.organizationId)
+        : options.type === "activity-metrics"
+          ? summarizeActivityMetricDay(tx, workDate, options.organizationId)
+          : summarizeActivitySessionDay(tx, workDate, options.organizationId),
     );
     totalRows += rows;
     days += 1;

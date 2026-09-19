@@ -161,8 +161,24 @@ export interface EmployeeDetail {
    * the percentages describe the whole period rather than whatever rows happen to be loaded.
    */
   timeline: LogPageOf<TimelineRow>;
-  topApps: Array<{ appName: string | null; productivityTag: ProductivityTag; seconds: number }>;
-  topDomains: Array<{ domain: string; productivityTag: ProductivityTag; seconds: number }>;
+  topApps: Array<{
+    appName: string | null;
+    productivityTag: ProductivityTag;
+    seconds: number;
+    productiveSeconds: number;
+    unproductiveSeconds: number;
+    neutralSeconds: number;
+    blacklistedSeconds: number;
+  }>;
+  topDomains: Array<{
+    domain: string;
+    productivityTag: ProductivityTag;
+    seconds: number;
+    productiveSeconds: number;
+    unproductiveSeconds: number;
+    neutralSeconds: number;
+    blacklistedSeconds: number;
+  }>;
   attendance: AttendanceRow[];
   attendanceDays: AttendanceDay[];
 }
@@ -268,7 +284,7 @@ export interface Policy {
     maxRetryAttempts: number;
     urlRefreshSeconds: number;
   };
-  browserSummaryScheduleTimeLocal: string;
+  reportSummaryScheduleTimeLocal: string;
   screenshot: { enabled: boolean; intervalSeconds: number; jpegQuality: number };
   usb: { enabled: boolean; reconciliationIntervalSeconds: number; alertOnInsertion: boolean };
   alert: {

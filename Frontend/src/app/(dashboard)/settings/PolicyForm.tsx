@@ -9,6 +9,8 @@ import { updatePolicy, type PolicyFormValues } from "./actions";
 /** Solid fill so the control stays readable over the page gradient in both themes. */
 const SAVE_PRIMARY_CLASS =
   "border border-brand-strong bg-brand-strong text-brand-contrast shadow-none hover:bg-brand hover:text-brand-contrast";
+const DEFAULT_REPORT_SUMMARY_SCHEDULE_TIME = "23:00";
+const LOCAL_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 type FormStatus = { tone: "success" | "danger"; message: string };
 
@@ -34,7 +36,9 @@ function toFormValues(policy: Policy): PolicyFormValues {
     appSessionEnabled: policy.appSession.enabled,
     browserMonitorEnabled: policy.browserMonitor.enabled,
     browserUrlRefreshSeconds: policy.browserMonitor.urlRefreshSeconds,
-    browserSummaryScheduleTimeLocal: policy.browserSummaryScheduleTimeLocal,
+    reportSummaryScheduleTimeLocal: LOCAL_TIME_PATTERN.test(policy.reportSummaryScheduleTimeLocal)
+      ? policy.reportSummaryScheduleTimeLocal
+      : DEFAULT_REPORT_SUMMARY_SCHEDULE_TIME,
     screenshotEnabled: policy.screenshot.enabled,
     screenshotIntervalSeconds: policy.screenshot.intervalSeconds,
     screenshotJpegQuality: policy.screenshot.jpegQuality,
@@ -371,9 +375,9 @@ export function PolicyForm({ organizationId, policy }: { organizationId: string;
       <AdvancedGroup>
         <Section title="Schedule jobs">
           <TimeField
-            label="Browser summary time"
-            value={values.browserSummaryScheduleTimeLocal}
-            onChange={(v) => set("browserSummaryScheduleTimeLocal", v)}
+            label="Report summary time"
+            value={values.reportSummaryScheduleTimeLocal}
+            onChange={(v) => set("reportSummaryScheduleTimeLocal", v)}
           />
         </Section>
 

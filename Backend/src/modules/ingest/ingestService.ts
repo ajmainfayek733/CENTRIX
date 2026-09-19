@@ -403,6 +403,10 @@ class IngestService {
         workDates.get(e.sessionId) ?? utcWorkDate(e.windowEndUtc),
         e.keyCount,
         e.mouseCount,
+        e.mouseLeftKeyCount,
+        e.mouseRightKeyCount,
+        e.mouseMiddleKeyCount,
+        e.mouseOtherKeyCount,
         e.windowEndUtc,
       );
 
@@ -474,6 +478,14 @@ class IngestService {
         e.startTime,
         e.endTime,
       );
+      if (e.type === "Application") {
+        accumulator.addApplicationSummary(
+          workDate,
+          e.appName ?? null,
+          productivityTag,
+          e.durationSeconds,
+        );
+      }
 
       rows.push({
         deviceId: device.id,

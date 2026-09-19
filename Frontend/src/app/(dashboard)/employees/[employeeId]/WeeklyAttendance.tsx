@@ -1,7 +1,7 @@
-import { formatDuration, formatTime } from '@/lib/format';
-import { Badge, EmptyState } from '@/components/ui';
-import { cn } from '@/lib/utils';
-import type { AttendanceDay } from '@/types/api';
+import { formatDuration, formatTime } from "@/lib/format";
+import { Badge, EmptyState } from "@/components/ui";
+import { cn } from "@/lib/utils";
+import type { AttendanceDay } from "@/types/api";
 
 /**
  * Weekly attendance for one employee, folded from the same `attendanceDays` rows the attendance
@@ -29,9 +29,9 @@ const MAX_WEEKS = 12;
 const MIN_BAR_PERCENT = 6;
 const FULL_BAR_PERCENT = 100;
 
-const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
-type DayState = 'present' | 'ended' | 'unknown' | 'absent' | 'outside';
+type DayState = "present" | "ended" | "unknown" | "absent" | "outside";
 
 interface DayCell {
   key: string;
@@ -58,7 +58,7 @@ function toDayKey(value: Date): string {
  * explicit keeps the pairing with `toDayKey` legible and survives a key that grows a time part.
  */
 function fromDayKey(key: string): Date {
-  const [year, month, day] = key.split('-').map(Number);
+  const [year, month, day] = key.split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day));
 }
 
@@ -74,26 +74,26 @@ function startOfIsoWeek(value: Date): Date {
 
 function formatDayLabel(key: string): string {
   return fromDayKey(key).toLocaleDateString(undefined, {
-    timeZone: 'UTC',
-    month: 'short',
-    day: 'numeric',
+    timeZone: "UTC",
+    month: "short",
+    day: "numeric",
   });
 }
 
 const STATE_STYLE: Record<DayState, { cell: string; bar: string }> = {
-  present: { cell: 'border-success/35 bg-success/10', bar: 'bg-success' },
-  ended: { cell: 'border-border bg-surface-muted', bar: 'bg-brand' },
-  unknown: { cell: 'border-warning/35 bg-warning/10', bar: 'bg-warning' },
-  absent: { cell: 'border-dashed border-border bg-transparent', bar: 'bg-transparent' },
-  outside: { cell: 'border-transparent bg-transparent', bar: 'bg-transparent' },
+  present: { cell: "border-success/35 bg-success/10", bar: "bg-success" },
+  ended: { cell: "border-border bg-surface-muted", bar: "bg-brand" },
+  unknown: { cell: "border-warning/35 bg-warning/10", bar: "bg-warning" },
+  absent: { cell: "border-dashed border-border bg-transparent", bar: "bg-transparent" },
+  outside: { cell: "border-transparent bg-transparent", bar: "bg-transparent" },
 };
 
 const STATE_TITLE: Record<DayState, string> = {
-  present: 'Signed in now',
-  ended: 'Attended',
-  unknown: 'Open session on a device that stopped reporting',
-  absent: 'No sign-in recorded',
-  outside: 'Outside the selected period',
+  present: "Signed in now",
+  ended: "Attended",
+  unknown: "Open session on a device that stopped reporting",
+  absent: "No sign-in recorded",
+  outside: "Outside the selected period",
 };
 
 /**
@@ -111,16 +111,23 @@ function buildWeeks(days: AttendanceDay[], periodStart: string, periodEnd: strin
   const lastKey = toDayKey(new Date(periodEnd));
   const todayKey = toDayKey(new Date());
 
+  const singleDay = firstKey === lastKey;
+  const effectiveStartKey = singleDay ? toDayKey(startOfIsoWeek(fromDayKey(firstKey))) : firstKey;
+  const effectiveEndKey = singleDay ? toDayKey(addDays(fromDayKey(effectiveStartKey), 6)) : lastKey;
+
   // The default range ends at "now" and a picked one can end later still; either way, days nobody
   // has worked yet must not be manufactured into absences.
-  const visibleEndKey = lastKey > todayKey ? todayKey : lastKey;
-  if (visibleEndKey < firstKey) return [];
+  const visibleEndKey = effectiveEndKey > todayKey ? todayKey : effectiveEndKey;
+  const rangeStartWeek = startOfIsoWeek(fromDayKey(effectiveStartKey));
+  const rangeEndWeek = startOfIsoWeek(fromDayKey(visibleEndKey));
+
+  if (rangeEndWeek < rangeStartWeek && visibleEndKey < effectiveStartKey) return [];
 
   const weeks: WeekRow[] = [];
 
   for (
-    let weekStart = startOfIsoWeek(fromDayKey(visibleEndKey));
-    toDayKey(addDays(weekStart, DAYS_PER_WEEK - 1)) >= firstKey && weeks.length < MAX_WEEKS;
+    let weekStart = rangeEndWeek;
+    weekStart >= rangeStartWeek && weeks.length < MAX_WEEKS;
     weekStart = addDays(weekStart, -DAYS_PER_WEEK)
   ) {
     const cells: DayCell[] = [];
@@ -131,10 +138,17 @@ function buildWeeks(days: AttendanceDay[], periodStart: string, periodEnd: strin
       const date = addDays(weekStart, offset);
       const key = toDayKey(date);
       const day = byDate.get(key) ?? null;
-      const withinPeriod = key >= firstKey && key <= visibleEndKey;
-      const state: DayState = !withinPeriod ? 'outside' : day ? day.status : 'absent';
+      const isFuture = key > todayKey;
+      const withinRequestedPeriod = key >= effectiveStartKey && key <= visibleEndKey;
+      const state: DayState = isFuture
+        ? "outside"
+        : day
+          ? day.status
+          : withinRequestedPeriod
+            ? "absent"
+            : "outside";
 
-      if (day && withinPeriod) {
+      if (day) {
         attendedDays += 1;
         activeSeconds += day.activeSeconds;
       }
@@ -175,8 +189,9 @@ export function WeeklyAttendance({
     that appears nowhere in the data.
   */
   const peakActiveSeconds = weeks.reduce(
-    (peak, week) => week.days.reduce((max, cell) => Math.max(max, cell.day?.activeSeconds ?? 0), peak),
-    0
+    (peak, week) =>
+      week.days.reduce((max, cell) => Math.max(max, cell.day?.activeSeconds ?? 0), peak),
+    0,
   );
 
   return (
@@ -188,7 +203,8 @@ export function WeeklyAttendance({
               {formatDayLabel(week.startKey)} - {formatDayLabel(week.endKey)}
             </h3>
             <p className="tnum text-[12.5px] text-text-secondary">
-              {week.attendedDays} of {DAYS_PER_WEEK} days - {formatDuration(week.activeSeconds)} active
+              {week.attendedDays} of {DAYS_PER_WEEK} days - {formatDuration(week.activeSeconds)}{" "}
+              active
             </p>
           </header>
 
@@ -199,7 +215,7 @@ export function WeeklyAttendance({
                 cell.day && peakActiveSeconds > 0
                   ? Math.max(
                       MIN_BAR_PERCENT,
-                      Math.round((cell.day.activeSeconds / peakActiveSeconds) * FULL_BAR_PERCENT)
+                      Math.round((cell.day.activeSeconds / peakActiveSeconds) * FULL_BAR_PERCENT),
                     )
                   : 0;
 
@@ -207,29 +223,33 @@ export function WeeklyAttendance({
                 <li
                   key={cell.key}
                   title={`${formatDayLabel(cell.key)} - ${STATE_TITLE[cell.state]}${
-                    cell.day ? ` - in ${formatTime(cell.day.firstLogin)}` : ''
+                    cell.day
+                      ? ` | Active: ${formatDuration(cell.day.activeSeconds)} | In: ${formatTime(cell.day.firstLogin)}${
+                          cell.day.lastLogout ? ` - Out: ${formatTime(cell.day.lastLogout)}` : ""
+                        }`
+                      : ""
                   }`}
                   className={cn(
-                    'flex min-w-0 flex-col items-center gap-1.5 rounded-md border p-2 text-center',
-                    style.cell
+                    "flex min-w-0 flex-col items-center gap-1.5 rounded-md border p-2 text-center transition-colors",
+                    style.cell,
                   )}
                 >
-                  <span className="text-[10.5px] uppercase tracking-[0.4px] text-text-secondary">
+                  <span className="text-[10.5px] font-medium uppercase tracking-[0.4px] text-text-secondary">
                     {WEEKDAY_LABELS[index]}
                   </span>
                   <span
                     className={cn(
-                      'tnum text-[13px] font-semibold',
-                      cell.state === 'outside' ? 'text-text-secondary/45' : 'text-text-primary'
+                      "tnum text-[13px] font-semibold",
+                      cell.state === "outside" ? "text-text-secondary/45" : "text-text-primary",
                     )}
                   >
                     {cell.dayOfMonth}
                   </span>
 
                   {/* Decoration over the duration underneath it, never the only signal. */}
-                  <span className="h-1 w-full overflow-hidden rounded-full bg-border" aria-hidden>
+                  <span className="h-1 w-full overflow-hidden rounded-full bg-border/60" aria-hidden>
                     <span
-                      className={cn('block h-full rounded-full', style.bar)}
+                      className={cn("block h-full rounded-full", style.bar)}
                       style={{ width: `${fillPercent}%` }}
                     />
                   </span>
@@ -237,9 +257,9 @@ export function WeeklyAttendance({
                   <span className="tnum w-full truncate text-[11.5px] text-text-secondary">
                     {cell.day
                       ? formatDuration(cell.day.activeSeconds)
-                      : cell.state === 'absent'
-                        ? 'Absent'
-                        : '-'}
+                      : cell.state === "absent"
+                        ? "Absent"
+                        : "-"}
                   </span>
                 </li>
               );

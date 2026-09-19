@@ -2,7 +2,8 @@
 
 /** Seconds as "6h 12m", "12m", or "45s". Zero renders as an em dash, not "0s". */
 export function formatDuration(seconds: number): string {
-  if (!seconds || seconds <= 0) return '-';
+  if (!Number.isFinite(seconds)) return "-";
+  if (seconds <= 0) return "0m";
 
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
@@ -17,46 +18,46 @@ export function formatPercent(value: number): string {
 }
 
 export function formatTime(value: string | Date | null | undefined): string {
-  if (!value) return '-';
+  if (!value) return "-";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '-';
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 export function formatDateTime(value: string | Date | null | undefined): string {
-  if (!value) return '-';
+  if (!value) return "-";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '-';
+  if (Number.isNaN(date.getTime())) return "-";
   return date.toLocaleString([], {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
 /** "3 minutes ago" for liveness columns, where the exact timestamp matters less than recency. */
 export function formatRelative(value: string | Date | null | undefined): string {
-  if (!value) return 'never';
+  if (!value) return "never";
 
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'never';
+  if (Number.isNaN(date.getTime())) return "never";
 
   const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (seconds < 60) return 'just now';
+  if (seconds < 60) return "just now";
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
   return `${Math.floor(seconds / 86400)}d ago`;
 }
 
 export function formatBytes(value: string | number | null | undefined): string {
-  if (value === null || value === undefined) return '-';
+  if (value === null || value === undefined) return "-";
 
   // Capacities arrive as decimal strings because they exceed JSON's safe integer range.
-  const bytes = typeof value === 'string' ? Number(value) : value;
-  if (!Number.isFinite(bytes) || bytes <= 0) return '-';
+  const bytes = typeof value === "string" ? Number(value) : value;
+  if (!Number.isFinite(bytes) || bytes <= 0) return "-";
 
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const units = ["B", "KB", "MB", "GB", "TB"];
   const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
   const size = bytes / Math.pow(1024, exponent);
 

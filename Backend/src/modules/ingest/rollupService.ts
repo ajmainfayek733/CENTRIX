@@ -50,6 +50,25 @@ interface BrowserDomainDelta {
   blacklistedSeconds: number;
 }
 
+interface ActivityMetricDailyDelta {
+  sampleCount: number;
+  keyCount: number;
+  mouseCount: number;
+  mouseLeftKeyCount: number;
+  mouseRightKeyCount: number;
+  mouseMiddleKeyCount: number;
+  mouseOtherKeyCount: number;
+}
+
+interface ActivityApplicationDailyDelta {
+  durationSeconds: number;
+  sessionCount: number;
+  productiveSeconds: number;
+  unproductiveSeconds: number;
+  neutralSeconds: number;
+  blacklistedSeconds: number;
+}
+
 export function emptyDelta(): RollupDelta {
   return {
     activeSeconds: 0,
@@ -78,6 +97,11 @@ export function emptyDelta(): RollupDelta {
 export class RollupAccumulator {
   private readonly byDate = new Map<string, RollupDelta>();
   private readonly browserByDateAndDomain = new Map<string, Map<string, BrowserDomainDelta>>();
+  private readonly metricByDate = new Map<string, ActivityMetricDailyDelta>();
+  private readonly applicationByDateAndName = new Map<
+    string,
+    Map<string, ActivityApplicationDailyDelta>
+  >();
 
   private forDate(workDate: string): RollupDelta {
     let delta = this.byDate.get(workDate);
@@ -127,11 +151,76 @@ export class RollupAccumulator {
     }
   }
 
-  addActivityMetric(workDate: string, keyCount: number, mouseCount: number, windowEnd: Date) {
+  addApplicationSummary(
+    workDate: string,
+    appName: string | null,
+    tag: ProductivityTag,
+    durationSeconds: number,
+  ) {
+    const name = appName ?? "__unknown_application__";
+    let applications = this.applicationByDateAndName.get(workDate);
+    if (!applications) {
+      applications = new Map();
+      this.applicationByDateAndName.set(workDate, applications);
+    }
+    const application = applications.get(name) ?? {
+      durationSeconds: 0,
+      sessionCount: 0,
+      productiveSeconds: 0,
+      unproductiveSeconds: 0,
+      neutralSeconds: 0,
+      blacklistedSeconds: 0,
+    };
+    application.durationSeconds += durationSeconds;
+    application.sessionCount += 1;
+    switch (tag) {
+      case ProductivityTag.Productive:
+        application.productiveSeconds += durationSeconds;
+        break;
+      case ProductivityTag.Unproductive:
+        application.unproductiveSeconds += durationSeconds;
+        break;
+      case ProductivityTag.Blacklisted:
+        application.blacklistedSeconds += durationSeconds;
+        break;
+      default:
+        application.neutralSeconds += durationSeconds;
+    }
+    applications.set(name, application);
+  }
+
+  addActivityMetric(
+    workDate: string,
+    keyCount: number,
+    mouseCount: number,
+    mouseLeftKeyCount: number,
+    mouseRightKeyCount: number,
+    mouseMiddleKeyCount: number,
+    mouseOtherKeyCount: number,
+    windowEnd: Date,
+  ) {
     const delta = this.forDate(workDate);
     delta.keyCount += keyCount;
     delta.mouseCount += mouseCount;
     this.touchSpan(delta, windowEnd, windowEnd);
+
+    const metric = this.metricByDate.get(workDate) ?? {
+      sampleCount: 0,
+      keyCount: 0,
+      mouseCount: 0,
+      mouseLeftKeyCount: 0,
+      mouseRightKeyCount: 0,
+      mouseMiddleKeyCount: 0,
+      mouseOtherKeyCount: 0,
+    };
+    metric.sampleCount += 1;
+    metric.keyCount += keyCount;
+    metric.mouseCount += mouseCount;
+    metric.mouseLeftKeyCount += mouseLeftKeyCount;
+    metric.mouseRightKeyCount += mouseRightKeyCount;
+    metric.mouseMiddleKeyCount += mouseMiddleKeyCount;
+    metric.mouseOtherKeyCount += mouseOtherKeyCount;
+    this.metricByDate.set(workDate, metric);
   }
 
   addBrowserVisit(
@@ -207,8 +296,26 @@ export class RollupAccumulator {
 
   browserDomainEntries(): [string, string, BrowserDomainDelta][] {
     return [...this.browserByDateAndDomain.entries()].flatMap(([workDate, domains]) =>
-      [...domains.entries()].map(
-        ([domain, delta]): [string, string, BrowserDomainDelta] => [workDate, domain, delta],
+      [...domains.entries()].map(([domain, delta]): [string, string, BrowserDomainDelta] => [
+        workDate,
+        domain,
+        delta,
+      ]),
+    );
+  }
+
+  activityMetricEntries(): [string, ActivityMetricDailyDelta][] {
+    return [...this.metricByDate.entries()];
+  }
+
+  applicationEntries(): [string, string, ActivityApplicationDailyDelta][] {
+    return [...this.applicationByDateAndName.entries()].flatMap(([workDate, applications]) =>
+      [...applications.entries()].map(
+        ([appName, delta]): [string, string, ActivityApplicationDailyDelta] => [
+          workDate,
+          appName,
+          delta,
+        ],
       ),
     );
   }
@@ -324,6 +431,55 @@ export async function applyRollup(
         "unproductiveSeconds" = browser_daily_summaries."unproductiveSeconds" + EXCLUDED."unproductiveSeconds",
         "neutralSeconds"      = browser_daily_summaries."neutralSeconds" + EXCLUDED."neutralSeconds",
         "blacklistedSeconds"  = browser_daily_summaries."blacklistedSeconds" + EXCLUDED."blacklistedSeconds",
+        "updatedAt"           = NOW()
+    `;
+  }
+
+  for (const [workDate, delta] of accumulator.activityMetricEntries()) {
+    if (workDate >= utcWorkDate(new Date())) continue;
+
+    await tx.$executeRaw`
+      INSERT INTO activity_metric_daily_summaries (
+        id, "organizationId", "employeeId", "workDate", "sampleCount", "keyCount", "mouseCount",
+        "mouseLeftKeyCount", "mouseRightKeyCount", "mouseMiddleKeyCount", "mouseOtherKeyCount",
+        "createdAt", "updatedAt"
+      ) VALUES (
+        gen_random_uuid(), ${scope.organizationId}, ${scope.employeeId}, ${workDate}::date,
+        ${delta.sampleCount}, ${delta.keyCount}, ${delta.mouseCount}, ${delta.mouseLeftKeyCount},
+        ${delta.mouseRightKeyCount}, ${delta.mouseMiddleKeyCount}, ${delta.mouseOtherKeyCount}, NOW(), NOW()
+      )
+      ON CONFLICT ("workDate", "employeeId") DO UPDATE SET
+        "sampleCount"         = activity_metric_daily_summaries."sampleCount" + EXCLUDED."sampleCount",
+        "keyCount"            = activity_metric_daily_summaries."keyCount" + EXCLUDED."keyCount",
+        "mouseCount"          = activity_metric_daily_summaries."mouseCount" + EXCLUDED."mouseCount",
+        "mouseLeftKeyCount"   = activity_metric_daily_summaries."mouseLeftKeyCount" + EXCLUDED."mouseLeftKeyCount",
+        "mouseRightKeyCount"  = activity_metric_daily_summaries."mouseRightKeyCount" + EXCLUDED."mouseRightKeyCount",
+        "mouseMiddleKeyCount" = activity_metric_daily_summaries."mouseMiddleKeyCount" + EXCLUDED."mouseMiddleKeyCount",
+        "mouseOtherKeyCount"  = activity_metric_daily_summaries."mouseOtherKeyCount" + EXCLUDED."mouseOtherKeyCount",
+        "updatedAt"           = NOW()
+    `;
+  }
+
+  for (const [workDate, appName, delta] of accumulator.applicationEntries()) {
+    if (workDate >= utcWorkDate(new Date())) continue;
+
+    await tx.$executeRaw`
+      INSERT INTO activity_session_daily_summaries (
+        id, "organizationId", "employeeId", "workDate", "appName", "durationSeconds", "sessionCount",
+        "productiveSeconds", "unproductiveSeconds", "neutralSeconds", "blacklistedSeconds",
+        "createdAt", "updatedAt"
+      ) VALUES (
+        gen_random_uuid(), ${scope.organizationId}, ${scope.employeeId}, ${workDate}::date, ${appName},
+        ${delta.durationSeconds}, ${delta.sessionCount}, ${delta.productiveSeconds},
+        ${delta.unproductiveSeconds}, ${delta.neutralSeconds}, ${delta.blacklistedSeconds}, NOW(), NOW()
+      )
+      ON CONFLICT ("workDate", "employeeId", "appName") DO UPDATE SET
+        "durationSeconds"     = activity_session_daily_summaries."durationSeconds" + EXCLUDED."durationSeconds",
+        "sessionCount"        = activity_session_daily_summaries."sessionCount" + EXCLUDED."sessionCount",
+        "productiveSeconds"   = activity_session_daily_summaries."productiveSeconds" + EXCLUDED."productiveSeconds",
+        "unproductiveSeconds" = activity_session_daily_summaries."unproductiveSeconds" + EXCLUDED."unproductiveSeconds",
+        "neutralSeconds"      = activity_session_daily_summaries."neutralSeconds" + EXCLUDED."neutralSeconds",
+        "blacklistedSeconds"  = activity_session_daily_summaries."blacklistedSeconds" + EXCLUDED."blacklistedSeconds",
         "updatedAt"           = NOW()
     `;
   }

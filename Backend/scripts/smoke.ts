@@ -24,6 +24,7 @@ import { generateDeviceApiKey, hashDeviceApiKey } from "../src/utils/token";
 import { organizationService } from "../src/modules/organization/organizationService";
 import { employeeService } from "../src/modules/employee/employeeService";
 import { resolveRange } from "../src/modules/report/reportService";
+import { formatDuration } from "../src/lib/format";
 
 const BASE = `http://127.0.0.1:${env.PORT}`;
 
@@ -1092,6 +1093,8 @@ async function main() {
         singleDay.end.toISOString() === "2026-08-15T23:59:59.999Z",
       { start: singleDay.start, end: singleDay.end },
     );
+
+    check("zero-duration formatting shows 0m", formatDuration(0) === "0m", formatDuration(0));
 
     // The "Today" preset sends startDate === endDate. Before the fix this window was zero-width.
     check(

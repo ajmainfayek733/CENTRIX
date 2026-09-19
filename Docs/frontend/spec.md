@@ -588,3 +588,15 @@ with the table below it after a range change.
   signal.
 - **Newest week first, capped at 12.** A year-long range would otherwise render fifty-two strips;
   when the cap bites, the legend row says so.
+- **7-day week representation**: The component visualizes the complete Monday-to-Sunday progression for each week in the selected range, rendering active durations, attendance statuses, and rich tooltip details (login/logout times and session length).
+
+## 17. Top Applications & Top Websites Layout
+
+Top Applications and Top Websites cards are formatted into a clean two-column layout:
+- **Left Column**: Application/Domain title, dominant tag badge (`TagBadge`), and breakdown durations with preceding colored dots:
+  - Green dot (`bg-success-vivid`): Productive
+  - Neutral dot (`bg-neutral-dot`): Neutral
+  - Warning dot (`bg-warning`): Unproductive
+  - Danger dot (`bg-danger`): Blacklisted
+- **Right Column**: Right-aligned Total Duration with uppercase "TOTAL" caption, clearly distinguishing aggregate duration from individual productivity category breakdowns.
+

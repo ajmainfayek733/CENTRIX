@@ -62,6 +62,15 @@ interface BrowserDomainTotals {
   blacklistedSeconds: number;
 }
 
+interface ApplicationTotals {
+  appName: string | null;
+  durationSeconds: number;
+  productiveSeconds: number;
+  unproductiveSeconds: number;
+  neutralSeconds: number;
+  blacklistedSeconds: number;
+}
+
 function emptyBrowserDomain(domain: string): BrowserDomainTotals {
   return {
     domain,
@@ -95,6 +104,62 @@ function addBrowserDomain(
       row.neutralSeconds += seconds;
   }
   totals.set(domain, row);
+}
+
+function emptyApplication(appName: string | null): ApplicationTotals {
+  return {
+    appName,
+    durationSeconds: 0,
+    productiveSeconds: 0,
+    unproductiveSeconds: 0,
+    neutralSeconds: 0,
+    blacklistedSeconds: 0,
+  };
+}
+
+function addApplication(
+  totals: Map<string, ApplicationTotals>,
+  appName: string | null,
+  tag: ProductivityTag,
+  seconds: number,
+) {
+  const key = appName ?? "__unknown_application__";
+  const row = totals.get(key) ?? emptyApplication(appName);
+  row.durationSeconds += seconds;
+  switch (tag) {
+    case ProductivityTag.Productive:
+      row.productiveSeconds += seconds;
+      break;
+    case ProductivityTag.Unproductive:
+      row.unproductiveSeconds += seconds;
+      break;
+    case ProductivityTag.Blacklisted:
+      row.blacklistedSeconds += seconds;
+      break;
+    default:
+      row.neutralSeconds += seconds;
+  }
+  totals.set(key, row);
+}
+
+const BROWSER_IDENTIFIERS = [
+  "chrome",
+  "msedge",
+  "edge",
+  "firefox",
+  "brave",
+  "opera",
+  "vivaldi",
+  "arc",
+  "safari",
+  "internet explorer",
+  "iexplore",
+];
+
+export function isBrowserApplication(appName: string | null | undefined): boolean {
+  if (!appName) return false;
+  const normalized = appName.toLowerCase();
+  return BROWSER_IDENTIFIERS.some((b) => normalized.includes(b));
 }
 
 /** How many apps/domains the "top" lists show. Not a page - a fixed leaderboard. */
@@ -138,17 +203,20 @@ export function resolveRange(startDate?: string, endDate?: string) {
   const end = endDate ? new Date(endDate) : new Date();
   const start = startDate
     ? new Date(startDate)
-    : new Date(end.getTime() - DEFAULT_RANGE_DAYS * 86400_000);
+    : startOfUtcDay(new Date(end.getTime() - (DEFAULT_RANGE_DAYS - 1) * DAY_MS));
 
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
     throw { statusCode: 400, message: "startDate/endDate must be valid ISO dates" };
   }
 
   if (endDate !== undefined && DATE_ONLY.test(endDate)) {
-    return { start, end: new Date(end.getTime() + END_OF_DAY_MS) };
+    return {
+      start: startDate && DATE_ONLY.test(startDate) ? startOfUtcDay(start) : start,
+      end: new Date(end.getTime() + END_OF_DAY_MS),
+    };
   }
 
-  return { start, end };
+  return { start: startDate && DATE_ONLY.test(startDate) ? startOfUtcDay(start) : start, end };
 }
 
 interface Totals {
@@ -228,6 +296,120 @@ interface AttendanceDay {
 }
 
 export class ReportService {
+  private async getApplicationGroups(
+    employeeId: string,
+    deviceIds: string[],
+    start: Date,
+    end: Date,
+  ): Promise<ApplicationTotals[]> {
+    const today = startOfUtcDay(new Date());
+    const startDay = startOfUtcDay(start);
+    const endDay = startOfUtcDay(end);
+    const singleDay = startDay.getTime() === endDay.getTime();
+    const totals = new Map<string, ApplicationTotals>();
+    const summaryEnd = new Date(Math.min(endDay.getTime(), today.getTime() - DAY_MS));
+    const hasSummaryRange = !singleDay && startDay <= summaryEnd;
+
+    const summaryDates = new Set<string>();
+    const summaryGroups = hasSummaryRange
+      ? await prisma.activitySessionDailySummary.groupBy({
+          by: ["workDate", "appName"],
+          where: { employeeId, workDate: { gte: startDay, lte: summaryEnd } },
+          _sum: {
+            durationSeconds: true,
+            productiveSeconds: true,
+            unproductiveSeconds: true,
+            neutralSeconds: true,
+            blacklistedSeconds: true,
+          },
+        })
+      : [];
+
+    for (const group of summaryGroups) {
+      summaryDates.add(workDateKey(group.workDate));
+      const appName = group.appName === "__unknown_application__" ? null : group.appName;
+      const row = totals.get(group.appName) ?? emptyApplication(appName);
+      row.durationSeconds += group._sum.durationSeconds ?? 0;
+      row.productiveSeconds += group._sum.productiveSeconds ?? 0;
+      row.unproductiveSeconds += group._sum.unproductiveSeconds ?? 0;
+      row.neutralSeconds += group._sum.neutralSeconds ?? 0;
+      row.blacklistedSeconds += group._sum.blacklistedSeconds ?? 0;
+      totals.set(group.appName, row);
+    }
+
+    const rawRows =
+      start <= end && (!hasSummaryRange || startDay >= today || endDay >= today)
+        ? await prisma.activitySession.findMany({
+            where: {
+              deviceId: { in: deviceIds },
+              type: ActivityType.Application,
+              startTime: { gte: start, lte: end },
+            },
+            select: {
+              appName: true,
+              productivityTag: true,
+              durationSeconds: true,
+              startTime: true,
+            },
+          })
+        : [];
+
+    for (const row of rawRows) {
+      const rowDay = workDateKey(row.startTime);
+      if (!singleDay && rowDay < workDateKey(today) && summaryDates.has(rowDay)) continue;
+      addApplication(totals, row.appName, row.productivityTag, row.durationSeconds);
+    }
+
+    // Inherit browser domain productivity for browser applications
+    const domainGroups = await this.getBrowserDomainGroups(employeeId, deviceIds, start, end);
+    let totalDomainProductive = 0;
+    let totalDomainUnproductive = 0;
+    let totalDomainBlacklisted = 0;
+    let totalDomainNeutral = 0;
+
+    for (const domain of domainGroups) {
+      totalDomainProductive += domain.productiveSeconds;
+      totalDomainUnproductive += domain.unproductiveSeconds;
+      totalDomainBlacklisted += domain.blacklistedSeconds;
+      totalDomainNeutral += domain.neutralSeconds;
+    }
+
+    const browserApps: ApplicationTotals[] = [];
+    let totalBrowserDuration = 0;
+
+    for (const row of totals.values()) {
+      if (isBrowserApplication(row.appName)) {
+        browserApps.push(row);
+        totalBrowserDuration += row.durationSeconds;
+      }
+    }
+
+    if (browserApps.length > 0 && totalBrowserDuration > 0) {
+      for (const browserApp of browserApps) {
+        const ratio = browserApp.durationSeconds / totalBrowserDuration;
+        const appDomainProd = Math.round(totalDomainProductive * ratio);
+        const appDomainUnprod = Math.round(totalDomainUnproductive * ratio);
+        const appDomainBlack = Math.round(totalDomainBlacklisted * ratio);
+        const appDomainNeut = Math.round(totalDomainNeutral * ratio);
+        const appDomainSum = appDomainProd + appDomainUnprod + appDomainBlack + appDomainNeut;
+        const unassigned = Math.max(0, browserApp.durationSeconds - appDomainSum);
+
+        const baseTag = dominantProductivityTag(browserApp);
+        browserApp.productiveSeconds = appDomainProd + (baseTag === "Productive" ? unassigned : 0);
+        browserApp.unproductiveSeconds =
+          appDomainUnprod + (baseTag === "Unproductive" ? unassigned : 0);
+        browserApp.blacklistedSeconds =
+          appDomainBlack + (baseTag === "Blacklisted" ? unassigned : 0);
+        browserApp.neutralSeconds =
+          appDomainNeut + (baseTag === "Neutral" || baseTag === "Productive" ? 0 : unassigned);
+      }
+    }
+
+    return [...totals.values()]
+      .sort((left, right) => right.durationSeconds - left.durationSeconds)
+      .slice(0, TOP_LIST_SIZE);
+  }
+
   private async getBrowserDomainGroups(
     employeeId: string,
     deviceIds: string[],
@@ -239,51 +421,29 @@ export class ReportService {
     const endDay = startOfUtcDay(end);
     const singleDay = startDay.getTime() === endDay.getTime();
     const totals = new Map<string, BrowserDomainTotals>();
-
-    // A one-day request is an audit view, so it always reads the immutable visit log. For a range,
-    // only the current day remains raw; completed days come from the bounded daily summary.
-    const rawStart = singleDay ? start : startDay >= today ? start : today;
-    const rawEnd = singleDay ? end : end;
-    const hasRawRange = rawStart <= rawEnd;
-    const summaryEnd = new Date(Math.min(endDay.getTime(), today.getTime() - 24 * 60 * 60 * 1000));
+    const summaryEnd = new Date(Math.min(endDay.getTime(), today.getTime() - DAY_MS));
     const hasSummaryRange = !singleDay && startDay <= summaryEnd;
 
-    const [rawGroups, summaryGroups] = await Promise.all([
-      hasRawRange
-        ? prisma.browserActivity.groupBy({
-            by: ["domain", "productivityTag"],
-            where: { deviceId: { in: deviceIds }, startTime: { gte: rawStart, lte: rawEnd } },
-            _sum: { durationSeconds: true },
-          })
-        : Promise.resolve([]),
-      hasSummaryRange
-        ? prisma.browserDailySummary.groupBy({
-            by: ["domain"],
-            where: {
-              employeeId,
-              workDate: { gte: startDay, lte: summaryEnd },
-            },
-            _sum: {
-              durationSeconds: true,
-              productiveSeconds: true,
-              unproductiveSeconds: true,
-              neutralSeconds: true,
-              blacklistedSeconds: true,
-            },
-          })
-        : Promise.resolve([]),
-    ]);
-
-    for (const group of rawGroups) {
-      addBrowserDomain(
-        totals,
-        group.domain,
-        group.productivityTag,
-        group._sum.durationSeconds ?? 0,
-      );
-    }
+    const summaryDates = new Set<string>();
+    const summaryGroups = hasSummaryRange
+      ? await prisma.browserDailySummary.groupBy({
+          by: ["workDate", "domain"],
+          where: {
+            employeeId,
+            workDate: { gte: startDay, lte: summaryEnd },
+          },
+          _sum: {
+            durationSeconds: true,
+            productiveSeconds: true,
+            unproductiveSeconds: true,
+            neutralSeconds: true,
+            blacklistedSeconds: true,
+          },
+        })
+      : [];
 
     for (const group of summaryGroups) {
+      summaryDates.add(workDateKey(group.workDate));
       const row = totals.get(group.domain) ?? emptyBrowserDomain(group.domain);
       row.durationSeconds += group._sum.durationSeconds ?? 0;
       row.productiveSeconds += group._sum.productiveSeconds ?? 0;
@@ -291,6 +451,28 @@ export class ReportService {
       row.neutralSeconds += group._sum.neutralSeconds ?? 0;
       row.blacklistedSeconds += group._sum.blacklistedSeconds ?? 0;
       totals.set(group.domain, row);
+    }
+
+    const rawRows =
+      start <= end && (!hasSummaryRange || startDay >= today || endDay >= today)
+        ? await prisma.browserActivity.findMany({
+            where: {
+              deviceId: { in: deviceIds },
+              startTime: { gte: start, lte: end },
+            },
+            select: {
+              domain: true,
+              productivityTag: true,
+              durationSeconds: true,
+              startTime: true,
+            },
+          })
+        : [];
+
+    for (const row of rawRows) {
+      const rowDay = workDateKey(row.startTime);
+      if (!singleDay && rowDay < workDateKey(today) && summaryDates.has(rowDay)) continue;
+      addBrowserDomain(totals, row.domain, row.productivityTag, row.durationSeconds);
     }
 
     return [...totals.values()]
@@ -323,32 +505,146 @@ export class ReportService {
   ) {
     const days = reportDays(start, end);
     const divisor = averagePerDay && days >= 2 ? days : 1;
-    const grouped = await prisma.dailyActivityRollup.groupBy({
-      by: ["employeeId"],
-      where: {
-        workDate: { gte: startOfUtcDay(start), lte: startOfUtcDay(end) },
-        ...(employeeIds ? { employeeId: { in: employeeIds } } : {}),
-      },
-      _sum: {
-        activeSeconds: true,
-        idleSeconds: true,
-        productiveSeconds: true,
-        unproductiveSeconds: true,
-        neutralSeconds: true,
-        blacklistedSeconds: true,
-      },
-    });
+    const startDay = startOfUtcDay(start);
+    const endDay = startOfUtcDay(end);
+    const today = startOfUtcDay(new Date());
+    const singleDay = startDay.getTime() === endDay.getTime();
+    const summaryEnd = new Date(Math.min(endDay.getTime(), today.getTime() - DAY_MS));
+    const hasSummaryRange = !singleDay && startDay <= summaryEnd;
+
+    const [grouped, domainSummaries, liveBrowserRows] = await Promise.all([
+      prisma.dailyActivityRollup.groupBy({
+        by: ["employeeId"],
+        where: {
+          workDate: { gte: startDay, lte: endDay },
+          ...(employeeIds ? { employeeId: { in: employeeIds } } : {}),
+        },
+        _sum: {
+          activeSeconds: true,
+          idleSeconds: true,
+          productiveSeconds: true,
+          unproductiveSeconds: true,
+          neutralSeconds: true,
+          blacklistedSeconds: true,
+        },
+      }),
+      hasSummaryRange
+        ? prisma.browserDailySummary.groupBy({
+            by: ["employeeId"],
+            where: {
+              workDate: { gte: startDay, lte: summaryEnd },
+              ...(employeeIds ? { employeeId: { in: employeeIds } } : {}),
+            },
+            _sum: {
+              productiveSeconds: true,
+              unproductiveSeconds: true,
+              neutralSeconds: true,
+              blacklistedSeconds: true,
+            },
+          })
+        : [],
+      start <= end && (!hasSummaryRange || startDay >= today || endDay >= today)
+        ? prisma.browserActivity.findMany({
+            where: {
+              device: employeeIds ? { employeeId: { in: employeeIds } } : undefined,
+              startTime: { gte: start, lte: end },
+            },
+            select: {
+              device: { select: { employeeId: true } },
+              productivityTag: true,
+              durationSeconds: true,
+              startTime: true,
+            },
+          })
+        : [],
+    ]);
+
+    const domainTotalsByEmployee = new Map<
+      string,
+      { productive: number; unproductive: number; neutral: number; blacklisted: number }
+    >();
+
+    for (const group of domainSummaries) {
+      domainTotalsByEmployee.set(group.employeeId, {
+        productive: group._sum.productiveSeconds ?? 0,
+        unproductive: group._sum.unproductiveSeconds ?? 0,
+        neutral: group._sum.neutralSeconds ?? 0,
+        blacklisted: group._sum.blacklistedSeconds ?? 0,
+      });
+    }
+
+    const summaryDates = new Set<string>();
+    if (hasSummaryRange) {
+      for (
+        let d = new Date(startDay);
+        d <= summaryEnd;
+        d = new Date(d.getTime() + DAY_MS)
+      ) {
+        summaryDates.add(workDateKey(d));
+      }
+    }
+
+    for (const row of liveBrowserRows) {
+      const empId = row.device.employeeId;
+      const rowDay = workDateKey(row.startTime);
+      if (!singleDay && rowDay < workDateKey(today) && summaryDates.has(rowDay)) continue;
+
+      const current = domainTotalsByEmployee.get(empId) ?? {
+        productive: 0,
+        unproductive: 0,
+        neutral: 0,
+        blacklisted: 0,
+      };
+
+      switch (row.productivityTag) {
+        case ProductivityTag.Productive:
+          current.productive += row.durationSeconds;
+          break;
+        case ProductivityTag.Unproductive:
+          current.unproductive += row.durationSeconds;
+          break;
+        case ProductivityTag.Blacklisted:
+          current.blacklisted += row.durationSeconds;
+          break;
+        default:
+          current.neutral += row.durationSeconds;
+      }
+      domainTotalsByEmployee.set(empId, current);
+    }
 
     const totals = new Map<string, Totals>();
 
     for (const row of grouped) {
+      const domain = domainTotalsByEmployee.get(row.employeeId);
+      let productive = row._sum.productiveSeconds ?? 0;
+      let unproductive = row._sum.unproductiveSeconds ?? 0;
+      let neutral = row._sum.neutralSeconds ?? 0;
+      let blacklisted = row._sum.blacklistedSeconds ?? 0;
+
+      if (domain) {
+        const domainUnproductive = domain.unproductive;
+        const domainBlacklisted = domain.blacklisted;
+        const shiftAmount = domainUnproductive + domainBlacklisted;
+
+        if (shiftAmount > 0) {
+          const shiftFromProductive = Math.min(productive, shiftAmount);
+          productive -= shiftFromProductive;
+          const remainingShift = shiftAmount - shiftFromProductive;
+          const shiftFromNeutral = Math.min(neutral, remainingShift);
+          neutral -= shiftFromNeutral;
+
+          unproductive += domainUnproductive;
+          blacklisted += domainBlacklisted;
+        }
+      }
+
       totals.set(row.employeeId, {
         activeSeconds: Math.round((row._sum.activeSeconds ?? 0) / divisor),
         idleSeconds: Math.round((row._sum.idleSeconds ?? 0) / divisor),
-        productiveSeconds: Math.round((row._sum.productiveSeconds ?? 0) / divisor),
-        unproductiveSeconds: Math.round((row._sum.unproductiveSeconds ?? 0) / divisor),
-        neutralSeconds: Math.round((row._sum.neutralSeconds ?? 0) / divisor),
-        blacklistedSeconds: Math.round((row._sum.blacklistedSeconds ?? 0) / divisor),
+        productiveSeconds: Math.round(productive / divisor),
+        unproductiveSeconds: Math.round(unproductive / divisor),
+        neutralSeconds: Math.round(neutral / divisor),
+        blacklistedSeconds: Math.round(blacklisted / divisor),
       });
     }
 
@@ -448,6 +744,26 @@ export class ReportService {
       }
 
       byDate.set(key, day);
+    }
+
+    // Include days with recorded activity that lacked explicit attendance logon records
+    for (const [key, totals] of dailyTotals.entries()) {
+      if (!byDate.has(key) && (totals.activeSeconds > 0 || totals.idleSeconds > 0)) {
+        const midnight = new Date(`${key}T00:00:00.000Z`);
+        byDate.set(key, {
+          workDate: key,
+          firstLogin: midnight,
+          lastLogout: totals.lastActivityAt ?? midnight,
+          sessionSeconds: totals.activeSeconds + totals.idleSeconds,
+          activeSeconds: totals.activeSeconds,
+          idleSeconds: totals.idleSeconds,
+          sessionCount: 1,
+          status: "ended" as const,
+          logoutEstimated: true,
+          openAndLive: false,
+          hasOpen: false,
+        });
+      }
     }
 
     return [...byDate.values()]
@@ -604,10 +920,7 @@ export class ReportService {
     });
     if (!employee) throw { statusCode: 404, message: "Employee not found" };
 
-    const { start, end } =
-      startDate || endDate
-        ? resolveRange(startDate, endDate)
-        : { start: startOfUtcDay(new Date()), end: new Date() };
+    const { start, end } = resolveRange(startDate, endDate);
 
     const deviceIds = employee.devices.map((d) => d.id);
     if (deviceIds.length === 0) {
@@ -624,7 +937,6 @@ export class ReportService {
     }
 
     const deviceScope = { deviceId: { in: deviceIds } };
-    const inRange = { ...deviceScope, startTime: { gte: start, lte: end } };
 
     const [totalsByEmployee, dailyTotals, timeline, appGroups, domainGroups, attendance] =
       await Promise.all([
@@ -634,13 +946,7 @@ export class ReportService {
         this.totalsByEmployee(start, end, [employeeId]),
         this.dailyTotals(start, end, employeeId),
         this.getActivityLog(employeeId, { startDate, endDate }),
-        prisma.activitySession.groupBy({
-          by: ["appName", "productivityTag"],
-          where: { ...inRange, type: ActivityType.Application },
-          _sum: { durationSeconds: true },
-          orderBy: { _sum: { durationSeconds: "desc" } },
-          take: TOP_LIST_SIZE,
-        }),
+        this.getApplicationGroups(employeeId, deviceIds, start, end),
         this.getBrowserDomainGroups(employeeId, deviceIds, start, end),
         prisma.attendanceSession.findMany({
           where: { ...deviceScope, loginTime: { gte: start, lte: end } },
@@ -671,13 +977,21 @@ export class ReportService {
       timeline,
       topApps: appGroups.map((g) => ({
         appName: g.appName,
-        productivityTag: g.productivityTag,
-        seconds: g._sum.durationSeconds ?? 0,
+        productivityTag: dominantProductivityTag(g),
+        seconds: g.durationSeconds,
+        productiveSeconds: g.productiveSeconds,
+        unproductiveSeconds: g.unproductiveSeconds,
+        neutralSeconds: g.neutralSeconds,
+        blacklistedSeconds: g.blacklistedSeconds,
       })),
       topDomains: domainGroups.map((g) => ({
         domain: g.domain,
         productivityTag: dominantProductivityTag(g),
         seconds: g.durationSeconds,
+        productiveSeconds: g.productiveSeconds,
+        unproductiveSeconds: g.unproductiveSeconds,
+        neutralSeconds: g.neutralSeconds,
+        blacklistedSeconds: g.blacklistedSeconds,
       })),
       attendance,
       attendanceDays: this.summarizeAttendance(

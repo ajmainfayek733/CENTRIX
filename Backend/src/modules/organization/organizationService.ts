@@ -107,7 +107,7 @@ export class OrganizationService {
     await this.getOrganizationById(organizationId);
 
     if (
-      dto.browserSummaryScheduleTimeLocal ||
+      dto.reportSummaryScheduleTimeLocal ||
       dto.workingHoursStartLocal ||
       dto.workingHoursEndLocal
     ) {
@@ -116,7 +116,7 @@ export class OrganizationService {
         select: {
           workingHoursStartLocal: true,
           workingHoursEndLocal: true,
-          browserSummaryScheduleTimeLocal: true,
+          reportSummaryScheduleTimeLocal: true,
         },
       });
       const start =
@@ -126,7 +126,7 @@ export class OrganizationService {
       const end =
         dto.workingHoursEndLocal ?? current?.workingHoursEndLocal ?? DEFAULT_WORKING_HOURS_END;
       const schedule =
-        dto.browserSummaryScheduleTimeLocal ?? current?.browserSummaryScheduleTimeLocal ?? "23:00";
+        dto.reportSummaryScheduleTimeLocal ?? current?.reportSummaryScheduleTimeLocal ?? "23:00";
       if (isWithinWorkingHours(schedule, start, end)) {
         throw {
           statusCode: 400,

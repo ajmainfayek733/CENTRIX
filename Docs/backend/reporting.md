@@ -48,6 +48,20 @@ npm run aggregate:browser
 The command excludes today by default. Limit a rerun with `--from=YYYY-MM-DD` and
 `--to=YYYY-MM-DD`, or target one organization with `--organization-id=<id>`.
 
+Activity metric samples use the same backfill script and produce one row per employee and work
+date in `activity_metric_daily_summaries`:
+
+```bash
+npm run aggregate:activity-metrics -- --from=2026-09-01 --to=2026-09-18
+```
+
+Application sessions use one row per employee, work date and application in
+`activity_session_daily_summaries`:
+
+```bash
+npm run aggregate:activity-sessions -- --from=2026-09-01 --to=2026-09-18
+```
+
 The version this replaced grouped `activity_sessions` instead: the same answer computed from
 millions of ten-second app switches on every page load, degrading with **history** rather than
 headcount, so it got worse forever and could not be fixed by adding capacity.
@@ -210,6 +224,15 @@ Productive share is `productiveSeconds / activeSeconds`, 0-100. **Idle time is e
 denominator** - otherwise a long lunch would read as unproductive work rather than as no work.
 
 Categories also drive blacklist alerts, via `isBlacklisted`.
+
+## 7. Browser domain productivity inheritance
+
+Browser applications (Google Chrome, Microsoft Edge, Firefox, Brave, etc.) are frequently classified as `Productive` or `Neutral` at the container application level. However, actual browsing activities within those applications target specific domains with their own productivity classifications (e.g. `youtube.com` as `Unproductive`, `facebook.com` as `Blacklisted`).
+
+To ensure accurate reporting:
+- `ReportService.getApplicationGroups` identifies browser applications and apportions domain-level productive, unproductive, blacklisted, and neutral seconds into the container browser app breakdown. Any unassigned browser time retains the container's base classification.
+- `ReportService.totalsByEmployee` adjusts overall employee totals (`productiveSeconds`, `unproductiveSeconds`, `blacklistedSeconds`, `neutralSeconds`) so that unproductive and blacklisted time spent on web domains is directly reflected in the Activity Mix totals and productivity percentage, preserving `activeSeconds` invariance.
+- `ReportService.summarizeAttendance` guarantees all dates with active telemetry in `dailyTotals` are included in `attendanceDays`.
 
 ---
 
