@@ -1,10 +1,28 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { Moon, Sun } from 'lucide-react';
-import { IconButton } from '@/components/ui';
+import { useSyncExternalStore } from "react";
+import { Moon, Sun } from "lucide-react";
+import { IconButton } from "@/components/ui";
 
-type Theme = 'light' | 'dark';
+type Theme = "light" | "dark";
+
+function getSnapshot(): Theme {
+  return document.documentElement.classList.contains("dark") ? "dark" : "light";
+}
+
+function getServerSnapshot(): null {
+  return null; // forces the placeholder on the server / during hydration
+}
+
+function subscribe(onStoreChange: () => void) {
+  // Optional: react if something else mutates the class
+  const observer = new MutationObserver(onStoreChange);
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["class"],
+  });
+  return () => observer.disconnect();
+}
 
 /**
  * Light/dark toggle. Writes the choice to localStorage, which the inline script in the root
@@ -14,18 +32,13 @@ type Theme = 'light' | 'dark';
  * preference, so rendering the real icon during SSR would guarantee a hydration mismatch.
  */
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme | null>(null);
-
-  useEffect(() => {
-    const isDark = document.documentElement.classList.contains('dark');
-    setTheme(isDark ? 'dark' : 'light');
-  }, []);
+  const theme = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
   function toggle() {
-    const next: Theme = theme === 'dark' ? 'light' : 'dark';
-    document.documentElement.classList.toggle('dark', next === 'dark');
-    localStorage.setItem('theme', next);
-    setTheme(next);
+    const next: Theme = theme === "dark" ? "light" : "dark";
+    document.documentElement.classList.toggle("dark", next === "dark");
+    localStorage.setItem("theme", next);
+    // The MutationObserver (or the next render of useSyncExternalStore) will pick up the change
   }
 
   if (theme === null) {
@@ -36,13 +49,13 @@ export function ThemeToggle() {
     <IconButton
       type="button"
       onClick={toggle}
-      aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+      aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
       title="Toggle theme"
     >
-      {theme === 'dark' ? (
-        <Sun className="size-[18px]" strokeWidth={1.75} aria-hidden />
+      {theme === "dark" ? (
+        <Sun className="size-4.5" strokeWidth={1.75} aria-hidden />
       ) : (
-        <Moon className="size-[18px]" strokeWidth={1.75} aria-hidden />
+        <Moon className="size-4.5" strokeWidth={1.75} aria-hidden />
       )}
     </IconButton>
   );
