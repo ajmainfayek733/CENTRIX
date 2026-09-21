@@ -179,8 +179,17 @@ export interface EmployeeDetail {
     neutralSeconds: number;
     blacklistedSeconds: number;
   }>;
+  activityMetrics: {
+    keyCount: number;
+    mouseCount: number;
+    mouseLeftKeyCount: number;
+    mouseRightKeyCount: number;
+    mouseMiddleKeyCount: number;
+    mouseOtherKeyCount: number;
+  };
   attendance: AttendanceRow[];
   attendanceDays: AttendanceDay[];
+  weeklyAttendanceDays?: AttendanceDay[];
 }
 
 /**

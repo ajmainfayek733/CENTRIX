@@ -1,13 +1,13 @@
 > **STATUS: original governing specification.** Written before the code existed, and parts of it
-> have been overtaken by the implementation. It is kept because it states the *intent* behind the
+> have been overtaken by the implementation. It is kept because it states the _intent_ behind the
 > design and because sections 12-15 are current and detailed.
 >
 > **Where the code has moved on:**
 >
-> | This document says | The code does |
-> |---|---|
-> | `middleware.ts` (section 5) | `Frontend/src/proxy.ts` |
-> | `hooks/` (section 7) | `src/lib/` - for example `use-log-feed.ts` |
+> | This document says          | The code does                              |
+> | --------------------------- | ------------------------------------------ |
+> | `middleware.ts` (section 5) | `Frontend/src/proxy.ts`                    |
+> | `hooks/` (section 7)        | `src/lib/` - for example `use-log-feed.ts` |
 >
 > For what the code does **now**, start at [README.md](README.md). This file is the reasoning
 > behind it, not a description of it.
@@ -125,14 +125,14 @@ improvement worth keeping:
 
 ```typescript
 // lib/api-client.ts - server-side only
-import { cookies } from 'next/headers';
+import { cookies } from "next/headers";
 
 export async function serverFetch(path: string, init?: RequestInit) {
-  const token = (await cookies()).get('session')?.value;
+  const token = (await cookies()).get("session")?.value;
   return fetch(`${process.env.MONITORING_API_URL}${path}`, {
     ...init,
     headers: { ...init?.headers, Authorization: `Bearer ${token}` },
-    cache: 'no-store', // activity data is live; don't let Next cache it silently
+    cache: "no-store", // activity data is live; don't let Next cache it silently
   });
 }
 ```
@@ -164,22 +164,22 @@ stale cached read would show a manager yesterday's "who's online now."
 
 ```typescript
 export function middleware(request: NextRequest) {
-  const session = request.cookies.get('session')?.value;
+  const session = request.cookies.get("session")?.value;
   const { pathname } = request.nextUrl;
 
-  if (!session && pathname.startsWith('/(dashboard)')) {
-    return NextResponse.redirect(new URL('/login', request.url));
+  if (!session && pathname.startsWith("/(dashboard)")) {
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
   const role = decodeRole(session); // lightweight decode, not full verify
-  if (pathname.startsWith('/settings') && role !== 'super_admin') {
-    return NextResponse.redirect(new URL('/', request.url));
+  if (pathname.startsWith("/settings") && role !== "super_admin") {
+    return NextResponse.redirect(new URL("/", request.url));
   }
 
   return NextResponse.next();
 }
 
-export const config = { matcher: ['/((?!login|_next/static|_next/image).*)'] };
+export const config = { matcher: ["/((?!login|_next/static|_next/image).*)"] };
 ```
 
 As with the Vite version: **this is UX, not the security boundary.** `monitoring-server`
@@ -214,11 +214,11 @@ components use a hook that calls a local route handler.
 Since server components handle the initial load, hooks here are strictly for
 post-load, client-side interactivity:
 
-| Hook | Wraps | Notes |
-|---|---|---|
-| `useTeamSummaryRefresh.ts` | `GET /api/dashboard/reports/team-summary` (local route handler) | Powers a manual refresh / polling toggle on the Overview screen |
-| `useEmployeeTimelineFilter.ts` | `GET /api/dashboard/employees/:id/timeline` | Re-fetches when the date range changes |
-| `useAuditLog.ts` | `GET /api/dashboard/audit-log` | Auditor + super_admin only |
+| Hook                           | Wraps                                                           | Notes                                                           |
+| ------------------------------ | --------------------------------------------------------------- | --------------------------------------------------------------- |
+| `useTeamSummaryRefresh.ts`     | `GET /api/dashboard/reports/team-summary` (local route handler) | Powers a manual refresh / polling toggle on the Overview screen |
+| `useEmployeeTimelineFilter.ts` | `GET /api/dashboard/employees/:id/timeline`                     | Re-fetches when the date range changes                          |
+| `useAuditLog.ts`               | `GET /api/dashboard/audit-log`                                  | Auditor + super_admin only                                      |
 
 There is no `useAuth.ts` client hook anymore - auth state lives in the httpOnly
 cookie and is read server-side; a client component that needs to know the current
@@ -237,18 +237,18 @@ renders `undefined` in a report. Treat contract changes as a two-repo commit.
 
 ## 9. Phase mapping (month-1 MVP)
 
-| Component | Priority | Month-1? |
-|---|---|---|
-| Login route + httpOnly cookie + `middleware.ts` gate | M | **Yes** |
-| Overview screen (server component) | M | **Yes** |
-| Employee list (server component) | M | **Yes** |
-| Employee detail - timeline, active/idle split | M | **Yes** |
-| RBAC gating (Admin + Manager only) | M | **Yes** - Auditor can wait |
-| Date-range filtering (client component + route handler) | M | **Yes**, basic ranges |
-| CSV/PDF export buttons | S | Defer - hide, don't ship broken |
-| Screenshot viewer | S | Defer |
-| Auditor-specific views | S | Defer |
-| Settings screen | M (per original spec) | Partial - categories only if time allows; retention/work-hours can defer to direct DB config |
+| Component                                               | Priority              | Month-1?                                                                                     |
+| ------------------------------------------------------- | --------------------- | -------------------------------------------------------------------------------------------- |
+| Login route + httpOnly cookie + `middleware.ts` gate    | M                     | **Yes**                                                                                      |
+| Overview screen (server component)                      | M                     | **Yes**                                                                                      |
+| Employee list (server component)                        | M                     | **Yes**                                                                                      |
+| Employee detail - timeline, active/idle split           | M                     | **Yes**                                                                                      |
+| RBAC gating (Admin + Manager only)                      | M                     | **Yes** - Auditor can wait                                                                   |
+| Date-range filtering (client component + route handler) | M                     | **Yes**, basic ranges                                                                        |
+| CSV/PDF export buttons                                  | S                     | Defer - hide, don't ship broken                                                              |
+| Screenshot viewer                                       | S                     | Defer                                                                                        |
+| Auditor-specific views                                  | S                     | Defer                                                                                        |
+| Settings screen                                         | M (per original spec) | Partial - categories only if time allows; retention/work-hours can defer to direct DB config |
 
 ---
 
@@ -310,6 +310,7 @@ theme script in `layout.tsx` does.
   to Times New Roman.
 - Running `shadcn init` again will overwrite the palette with the preset's greyscale
   defaults. Use `add`, not `init`.
+
 ---
 
 ## 12. Live updates and bounded log windows
@@ -338,7 +339,7 @@ server-side and can read the cookie) exchanges it at the API for a short-lived t
 a socket and do nothing else. If the ticket call fails, the page still renders from its own
 server-side fetch; it simply will not update on its own. **Live updates are never load-bearing.**
 
-`useRealtime()` exposes `connectedDevices`. This is *not* an online indicator - a device is shown
+`useRealtime()` exposes `connectedDevices`. This is _not_ an online indicator - a device is shown
 as online from `lastSeen`. It answers only whether a force-sync would be delivered right now.
 
 ### 12.2 Log tables are fixed-height scroll windows
@@ -415,12 +416,12 @@ survive without misleading anyone.
 
 `lib/api-client.ts` throws two distinct types, and nothing may collapse them:
 
-| Type | Raised for | Correct response |
-|---|---|---|
-| `ApiError` | 4xx | A verdict on the request. 401 means the session is over - redirect to `/login`. |
-| `ApiUnavailableError` | transport failure, or any 5xx | Says nothing about the session. Show the outage; keep the user signed in. |
+| Type                  | Raised for                    | Correct response                                                                |
+| --------------------- | ----------------------------- | ------------------------------------------------------------------------------- |
+| `ApiError`            | 4xx                           | A verdict on the request. 401 means the session is over - redirect to `/login`. |
+| `ApiUnavailableError` | transport failure, or any 5xx | Says nothing about the session. Show the outage; keep the user signed in.       |
 
-This is the bug that motivated the section. `getSessionUser()` used to catch *everything* and
+This is the bug that motivated the section. `getSessionUser()` used to catch _everything_ and
 return `null`, which the layout reads as "logged out" and answers with a redirect. So an API
 restart signed out every open dashboard in the building and sent them to a page that could not
 authenticate them either - an infrastructure outage presented as a credentials problem, with the
@@ -435,7 +436,7 @@ outage. It now answers **503** with a message saying the credentials were not ch
 - **Dashboard layout** catches `ApiUnavailableError` and renders the shell - header, theme, and a
   `ServiceUnavailable` panel - rather than redirecting. The session survives the outage.
 - **`(dashboard)/error.tsx`** catches anything a page throws, so one failing endpoint degrades one
-  screen instead of blanking the app. It distinguishes an outage from a bug *by message*, because
+  screen instead of blanking the app. It distinguishes an outage from a bug _by message_, because
   React strips server errors before they reach the client and `instanceof` cannot survive the
   boundary; anything unrecognised is treated as a bug, which is the safer way round.
 - **`app/error.tsx`** is the last resort for the login screen and for failures in the dashboard
@@ -535,11 +536,11 @@ reprograms every agent in the building and changes what is recorded about people
 per page" changes how many pictures this browser downloads at once. Both used to sit in the same
 undifferentiated list, where the only way to tell them apart was to already know.
 
-| Group | Contains | Who it affects |
-|---|---|---|
-| **Agent policy** | Data collected, screenshot capture (interval + JPEG quality), idle threshold, desktop alerts, idle ladder, working hours | Every employee machine. Changes what is recorded. |
-| **Dashboard** | Log rows per page, screenshots per page | This browser's read path only. No agent ever sees it. |
-| **Advanced** | Retention, sync batch size and interval, realtime + presence heartbeat | Fleet-wide, or destructive. Collapsed by default. |
+| Group            | Contains                                                                                                                 | Who it affects                                        |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
+| **Agent policy** | Data collected, screenshot capture (interval + JPEG quality), idle threshold, desktop alerts, idle ladder, working hours | Every employee machine. Changes what is recorded.     |
+| **Dashboard**    | Log rows per page, screenshots per page                                                                                  | This browser's read path only. No agent ever sees it. |
+| **Advanced**     | Retention, sync batch size and interval, realtime + presence heartbeat                                                   | Fleet-wide, or destructive. Collapsed by default.     |
 
 - **Advanced is collapsed** not because the settings are obscure but because each is felt on every
   device at once, or deletes history that cannot be recovered. It is a native `<details>` - the
@@ -566,13 +567,13 @@ awaited (`GET /v1/dashboard/reports/employees/:id`). A regrouping of data the pa
 not justify a second round trip on the critical path, and a separate request could also disagree
 with the table below it after a range change.
 
-| Day state | Source | Rendered as |
-|---|---|---|
-| `present` | `AttendanceDay.status` | Green cell - still signed in |
-| `ended` | `AttendanceDay.status` | Neutral cell, brand bar - attended |
-| `unknown` | `AttendanceDay.status` | Amber cell - open session on a device that stopped reporting |
-| `absent` | in-period date with no row | Dashed cell, "Absent" |
-| `outside` | date outside the range, or after today | Muted, `-` |
+| Day state | Source                                 | Rendered as                                                  |
+| --------- | -------------------------------------- | ------------------------------------------------------------ |
+| `present` | `AttendanceDay.status`                 | Green cell - still signed in                                 |
+| `ended`   | `AttendanceDay.status`                 | Neutral cell, brand bar - attended                           |
+| `unknown` | `AttendanceDay.status`                 | Amber cell - open session on a device that stopped reporting |
+| `absent`  | in-period date with no row             | Dashed cell, "Absent"                                        |
+| `outside` | date outside the range, or after today | Muted, `-`                                                   |
 
 - **`absent` and `outside` are deliberately distinct.** A day the range never covered, and a Friday
   that has not happened yet, are not absences - the default range ends at "now" and a picked one can
@@ -593,10 +594,10 @@ with the table below it after a range change.
 ## 17. Top Applications & Top Websites Layout
 
 Top Applications and Top Websites cards are formatted into a clean two-column layout:
+
 - **Left Column**: Application/Domain title, dominant tag badge (`TagBadge`), and breakdown durations with preceding colored dots:
   - Green dot (`bg-success-vivid`): Productive
   - Neutral dot (`bg-neutral-dot`): Neutral
   - Warning dot (`bg-warning`): Unproductive
   - Danger dot (`bg-danger`): Blacklisted
 - **Right Column**: Right-aligned Total Duration with uppercase "TOTAL" caption, clearly distinguishing aggregate duration from individual productivity category breakdowns.
-

@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { useCallback } from 'react';
-import { LogScroller, type LogPage } from '@/components/LogScroller';
-import { formatDuration, formatTime } from '@/lib/format';
-import { TableWrap, TABLE_CLASS, Th, Td, TagBadge } from '@/components/ui';
-import type { ActivityType, TimelineRow } from '@/types/api';
+import { useCallback } from "react";
+import { LogScroller, type LogPage } from "@/components/LogScroller";
+import { formatDuration, formatTime } from "@/lib/format";
+import { TableWrap, TABLE_CLASS, Th, Td, TagBadge } from "@/components/ui";
+import type { ActivityType, TimelineRow } from "@/types/api";
 
 /** Types that are not foreground work; rendered dimmed and without a productivity tag. */
-const NON_WORKING: ActivityType[] = ['Idle', 'Locked', 'Sleeping', 'Disconnected'];
+const NON_WORKING: ActivityType[] = ["Idle", "Locked", "Sleeping", "Disconnected"];
 
 /**
  * The activity timeline as a fixed-height scroll window.
@@ -30,12 +30,20 @@ export function TimelineTable({
 
   return (
     <TableWrap>
-      <table className={`${TABLE_CLASS} min-w-[720px]`}>
+      <table className={TABLE_CLASS}>
+        <colgroup>
+          <col className="w-[16%]" />
+          <col className="w-[20%]" />
+          <col className="w-[40%]" />
+          <col className="w-[10%]" />
+          <col className="w-[14%]" />
+        </colgroup>
+
         <thead>
           <tr>
-            <Th>Time</Th>
-            <Th>Application</Th>
-            <Th>Window</Th>
+            <Th align="left">Time</Th>
+            <Th align="left">Application</Th>
+            <Th align="left">Window</Th>
             <Th align="right">Duration</Th>
             <Th align="right">Tag</Th>
           </tr>
@@ -50,19 +58,28 @@ export function TimelineTable({
         emptyMessage="No activity recorded in this period."
       >
         {(rows) => (
-          <table className={`${TABLE_CLASS} min-w-[720px]`}>
+          <table className={`${TABLE_CLASS}`}>
+            <colgroup>
+              <col className="w-[16%]" />
+              <col className="w-[20%]" />
+              <col className="w-[40%]" />
+              <col className="w-[10%]" />
+              <col className="w-[14%]" />
+            </colgroup>
             <tbody>
               {rows.map((row) => {
                 const isIdle = NON_WORKING.includes(row.type);
 
                 return [
-                  <tr key={row.id} className={isIdle ? 'opacity-60' : undefined}>
-                    <Td numeric muted>
+                  <tr key={row.id} className={isIdle ? "opacity-60" : undefined}>
+                    <Td numeric muted align="left">
                       {formatTime(row.startTime)}
                     </Td>
-                    <Td>{isIdle ? row.type : (row.appName ?? row.processName ?? 'Unknown')}</Td>
-                    <Td muted>
-                      <span className="block max-w-[26rem] truncate">{row.windowTitle ?? '-'}</span>
+                    <Td align="left">
+                      {isIdle ? row.type : (row.appName ?? row.processName ?? "Unknown")}
+                    </Td>
+                    <Td muted align="left">
+                      <span className="block max-w-104 truncate">{row.windowTitle ?? "-"}</span>
                     </Td>
                     <Td align="right" numeric>
                       {formatDuration(row.durationSeconds)}
@@ -76,10 +93,12 @@ export function TimelineTable({
                     <tr key={visit.id} className="text-xs">
                       <Td />
                       <Td muted>
-                        <span className="pl-4 text-text-tertiary">{'->'} {visit.domain}</span>
+                        <span className="pl-4 text-text-tertiary">
+                          {"->"} {visit.domain}
+                        </span>
                       </Td>
                       <Td muted>
-                        <span className="block max-w-[26rem] truncate">
+                        <span className="block max-w-104 truncate">
                           {visit.pageTitle ?? visit.rawUrl}
                         </span>
                       </Td>

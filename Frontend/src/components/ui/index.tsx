@@ -36,18 +36,18 @@ export function Card({
   return (
     <section
       className={cn(
-        // overflow-hidden so a full-bleed table cannot square off the rounded corners.
         "overflow-hidden rounded-lg border border-glass-border bg-surface shadow-glass-sm",
         className,
       )}
     >
       {(title || action) && (
-        <header className="flex items-center justify-between gap-4 border-b border-border bg-surface-muted px-[18px] py-[13px]">
+        <header className="flex items-center justify-between gap-4 border-b border-border bg-surface-muted px-4.5 py-3.25">
           {title && <h2 className={cn(LABEL_CLASS, "text-text-secondary")}>{title}</h2>}
           {action}
         </header>
       )}
-      <div className="p-[18px]">{children}</div>
+
+      <div className="min-w-0 p-4.5">{children}</div>
     </section>
   );
 }
@@ -213,7 +213,7 @@ export function StatusDot({ online }: { online: boolean }) {
  * only child - which is how every table in this dashboard is arranged.
  */
 export function TableWrap({ children }: { children: ReactNode }) {
-  return <div className="-m-[18px] overflow-x-auto">{children}</div>;
+  return <div className="-m-4.5 min-w-0 overflow-x-auto">{children}</div>;
 }
 
 /**
@@ -221,7 +221,7 @@ export function TableWrap({ children }: { children: ReactNode }) {
  * <tr> cannot paint a background across cells reliably - the cells have to carry it.
  */
 export const TABLE_CLASS =
-  "w-full border-collapse [&_tbody_tr:last-child_td]:border-b-0 [&_tbody_tr:hover_td]:bg-row-hover";
+  "w-full min-w-180 table-fixed border-separate border-spacing-0 [&_tbody_tr:last-child_td]:border-b-0 [&_tbody_tr:hover_td]:bg-row-hover";
 
 export function Th({
   children,
@@ -234,7 +234,7 @@ export function Th({
     <th
       className={cn(
         LABEL_CLASS,
-        "whitespace-nowrap border-b border-border bg-th-bg px-[15px] py-2.5 text-text-tertiary",
+        "whitespace-nowrap border-b border-border bg-th-bg px-3.75 py-2.5 text-text-tertiary",
         align === "right" ? "text-right" : "text-left",
       )}
     >

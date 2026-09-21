@@ -1,17 +1,17 @@
-import { redirect } from 'next/navigation';
-import Link from 'next/link';
-import type { ReactNode } from 'react';
-import { getSessionUser, type SessionUser } from '@/lib/session';
-import { ApiUnavailableError } from '@/lib/api-client';
-import { ThemeToggle } from '@/components/ThemeToggle';
-import { NavLinks } from '@/components/NavLinks';
-import { SignOutButton } from '@/components/SignOutButton';
-import { RealtimeProvider } from '@/components/RealtimeProvider';
-import { ConnectionBanner } from '@/components/ConnectionBanner';
-import { ServiceUnavailable } from '@/components/ServiceUnavailable';
-import { TopbarSearch } from '@/components/TopbarSearch';
-import { NotificationBell } from '@/components/NotificationBell';
-import { RefreshButton } from '@/components/RefreshButton';
+import { redirect } from "next/navigation";
+import Link from "next/link";
+import type { ReactNode } from "react";
+import { getSessionUser, type SessionUser } from "@/lib/session";
+import { ApiUnavailableError } from "@/lib/api-client";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { NavLinks } from "@/components/NavLinks";
+import { SignOutButton } from "@/components/SignOutButton";
+import { RealtimeProvider } from "@/components/RealtimeProvider";
+import { ConnectionBanner } from "@/components/ConnectionBanner";
+import { ServiceUnavailable } from "@/components/ServiceUnavailable";
+import { TopbarSearch } from "@/components/TopbarSearch";
+import { NotificationBell } from "@/components/NotificationBell";
+import { RefreshButton } from "@/components/RefreshButton";
 
 /**
  * The RBAC-protected shell. Resolves the session server-side once per navigation and passes
@@ -36,7 +36,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     // to /login here - as this did before - signs out every open dashboard on an API restart and
     // sends people to a page that cannot authenticate them either. Instead the shell renders and
     // the outage is stated plainly, so the session survives and returns when the service does.
-    console.error('Dashboard layout: monitoring service unreachable:', error);
+    console.error("Dashboard layout: monitoring service unreachable:", error);
 
     return (
       <Shell>
@@ -47,7 +47,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
 
   // proxy.ts only checks that a cookie exists. This is where an expired or revoked
   // session is actually caught.
-  if (!user) redirect('/login');
+  if (!user) redirect("/login");
 
   return (
     <RealtimeProvider>
@@ -58,7 +58,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
 
 /** The first letter of whatever we can address this person by, for the sidebar avatar. */
 function initialOf(user: SessionUser): string {
-  return (user.name || user.email || '?').trim().charAt(0).toUpperCase();
+  return (user.name || user.email || "?").trim().charAt(0).toUpperCase();
 }
 
 /**
@@ -121,7 +121,7 @@ function Shell({ user, children }: { user?: SessionUser; children: ReactNode }) 
                 <p className="truncate text-[13px] font-medium text-text-primary">
                   {user.name || user.email}
                 </p>
-                <p className="text-[11.5px] text-text-tertiary">{user.role.replace('_', ' ')}</p>
+                <p className="text-[11.5px] text-text-tertiary">{user.role.replace("_", " ")}</p>
               </div>
             </div>
           </div>
@@ -157,7 +157,7 @@ function Shell({ user, children }: { user?: SessionUser; children: ReactNode }) 
           </div>
         </header>
 
-        <main className="min-h-0 flex-1 overflow-y-auto pb-2 pr-0.5">
+        <main className="min-h-0 flex-1 overflow-y-auto pb-2 lg:pr-5 pr-2.5">
           {user && <ConnectionBanner />}
           {children}
         </main>

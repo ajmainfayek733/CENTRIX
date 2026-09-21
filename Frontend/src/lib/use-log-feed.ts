@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 
 /**
  * Keyset paging for a scroll window, shared by every feed the dashboard renders.
@@ -23,7 +23,7 @@ export interface LogPage<T> {
 }
 
 /** Feed names resolved by /api/logs/[feed]. Must stay in step with that route's allowlist. */
-export type LogFeedName = 'activity' | 'alerts' | 'usb' | 'employee-usb' | 'screenshots';
+export type LogFeedName = "activity" | "alerts" | "usb" | "employee-usb" | "screenshots";
 
 interface UseLogFeedOptions<T> {
   /** First page, fetched on the server so the window is populated before any JavaScript runs. */
@@ -42,7 +42,7 @@ interface UseLogFeedOptions<T> {
  * reader arrives. Expressed as a root margin on the sentinel rather than a scroll-offset
  * calculation, which would have to run on every scroll event.
  */
-const PREFETCH_MARGIN = '200px';
+const PREFETCH_MARGIN = "200px";
 
 /** The proxy answers with this when the monitoring service itself is unreachable. */
 const SERVICE_UNAVAILABLE = 503;
@@ -69,7 +69,7 @@ export function useLogFeed<T>({
   feed,
   params,
   rowKey,
-  noun = 'entries',
+  noun = "entries",
 }: UseLogFeedOptions<T>): LogFeedState<T> {
   const [rows, setRows] = useState<T[]>(initial.rows);
   const [cursor, setCursor] = useState<string | null>(initial.nextCursor);
@@ -131,7 +131,7 @@ export function useLogFeed<T>({
       // page itself is fine and retrying shortly will work. Anything else is reported generically.
       if (response.status === SERVICE_UNAVAILABLE) {
         throw new LoadError(
-          `The monitoring service is unavailable. ${noun[0]?.toUpperCase()}${noun.slice(1)} already loaded are still accurate.`
+          `The monitoring service is unavailable. ${noun[0]?.toUpperCase()}${noun.slice(1)} already loaded are still accurate.`,
         );
       }
       if (!response.ok) throw new LoadError(`Could not load more ${noun}.`);
@@ -168,7 +168,7 @@ export function useLogFeed<T>({
       },
       // Scoped to the scroll container, not the viewport: the window scrolls internally, so the
       // sentinel never enters the viewport and a default-root observer would never fire.
-      { root: target.parentElement, rootMargin: PREFETCH_MARGIN }
+      { root: target.parentElement, rootMargin: PREFETCH_MARGIN },
     );
 
     observer.observe(target);

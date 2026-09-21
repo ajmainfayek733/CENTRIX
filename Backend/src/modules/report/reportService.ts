@@ -176,10 +176,9 @@ const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 const END_OF_DAY_MS = 24 * 60 * 60 * 1000 - 1;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-const DEFAULT_RANGE_DAYS = 7;
-
 /**
  * Resolves the `?startDate=&endDate=` pair every report screen sends into an instant range.
+ * Defaults to today when bounds are not provided.
  *
  * **A date-only `endDate` is inclusive of the day it names.** `new Date('2026-08-15')` is midnight
  * *at the start* of the 15th, so taking it literally makes `startDate=endDate=2026-08-15` a
@@ -192,18 +191,13 @@ const DEFAULT_RANGE_DAYS = 7;
  * up to a day. `startDate` needs no equivalent: midnight at the start of a day is already the
  * inclusive lower bound.
  *
- * The default start is measured from the *unsnapped* end, so an omitted `startDate` still lands on
- * midnight rather than a second before it.
- *
  * Exported only so the smoke suite can assert this directly. It is pure, and the bug it encodes
  * empties three tables on a screen that still renders its totals - which is precisely the kind
  * that comes back unnoticed.
  */
 export function resolveRange(startDate?: string, endDate?: string) {
   const end = endDate ? new Date(endDate) : new Date();
-  const start = startDate
-    ? new Date(startDate)
-    : startOfUtcDay(new Date(end.getTime() - (DEFAULT_RANGE_DAYS - 1) * DAY_MS));
+  const start = startDate ? new Date(startDate) : startOfUtcDay(end);
 
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
     throw { statusCode: 400, message: "startDate/endDate must be valid ISO dates" };
@@ -338,7 +332,7 @@ export class ReportService {
     }
 
     const rawRows =
-      start <= end && (!hasSummaryRange || startDay >= today || endDay >= today)
+      start <= end && deviceIds.length > 0
         ? await prisma.activitySession.findMany({
             where: {
               deviceId: { in: deviceIds },
@@ -356,7 +350,7 @@ export class ReportService {
 
     for (const row of rawRows) {
       const rowDay = workDateKey(row.startTime);
-      if (!singleDay && rowDay < workDateKey(today) && summaryDates.has(rowDay)) continue;
+      if (summaryDates.has(rowDay)) continue;
       addApplication(totals, row.appName, row.productivityTag, row.durationSeconds);
     }
 
@@ -454,7 +448,7 @@ export class ReportService {
     }
 
     const rawRows =
-      start <= end && (!hasSummaryRange || startDay >= today || endDay >= today)
+      start <= end && deviceIds.length > 0
         ? await prisma.browserActivity.findMany({
             where: {
               deviceId: { in: deviceIds },
@@ -471,7 +465,7 @@ export class ReportService {
 
     for (const row of rawRows) {
       const rowDay = workDateKey(row.startTime);
-      if (!singleDay && rowDay < workDateKey(today) && summaryDates.has(rowDay)) continue;
+      if (summaryDates.has(rowDay)) continue;
       addBrowserDomain(totals, row.domain, row.productivityTag, row.durationSeconds);
     }
 
@@ -575,11 +569,7 @@ export class ReportService {
 
     const summaryDates = new Set<string>();
     if (hasSummaryRange) {
-      for (
-        let d = new Date(startDay);
-        d <= summaryEnd;
-        d = new Date(d.getTime() + DAY_MS)
-      ) {
+      for (let d = new Date(startDay); d <= summaryEnd; d = new Date(d.getTime() + DAY_MS)) {
         summaryDates.add(workDateKey(d));
       }
     }
@@ -898,6 +888,93 @@ export class ReportService {
     };
   }
 
+  private async getActivityMetrics(
+    employeeId: string,
+    deviceIds: string[],
+    start: Date,
+    end: Date,
+  ) {
+    const today = startOfUtcDay(new Date());
+    const startDay = startOfUtcDay(start);
+    const endDay = startOfUtcDay(end);
+    const singleDay = startDay.getTime() === endDay.getTime();
+    const summaryEnd = new Date(Math.min(endDay.getTime(), today.getTime() - DAY_MS));
+    const hasSummaryRange = !singleDay && startDay <= summaryEnd;
+
+    const summaryDates = new Set<string>();
+    const summaryGroups = hasSummaryRange
+      ? await prisma.activityMetricDailySummary.groupBy({
+          by: ["workDate"],
+          where: { employeeId, workDate: { gte: startDay, lte: summaryEnd } },
+          _sum: {
+            keyCount: true,
+            mouseCount: true,
+            mouseLeftKeyCount: true,
+            mouseRightKeyCount: true,
+            mouseMiddleKeyCount: true,
+            mouseOtherKeyCount: true,
+          },
+        })
+      : [];
+
+    let keyCount = 0;
+    let mouseCount = 0;
+    let mouseLeftKeyCount = 0;
+    let mouseRightKeyCount = 0;
+    let mouseMiddleKeyCount = 0;
+    let mouseOtherKeyCount = 0;
+
+    for (const group of summaryGroups) {
+      summaryDates.add(workDateKey(group.workDate));
+      keyCount += group._sum.keyCount ?? 0;
+      mouseCount += group._sum.mouseCount ?? 0;
+      mouseLeftKeyCount += group._sum.mouseLeftKeyCount ?? 0;
+      mouseRightKeyCount += group._sum.mouseRightKeyCount ?? 0;
+      mouseMiddleKeyCount += group._sum.mouseMiddleKeyCount ?? 0;
+      mouseOtherKeyCount += group._sum.mouseOtherKeyCount ?? 0;
+    }
+
+    // Guardrail: query raw metrics for dates without summaries (today + unsummarized past dates)
+    const rawMetrics =
+      start <= end && deviceIds.length > 0
+        ? await prisma.activityMetric.findMany({
+            where: {
+              deviceId: { in: deviceIds },
+              windowEndUtc: { gte: start, lte: end },
+            },
+            select: {
+              keyCount: true,
+              mouseCount: true,
+              mouseLeftKeyCount: true,
+              mouseRightKeyCount: true,
+              mouseMiddleKeyCount: true,
+              mouseOtherKeyCount: true,
+              windowEndUtc: true,
+            },
+          })
+        : [];
+
+    for (const row of rawMetrics) {
+      const rowDay = workDateKey(row.windowEndUtc);
+      if (summaryDates.has(rowDay)) continue;
+      keyCount += row.keyCount;
+      mouseCount += row.mouseCount;
+      mouseLeftKeyCount += row.mouseLeftKeyCount;
+      mouseRightKeyCount += row.mouseRightKeyCount;
+      mouseMiddleKeyCount += row.mouseMiddleKeyCount;
+      mouseOtherKeyCount += row.mouseOtherKeyCount;
+    }
+
+    return {
+      keyCount,
+      mouseCount,
+      mouseLeftKeyCount,
+      mouseRightKeyCount,
+      mouseMiddleKeyCount,
+      mouseOtherKeyCount,
+    };
+  }
+
   /**
    * Employee detail (spec section 5): first page of the timeline, active-vs-idle split, top apps and
    * domains for the range. Defaults to today when no range is given.
@@ -931,41 +1008,98 @@ export class ReportService {
         timeline: { rows: [], nextCursor: null, hasMore: false },
         topApps: [],
         topDomains: [],
+        activityMetrics: {
+          keyCount: 0,
+          mouseCount: 0,
+          mouseLeftKeyCount: 0,
+          mouseRightKeyCount: 0,
+          mouseMiddleKeyCount: 0,
+          mouseOtherKeyCount: 0,
+        },
         attendance: [],
         attendanceDays: [],
+        weeklyAttendanceDays: [],
       };
     }
 
     const deviceScope = { deviceId: { in: deviceIds } };
 
-    const [totalsByEmployee, dailyTotals, timeline, appGroups, domainGroups, attendance] =
-      await Promise.all([
-        // Totals come from the rollup, not from the timeline page. Deriving them from whatever
-        // rows happened to be on screen is how a "productivity %" silently becomes "productivity %
-        // of the first fifty rows".
-        this.totalsByEmployee(start, end, [employeeId]),
-        this.dailyTotals(start, end, employeeId),
-        this.getActivityLog(employeeId, { startDate, endDate }),
-        this.getApplicationGroups(employeeId, deviceIds, start, end),
-        this.getBrowserDomainGroups(employeeId, deviceIds, start, end),
-        prisma.attendanceSession.findMany({
-          where: { ...deviceScope, loginTime: { gte: start, lte: end } },
-          orderBy: { loginTime: "asc" },
-          select: {
-            sessionId: true,
-            loginTime: true,
-            logoutTime: true,
-            endReason: true,
-            // Whether the logout was observed by the workstation or inferred by the server after the
-            // machine stopped answering. A payroll figure has to be able to say which it is.
-            logoutSource: true,
-            workDate: true,
-            // Which workstation the session ran on, so an open row can be tested against that
-            // device's liveness rather than reported as presence on its own.
-            deviceId: true,
-          },
-        }),
-      ]);
+    // Weekly attendance always spans at least the full ISO week(s) containing the period
+    const isoWeekStartDay = (start.getUTCDay() - 1 + 7) % 7;
+    const attendanceRangeStart = new Date(
+      Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate() - isoWeekStartDay),
+    );
+    const isoWeekEndDay = (end.getUTCDay() - 1 + 7) % 7;
+    const attendanceRangeEnd = new Date(
+      Date.UTC(
+        end.getUTCFullYear(),
+        end.getUTCMonth(),
+        end.getUTCDate() + (6 - isoWeekEndDay),
+        23,
+        59,
+        59,
+        999,
+      ),
+    );
+
+    const [
+      totalsByEmployee,
+      filteredDailyTotals,
+      weeklyDailyTotals,
+      timeline,
+      appGroups,
+      domainGroups,
+      attendanceSessions,
+      allAttendanceSessions,
+      activityMetrics,
+    ] = await Promise.all([
+      // Totals come from the rollup, not from the timeline page. Deriving them from whatever
+      // rows happened to be on screen is how a "productivity %" silently becomes "productivity %
+      // of the first fifty rows".
+      this.totalsByEmployee(start, end, [employeeId]),
+      this.dailyTotals(start, end, employeeId),
+      this.dailyTotals(attendanceRangeStart, attendanceRangeEnd, employeeId),
+      this.getActivityLog(employeeId, { startDate, endDate }),
+      this.getApplicationGroups(employeeId, deviceIds, start, end),
+      this.getBrowserDomainGroups(employeeId, deviceIds, start, end),
+      prisma.attendanceSession.findMany({
+        where: {
+          ...deviceScope,
+          loginTime: { gte: start, lte: end },
+        },
+        orderBy: { loginTime: "asc" },
+        select: {
+          sessionId: true,
+          loginTime: true,
+          logoutTime: true,
+          endReason: true,
+          // Whether the logout was observed by the workstation or inferred by the server after the
+          // machine stopped answering. A payroll figure has to be able to say which it is.
+          logoutSource: true,
+          workDate: true,
+          // Which workstation the session ran on, so an open row can be tested against that
+          // device's liveness rather than reported as presence on its own.
+          deviceId: true,
+        },
+      }),
+      prisma.attendanceSession.findMany({
+        where: {
+          ...deviceScope,
+          loginTime: { gte: attendanceRangeStart, lte: attendanceRangeEnd },
+        },
+        orderBy: { loginTime: "asc" },
+        select: {
+          sessionId: true,
+          loginTime: true,
+          logoutTime: true,
+          endReason: true,
+          logoutSource: true,
+          workDate: true,
+          deviceId: true,
+        },
+      }),
+      this.getActivityMetrics(employeeId, deviceIds, start, end),
+    ]);
 
     const totals = totalsByEmployee.get(employeeId) ?? emptyTotals();
     const lastSeenByDevice = new Map(employee.devices.map((d) => [d.id, d.lastSeen]));
@@ -993,10 +1127,17 @@ export class ReportService {
         neutralSeconds: g.neutralSeconds,
         blacklistedSeconds: g.blacklistedSeconds,
       })),
-      attendance,
+      activityMetrics,
+      attendance: attendanceSessions,
       attendanceDays: this.summarizeAttendance(
-        attendance,
-        dailyTotals,
+        attendanceSessions,
+        filteredDailyTotals,
+        lastSeenByDevice,
+        Date.now(),
+      ),
+      weeklyAttendanceDays: this.summarizeAttendance(
+        allAttendanceSessions,
+        weeklyDailyTotals,
         lastSeenByDevice,
         Date.now(),
       ),

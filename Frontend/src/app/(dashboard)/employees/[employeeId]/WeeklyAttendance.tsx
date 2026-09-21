@@ -111,22 +111,14 @@ function buildWeeks(days: AttendanceDay[], periodStart: string, periodEnd: strin
   const lastKey = toDayKey(new Date(periodEnd));
   const todayKey = toDayKey(new Date());
 
-  const singleDay = firstKey === lastKey;
-  const effectiveStartKey = singleDay ? toDayKey(startOfIsoWeek(fromDayKey(firstKey))) : firstKey;
-  const effectiveEndKey = singleDay ? toDayKey(addDays(fromDayKey(effectiveStartKey), 6)) : lastKey;
-
-  // The default range ends at "now" and a picked one can end later still; either way, days nobody
-  // has worked yet must not be manufactured into absences.
-  const visibleEndKey = effectiveEndKey > todayKey ? todayKey : effectiveEndKey;
-  const rangeStartWeek = startOfIsoWeek(fromDayKey(effectiveStartKey));
-  const rangeEndWeek = startOfIsoWeek(fromDayKey(visibleEndKey));
-
-  if (rangeEndWeek < rangeStartWeek && visibleEndKey < effectiveStartKey) return [];
+  const rangeStartWeek = startOfIsoWeek(fromDayKey(firstKey));
+  const rangeEndWeek = startOfIsoWeek(fromDayKey(lastKey > todayKey ? todayKey : lastKey));
+  const effectiveEndWeek = rangeEndWeek < rangeStartWeek ? rangeStartWeek : rangeEndWeek;
 
   const weeks: WeekRow[] = [];
 
   for (
-    let weekStart = rangeEndWeek;
+    let weekStart = effectiveEndWeek;
     weekStart >= rangeStartWeek && weeks.length < MAX_WEEKS;
     weekStart = addDays(weekStart, -DAYS_PER_WEEK)
   ) {
@@ -139,12 +131,11 @@ function buildWeeks(days: AttendanceDay[], periodStart: string, periodEnd: strin
       const key = toDayKey(date);
       const day = byDate.get(key) ?? null;
       const isFuture = key > todayKey;
-      const withinRequestedPeriod = key >= effectiveStartKey && key <= visibleEndKey;
       const state: DayState = isFuture
         ? "outside"
         : day
           ? day.status
-          : withinRequestedPeriod
+          : key <= todayKey
             ? "absent"
             : "outside";
 
@@ -247,7 +238,10 @@ export function WeeklyAttendance({
                   </span>
 
                   {/* Decoration over the duration underneath it, never the only signal. */}
-                  <span className="h-1 w-full overflow-hidden rounded-full bg-border/60" aria-hidden>
+                  <span
+                    className="h-1 w-full overflow-hidden rounded-full bg-border/60"
+                    aria-hidden
+                  >
                     <span
                       className={cn("block h-full rounded-full", style.bar)}
                       style={{ width: `${fillPercent}%` }}

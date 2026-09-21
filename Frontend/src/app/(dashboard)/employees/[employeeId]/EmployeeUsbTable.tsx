@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import { useCallback } from 'react';
-import { LogScroller, type LogPage } from '@/components/LogScroller';
-import { formatDateTime, formatBytes } from '@/lib/format';
-import { TableWrap, TABLE_CLASS, Th, Td, Badge } from '@/components/ui';
-import type { UsbEventRow } from '@/types/api';
+import { useCallback } from "react";
+import { LogScroller, type LogPage } from "@/components/LogScroller";
+import { formatDateTime, formatBytes } from "@/lib/format";
+import { TableWrap, TABLE_CLASS, Th, Td, Badge } from "@/components/ui";
+import type { UsbEventRow } from "@/types/api";
 
 /**
  * One employee's removable-device trail, paged the same way as the timeline above it.
@@ -33,19 +33,23 @@ export function EmployeeUsbTable({
 
   return (
     <TableWrap>
-      <table className={`${TABLE_CLASS} min-w-[720px]`}>
+      <table className={TABLE_CLASS}>
+        <colgroup>
+          <col className="w-[25%]" />
+          <col className="w-[35%]" />
+          <col className="w-[25%]" />
+          <col className="w-[15%]" />
+        </colgroup>
+
         <thead>
           <tr>
-            <Th>When</Th>
-            <Th>Event</Th>
-            <Th>Device</Th>
-            <Th>Workstation</Th>
-            <Th>Serial</Th>
+            <Th align="left">When</Th>
+            <Th align="left">Device</Th>
+            <Th align="left">Serial</Th>
             <Th align="right">Capacity</Th>
           </tr>
         </thead>
       </table>
-
       <LogScroller
         initial={initial}
         feed="employee-usb"
@@ -54,36 +58,43 @@ export function EmployeeUsbTable({
         emptyMessage="No removable devices connected in this period."
       >
         {(rows) => (
-          <table className={`${TABLE_CLASS} min-w-[720px]`}>
-            <tbody>
+          <table className={`${TABLE_CLASS}`}>
+            <colgroup>
+              <col className="w-[25%]" />
+              <col className="w-[35%]" />
+              <col className="w-[25%]" />
+              <col className="w-[15%]" />
+            </colgroup>
+
+            <tbody className="pr-2">
               {rows.map((event) => (
                 <tr key={event.id}>
-                  <Td muted numeric>
+                  <Td align="left" muted numeric>
                     {formatDateTime(event.eventTime)}
-                  </Td>
-                  <Td>
-                    {/*
-                      A connect is the event worth noticing - it is the moment data could leave -
-                      so it carries the warning tone and a disconnect stays neutral.
-                    */}
-                    <Badge tone={event.eventType === 'Connected' ? 'warning' : 'neutral'}>
-                      {event.eventType}
-                    </Badge>
-                  </Td>
-                  <Td>
-                    {event.friendlyName ?? 'Unknown device'}
-                    <span className="mt-px block text-xs text-text-tertiary">
-                      {event.deviceType}
-                      {event.driveLetter ? ` - ${event.driveLetter}` : ''}
-                      {event.volumeLabel ? ` ${event.volumeLabel}` : ''}
+
+                    <span className="mt-2 block text-xs text-text-tertiary">
+                      <Badge tone={event.eventType === "Connected" ? "warning" : "neutral"}>
+                        {event.eventType}
+                      </Badge>
                     </span>
                   </Td>
-                  <Td muted>{event.device.deviceName}</Td>
-                  <Td muted>
-                    <span className="font-mono text-xs">{event.serialNumber ?? '-'}</span>
+
+                  <Td align="left">
+                    {event.friendlyName ?? "Unknown device"}
+
+                    <span className="mt-px block text-xs text-text-tertiary">
+                      {event.deviceType}
+                      {event.driveLetter ? ` - ${event.driveLetter}` : ""}
+                      {event.volumeLabel ? ` ${event.volumeLabel}` : ""}
+                    </span>
                   </Td>
+
+                  <Td align="left" muted>
+                    <span className="font-mono text-xs">{event.serialNumber ?? "-"}</span>
+                  </Td>
+
                   <Td align="right" numeric muted>
-                    {formatBytes(event.capacityBytes)}
+                    <span className="pr-4">{formatBytes(event.capacityBytes)}</span>
                   </Td>
                 </tr>
               ))}

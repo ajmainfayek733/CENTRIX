@@ -230,6 +230,7 @@ Categories also drive blacklist alerts, via `isBlacklisted`.
 Browser applications (Google Chrome, Microsoft Edge, Firefox, Brave, etc.) are frequently classified as `Productive` or `Neutral` at the container application level. However, actual browsing activities within those applications target specific domains with their own productivity classifications (e.g. `youtube.com` as `Unproductive`, `facebook.com` as `Blacklisted`).
 
 To ensure accurate reporting:
+
 - `ReportService.getApplicationGroups` identifies browser applications and apportions domain-level productive, unproductive, blacklisted, and neutral seconds into the container browser app breakdown. Any unassigned browser time retains the container's base classification.
 - `ReportService.totalsByEmployee` adjusts overall employee totals (`productiveSeconds`, `unproductiveSeconds`, `blacklistedSeconds`, `neutralSeconds`) so that unproductive and blacklisted time spent on web domains is directly reflected in the Activity Mix totals and productivity percentage, preserving `activeSeconds` invariance.
 - `ReportService.summarizeAttendance` guarantees all dates with active telemetry in `dailyTotals` are included in `attendanceDays`.

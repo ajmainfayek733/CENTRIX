@@ -36,6 +36,31 @@ export function formatDateTime(value: string | Date | null | undefined): string 
   });
 }
 
+/** Formats a date as '19 Sep 2026' */
+export function formatDate(value: string | Date | null | undefined): string {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  const day = date.getUTCDate();
+  const monthNames = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
+  const month = monthNames[date.getUTCMonth()];
+  const year = date.getUTCFullYear();
+  return `${day} ${month} ${year}`;
+}
+
 /** "3 minutes ago" for liveness columns, where the exact timestamp matters less than recency. */
 export function formatRelative(value: string | Date | null | undefined): string {
   if (!value) return "never";

@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import type { ReactNode } from 'react';
-import { useLogFeed, type LogFeedName, type LogPage } from '@/lib/use-log-feed';
+import type { ReactNode } from "react";
+import { useLogFeed, type LogFeedName, type LogPage } from "@/lib/use-log-feed";
 
 /**
  * A fixed-height, scrolling log window that loads the next page when the reader reaches the end.
@@ -39,8 +39,8 @@ export function LogScroller<T>({
   params,
   rowKey,
   children,
-  height = '28rem',
-  emptyMessage = 'Nothing recorded for this period.',
+  height = "28rem",
+  emptyMessage = "Nothing recorded for this period.",
 }: LogScrollerProps<T>) {
   const { rows, hasMore, loading, error, loadMore, sentinelRef } = useLogFeed({
     initial,
@@ -51,8 +51,8 @@ export function LogScroller<T>({
 
   return (
     <div
-      className="overflow-y-auto"
-      style={{ height }}
+      className="overflow-y-auto overflow-x-hidden min-w-180"
+      style={{ height, scrollbarGutter: "stable" }}
       // The window is a scrollable region of its own, so it must be reachable and announced to
       // anyone not using a mouse.
       tabIndex={0}
@@ -72,7 +72,7 @@ export function LogScroller<T>({
 
       {error && (
         <p className="py-3 text-center text-xs text-danger">
-          {error}{' '}
+          {error}{" "}
           <button type="button" onClick={() => void loadMore()} className="font-medium underline">
             Retry
           </button>

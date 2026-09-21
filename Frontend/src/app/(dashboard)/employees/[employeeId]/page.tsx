@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { apiGet, ApiError } from "@/lib/api-client";
-import { formatDuration, formatPercent, formatTime } from "@/lib/format";
+import { formatDuration, formatPercent } from "@/lib/format";
 import { ArrowLeft } from "lucide-react";
 import {
   Card,
@@ -9,12 +9,7 @@ import {
   StatTile,
   HeroPercent,
   Legend,
-  TableWrap,
-  TABLE_CLASS,
-  Th,
-  Td,
   TagBadge,
-  Badge,
   EmptyState,
   ProductivityBar,
 } from "@/components/ui";
@@ -26,6 +21,7 @@ import { ScreenshotGallery } from "@/components/ScreenshotGallery";
 import { TimelineTable } from "./TimelineTable";
 import { EmployeeUsbTable } from "./EmployeeUsbTable";
 import { WeeklyAttendance } from "./WeeklyAttendance";
+import { AttendanceProvider } from "./AttendanceProvider";
 
 export const metadata = { title: "Employee - C E N T R I X" };
 export const dynamic = "force-dynamic";
@@ -57,10 +53,19 @@ export default async function EmployeeDetailPage({
     throw error;
   }
 
-  const { employee, period, totals, timeline, topApps, topDomains, attendance, attendanceDays } =
-    detail;
+  const {
+    employee,
+    period,
+    totals,
+    timeline,
+    topApps,
+    topDomains,
+    activityMetrics,
+    attendance,
+    attendanceDays,
+    weeklyAttendanceDays,
+  } = detail;
   const { startDate, endDate } = range;
-  console.log("Employee Data", detail, range);
 
   /*
     Screenshots are the most invasive surface in the product and the Auditor role is excluded from
@@ -89,7 +94,7 @@ export default async function EmployeeDetailPage({
   ]);
 
   return (
-    <div className="space-y-3.5">
+    <div className="sm:space-y-10 space-y-6">
       <PageHeader
         title={employee.name}
         subtitle={`${employee.email}${employee.department ? ` - ${employee.department}` : ""}`}
@@ -105,7 +110,7 @@ export default async function EmployeeDetailPage({
         action={<DateRangePicker startDate={range.startDate} endDate={range.endDate} />}
       />
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-4">
         <StatTile label="Active" value={formatDuration(totals.activeSeconds)} />
         <StatTile label="Idle" value={formatDuration(totals.idleSeconds)} />
         <StatTile
@@ -113,6 +118,73 @@ export default async function EmployeeDetailPage({
           value={formatDuration(totals.blacklistedSeconds)}
           tone={totals.blacklistedSeconds > 0 ? "danger" : "default"}
         />
+        {/* Activity Metrics */}
+        <div className="overflow-hidden">
+          <div className="rounded-lg border border-glass-border bg-surface px-3.5 py-2.5 shadow-glass-sm">
+            <p className="text-[10px] font-medium uppercase tracking-[0.06em] text-text-tertiary">
+              Activity
+            </p>
+
+            <div className="mt-1 flex items-baseline gap-3">
+              {/* Total */}
+              <div className="flex items-baseline gap-1">
+                <span className="tnum text-[20px] font-semibold leading-none tracking-[-0.5px] text-text-primary">
+                  {(
+                    (activityMetrics?.keyCount ?? 0) + (activityMetrics?.mouseCount ?? 0)
+                  ).toLocaleString()}
+                </span>
+                <span className="text-[10px] text-text-tertiary">Total</span>
+              </div>
+
+              {/* Keyboard */}
+              <div className="flex items-baseline gap-1">
+                <span className="text-[10px] font-medium text-text-tertiary">K</span>
+                <span className="tnum text-[12px] font-medium text-text-primary">
+                  {(activityMetrics?.keyCount ?? 0).toLocaleString()}
+                </span>
+              </div>
+
+              {/* Mouse */}
+              <div className="flex items-baseline gap-1">
+                <span className="text-[10px] font-medium text-text-tertiary">M</span>
+                <span className="tnum text-[12px] font-medium text-text-primary">
+                  {(activityMetrics?.mouseCount ?? 0).toLocaleString()}
+                </span>
+              </div>
+            </div>
+
+            {/* Mouse breakdown */}
+            <div className="mt-1 flex items-center gap-2 text-[9px] text-text-secondary">
+              <span>
+                ML&nbsp;
+                <span className="tnum text-text-primary">
+                  {(activityMetrics?.mouseLeftKeyCount ?? 0).toLocaleString()}
+                </span>
+              </span>
+
+              <span>
+                MR&nbsp;
+                <span className="tnum text-text-primary">
+                  {(activityMetrics?.mouseRightKeyCount ?? 0).toLocaleString()}
+                </span>
+              </span>
+
+              <span>
+                MM&nbsp;
+                <span className="tnum text-text-primary">
+                  {(activityMetrics?.mouseMiddleKeyCount ?? 0).toLocaleString()}
+                </span>
+              </span>
+
+              <span>
+                MO&nbsp;
+                <span className="tnum text-text-primary">
+                  {(activityMetrics?.mouseOtherKeyCount ?? 0).toLocaleString()}
+                </span>
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/*
@@ -165,291 +237,194 @@ export default async function EmployeeDetailPage({
       */}
       <Card title="Weekly attendance">
         <WeeklyAttendance
-          attendanceDays={attendanceDays}
+          attendanceDays={weeklyAttendanceDays ?? attendanceDays}
           periodStart={period.start}
           periodEnd={period.end}
         />
       </Card>
 
-      <div className="grid gap-3.5 lg:grid-cols-2">
+      <div className="grid gap-3.5 lg:grid-cols-3">
         <Card title="Top applications">
-          {topApps.length === 0 ? (
-            <EmptyState message="No application time recorded in this period." />
-          ) : (
-            <ul className="-my-2 divide-y divide-border">
-              {topApps.map((app) => (
-                <li
-                  key={`${app.appName}-${app.productivityTag}`}
-                  className="flex items-start justify-between gap-4 py-2.5 text-[13.5px]"
-                >
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate font-medium text-text-primary">
-                        {app.appName ?? "Unknown"}
-                      </span>
-                      <TagBadge tag={app.productivityTag} />
-                    </div>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-text-secondary">
-                      {app.productiveSeconds > 0 && (
-                        <span className="inline-flex items-center gap-1.5" title="Productive">
-                          <span className="h-2 w-2 shrink-0 rounded-full bg-success-vivid" aria-hidden />
-                          <span className="tnum font-medium text-text-primary">{formatDuration(app.productiveSeconds)}</span>
-                          <span className="text-text-muted">Productive</span>
+          <div className="h-125 -m-4.5 overflow-x-auto">
+            <div className="min-w-xs p-4">
+              {topApps.length === 0 ? (
+                <EmptyState message="No application time recorded in this period." />
+              ) : (
+                <ul className="-my-2 divide-y divide-border">
+                  {topApps.map((app) => (
+                    <li
+                      key={`${app.appName}-${app.productivityTag}`}
+                      className="flex items-start justify-between gap-4 py-2.5 text-[13.5px]"
+                    >
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate font-medium text-text-primary">
+                            {app.appName ?? "Unknown"}
+                          </span>
+                          <TagBadge tag={app.productivityTag} />
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-text-secondary">
+                          {app.productiveSeconds > 0 && (
+                            <span className="inline-flex items-center gap-1.5" title="Productive">
+                              <span
+                                className="h-2 w-2 shrink-0 rounded-full bg-success-vivid"
+                                aria-hidden
+                              />
+                              <span className="tnum font-medium text-text-primary">
+                                {formatDuration(app.productiveSeconds)}
+                              </span>
+                            </span>
+                          )}
+                          {app.neutralSeconds > 0 && (
+                            <span className="inline-flex items-center gap-1.5" title="Neutral">
+                              <span
+                                className="h-2 w-2 shrink-0 rounded-full bg-neutral-dot"
+                                aria-hidden
+                              />
+                              <span className="tnum font-medium text-text-primary">
+                                {formatDuration(app.neutralSeconds)}
+                              </span>
+                            </span>
+                          )}
+                          {app.unproductiveSeconds > 0 && (
+                            <span className="inline-flex items-center gap-1.5" title="Unproductive">
+                              <span
+                                className="h-2 w-2 shrink-0 rounded-full bg-warning"
+                                aria-hidden
+                              />
+                              <span className="tnum font-medium text-text-primary">
+                                {formatDuration(app.unproductiveSeconds)}
+                              </span>
+                            </span>
+                          )}
+                          {app.blacklistedSeconds > 0 && (
+                            <span className="inline-flex items-center gap-1.5" title="Blacklisted">
+                              <span
+                                className="h-2 w-2 shrink-0 rounded-full bg-danger"
+                                aria-hidden
+                              />
+                              <span className="tnum font-medium text-danger">
+                                {formatDuration(app.blacklistedSeconds)}
+                              </span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <span className="tnum block text-[13.5px] font-semibold text-text-primary">
+                          {formatDuration(app.seconds)}
                         </span>
-                      )}
-                      {app.neutralSeconds > 0 && (
-                        <span className="inline-flex items-center gap-1.5" title="Neutral">
-                          <span className="h-2 w-2 shrink-0 rounded-full bg-neutral-dot" aria-hidden />
-                          <span className="tnum font-medium text-text-primary">{formatDuration(app.neutralSeconds)}</span>
-                          <span className="text-text-muted">Neutral</span>
-                        </span>
-                      )}
-                      {app.unproductiveSeconds > 0 && (
-                        <span className="inline-flex items-center gap-1.5" title="Unproductive">
-                          <span className="h-2 w-2 shrink-0 rounded-full bg-warning" aria-hidden />
-                          <span className="tnum font-medium text-text-primary">{formatDuration(app.unproductiveSeconds)}</span>
-                          <span className="text-text-muted">Unproductive</span>
-                        </span>
-                      )}
-                      {app.blacklistedSeconds > 0 && (
-                        <span className="inline-flex items-center gap-1.5" title="Blacklisted">
-                          <span className="h-2 w-2 shrink-0 rounded-full bg-danger" aria-hidden />
-                          <span className="tnum font-medium text-danger">{formatDuration(app.blacklistedSeconds)}</span>
-                          <span className="text-text-muted">Blacklisted</span>
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <span className="tnum block text-[13.5px] font-semibold text-text-primary">
-                      {formatDuration(app.seconds)}
-                    </span>
-                    <span className="block text-[10.5px] uppercase tracking-wider text-text-muted">
-                      Total
-                    </span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
         </Card>
 
         <Card title="Top websites">
-          {topDomains.length === 0 ? (
-            <EmptyState message="No browsing recorded in this period." />
-          ) : (
-            <ul className="-my-2 divide-y divide-border">
-              {topDomains.map((site) => (
-                <li
-                  key={`${site.domain}-${site.productivityTag}`}
-                  className="flex items-start justify-between gap-4 py-2.5 text-[13.5px]"
-                >
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate font-medium text-text-primary">{site.domain}</span>
-                      <TagBadge tag={site.productivityTag} />
-                    </div>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-text-secondary">
-                      {site.productiveSeconds > 0 && (
-                        <span className="inline-flex items-center gap-1.5" title="Productive">
-                          <span className="h-2 w-2 shrink-0 rounded-full bg-success-vivid" aria-hidden />
-                          <span className="tnum font-medium text-text-primary">{formatDuration(site.productiveSeconds)}</span>
-                          <span className="text-text-muted">Productive</span>
-                        </span>
-                      )}
-                      {site.neutralSeconds > 0 && (
-                        <span className="inline-flex items-center gap-1.5" title="Neutral">
-                          <span className="h-2 w-2 shrink-0 rounded-full bg-neutral-dot" aria-hidden />
-                          <span className="tnum font-medium text-text-primary">{formatDuration(site.neutralSeconds)}</span>
-                          <span className="text-text-muted">Neutral</span>
-                        </span>
-                      )}
-                      {site.unproductiveSeconds > 0 && (
-                        <span className="inline-flex items-center gap-1.5" title="Unproductive">
-                          <span className="h-2 w-2 shrink-0 rounded-full bg-warning" aria-hidden />
-                          <span className="tnum font-medium text-text-primary">{formatDuration(site.unproductiveSeconds)}</span>
-                          <span className="text-text-muted">Unproductive</span>
-                        </span>
-                      )}
-                      {site.blacklistedSeconds > 0 && (
-                        <span className="inline-flex items-center gap-1.5" title="Blacklisted">
-                          <span className="h-2 w-2 shrink-0 rounded-full bg-danger" aria-hidden />
-                          <span className="tnum font-medium text-danger">{formatDuration(site.blacklistedSeconds)}</span>
-                          <span className="text-text-muted">Blacklisted</span>
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <span className="tnum block text-[13.5px] font-semibold text-text-primary">
-                      {formatDuration(site.seconds)}
-                    </span>
-                    <span className="block text-[10.5px] uppercase tracking-wider text-text-muted">
-                      Total
-                    </span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
+          <div className="h-125 -m-4.5 overflow-x-auto">
+            <div className="min-w-xs p-4">
+              {topDomains.length === 0 ? (
+                <EmptyState message="No browsing recorded in this period." />
+              ) : (
+                <ul className="-my-2 divide-y divide-border">
+                  {topDomains.map((site) => (
+                    <li
+                      key={`${site.domain}-${site.productivityTag}`}
+                      className="flex items-start justify-between gap-4 py-2.5 text-[13.5px]"
+                    >
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="truncate font-medium text-text-primary"
+                            title={site.domain}
+                          >
+                            {site.domain}
+                          </span>
+                          <TagBadge tag={site.productivityTag} />
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-text-secondary">
+                          {site.productiveSeconds > 0 && (
+                            <span className="inline-flex items-center gap-1.5" title="Productive">
+                              <span
+                                className="h-2 w-2 shrink-0 rounded-full bg-success-vivid"
+                                aria-hidden
+                              />
+                              <span className="tnum font-medium text-text-primary">
+                                {formatDuration(site.productiveSeconds)}
+                              </span>
+                            </span>
+                          )}
+                          {site.neutralSeconds > 0 && (
+                            <span className="inline-flex items-center gap-1.5" title="Neutral">
+                              <span
+                                className="h-2 w-2 shrink-0 rounded-full bg-neutral-dot"
+                                aria-hidden
+                              />
+                              <span className="tnum font-medium text-text-primary">
+                                {formatDuration(site.neutralSeconds)}
+                              </span>
+                            </span>
+                          )}
+                          {site.unproductiveSeconds > 0 && (
+                            <span className="inline-flex items-center gap-1.5" title="Unproductive">
+                              <span
+                                className="h-2 w-2 shrink-0 rounded-full bg-warning"
+                                aria-hidden
+                              />
+                              <span className="tnum font-medium text-text-primary">
+                                {formatDuration(site.unproductiveSeconds)}
+                              </span>
+                            </span>
+                          )}
+                          {site.blacklistedSeconds > 0 && (
+                            <span className="inline-flex items-center gap-1.5" title="Blacklisted">
+                              <span
+                                className="h-2 w-2 shrink-0 rounded-full bg-danger"
+                                aria-hidden
+                              />
+                              <span className="tnum font-medium text-danger">
+                                {formatDuration(site.blacklistedSeconds)}
+                              </span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
         </Card>
-      </div>
 
-      {/*
-        The attendance report proper: one row per work date. Session duration spans first login to
-        last logout, so it can exceed active + idle - time when the workstation was off was observed
-        by nobody and is credited to nobody, which is the difference between measuring presence and
-        assuming it.
-      */}
-      <Card title="Attendance">
-        {attendanceDays.length === 0 ? (
-          <EmptyState message="No sign-in recorded in this period." />
-        ) : (
-          <TableWrap>
-            {/*
-              This table puts a right-aligned number (Idle) straight before a left-aligned badge
-              (Status), which used to need a hand-rolled column gutter to stop the two reading as
-              one column. Td now carries that padding itself, so the override is gone.
-            */}
-            <table className={`${TABLE_CLASS} min-w-[720px]`}>
-              <thead>
-                <tr>
-                  <Th>Date</Th>
-                  <Th>First login</Th>
-                  <Th>Last logout</Th>
-                  <Th align="right">Session</Th>
-                  <Th align="right">Active</Th>
-                  <Th align="right">Idle</Th>
-                  <Th>Status</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {attendanceDays.map((day) => (
-                  <tr key={day.workDate}>
-                    <Td>{new Date(day.workDate).toLocaleDateString()}</Td>
-                    <Td numeric>{formatTime(day.firstLogin)}</Td>
-                    {/*
-                      An estimated logout is marked on the value itself rather than in Status,
-                      because it is the time that is approximate and not the fact that the day
-                      ended. The workstation stopped answering without recording a logout - power
-                      loss, most often - so the backend closed the session at the last evidence it
-                      held. Reading it as a recorded clock-out is the mistake this prevents.
-                    */}
-                    <Td numeric>
-                      {day.status === "present" ? (
-                        "-"
-                      ) : day.lastLogout && day.logoutEstimated ? (
-                        <span
-                          className="inline-flex items-center gap-1.5"
-                          title="Estimated - the workstation stopped reporting without recording a logout, so this is the last activity seen"
-                        >
-                          {formatTime(day.lastLogout)}
-                          <Badge tone="warning">Estimated</Badge>
-                        </span>
-                      ) : (
-                        formatTime(day.lastLogout)
-                      )}
-                    </Td>
-                    <Td align="right" numeric>
-                      {formatDuration(day.sessionSeconds)}
-                    </Td>
-                    <Td align="right" numeric>
-                      {formatDuration(day.activeSeconds)}
-                    </Td>
-                    <Td align="right" numeric>
-                      {formatDuration(day.idleSeconds)}
-                    </Td>
-                    <Td>
-                      {day.status === "present" ? (
-                        <Badge tone="success">Present</Badge>
-                      ) : day.status === "unknown" ? (
-                        // An open session on a workstation that stopped reporting. Saying "present"
-                        // here would show a crashed machine as somebody at their desk.
-                        <Badge tone="warning">No logout recorded</Badge>
-                      ) : (
-                        <Badge>Signed out</Badge>
-                      )}
-                    </Td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableWrap>
-        )}
-      </Card>
-
-      {/*
-        The sessions the days above are folded from. Kept because "when did they actually step
-        away" is a different question from "when did they arrive and leave", and the end reason -
-        lock, sleep, shutdown - is only meaningful per session.
-      */}
-      <Card title="Attendance sessions">
-        {attendance.length === 0 ? (
-          <EmptyState message="No sign-in recorded in this period." />
-        ) : (
-          <TableWrap>
-            <table className={`${TABLE_CLASS} min-w-[480px]`}>
-              <thead>
-                <tr>
-                  <Th>Date</Th>
-                  <Th>Signed in</Th>
-                  <Th>Signed out</Th>
-                  <Th>Ended by</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {attendance.map((row) => (
-                  <tr key={row.sessionId}>
-                    <Td>{new Date(row.workDate).toLocaleDateString()}</Td>
-                    <Td numeric>{formatTime(row.loginTime)}</Td>
-                    <Td numeric>
-                      {row.logoutTime ? (
-                        formatTime(row.logoutTime)
-                      ) : (
-                        <Badge tone="success">Still signed in</Badge>
-                      )}
-                    </Td>
-                    {/*
-                      Per session the end reason and its provenance answer one question together:
-                      how much the signed-out time above is worth. `Server` means nothing on the
-                      workstation ever recorded an end - the reason is the backend's reading of why,
-                      not the agent's report of what happened.
-                    */}
-                    <Td muted>
-                      <span className="inline-flex items-center gap-1.5">
-                        {row.endReason ?? "-"}
-                        {row.logoutSource === "Server" && <Badge tone="warning">Estimated</Badge>}
-                      </span>
-                    </Td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableWrap>
-        )}
-      </Card>
-
-      {/*
-        "showing N" rather than "N entries": only the first page is loaded here, so a total is a
-        number this page does not have. The window fetches the rest as it is scrolled.
-      */}
-      <Card title={`Timeline - showing ${timeline.rows.length}${timeline.hasMore ? "+" : ""}`}>
-        <TimelineTable
-          initial={timeline}
-          employeeId={employee.id}
-          startDate={startDate}
-          endDate={endDate}
-        />
-      </Card>
-
-      {/*
+        {/*
         The removable-device trail for this person. Sits after the timeline and before the
         captures: the timeline says what they were doing, this says what could have left the
         machine while they did it.
       */}
-      <Card title={`USB devices - showing ${usbEvents.rows.length}${usbEvents.hasMore ? "+" : ""}`}>
-        <EmployeeUsbTable
-          initial={usbEvents}
+        <Card
+          title={`USB devices - showing ${usbEvents.rows.length}${usbEvents.hasMore ? "+" : ""}`}
+        >
+          <EmployeeUsbTable
+            initial={usbEvents}
+            employeeId={employee.id}
+            startDate={startDate}
+            endDate={endDate}
+          />
+        </Card>
+      </div>
+
+      <AttendanceProvider
+        attendanceInitial={attendanceDays}
+        attendanceSessionsInitial={attendance}
+      ></AttendanceProvider>
+
+      <Card title={`Timeline - showing ${timeline.rows.length}${timeline.hasMore ? "+" : ""}`}>
+        <TimelineTable
+          initial={timeline}
           employeeId={employee.id}
           startDate={startDate}
           endDate={endDate}
