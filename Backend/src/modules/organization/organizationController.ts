@@ -1,11 +1,11 @@
-import { Request, Response, NextFunction } from 'express';
-import { organizationService } from './organizationService';
+import { Request, Response, NextFunction } from "express";
+import { organizationService } from "./organizationService";
 
 export class OrganizationController {
   async createOrganization(req: Request, res: Response, next: NextFunction) {
     try {
       const org = await organizationService.createOrganization(req.body);
-      return res.status(201).json({ message: 'Organization created successfully', data: org });
+      return res.status(201).json({ message: "Organization created successfully", data: org });
     } catch (error) {
       next(error);
     }
@@ -50,15 +50,107 @@ export class OrganizationController {
   async updatePolicy(req: Request, res: Response, next: NextFunction) {
     try {
       const data = await organizationService.updatePolicy(req.params.id as string, req.body);
-      return res.status(200).json({ message: 'Policy updated', data });
+      return res.status(200).json({ message: "Policy updated", data });
     } catch (error) {
       next(error);
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Departments
+  // -------------------------------------------------------------------------
+
+  async listDepartments(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await organizationService.listDepartments(req.params.id as string);
+      return res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getDepartmentById(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await organizationService.getDepartmentById(
+        req.params.id as string,
+        req.params.deptId as string,
+      );
+      return res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async createDepartment(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await organizationService.createDepartment(req.params.id as string, req.body);
+      return res.status(201).json({ message: "Department created", data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async updateDepartment(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await organizationService.updateDepartment(
+        req.params.id as string,
+        req.params.deptId as string,
+        req.body,
+      );
+      return res.status(200).json({ message: "Department updated", data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deleteDepartment(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await organizationService.deleteDepartment(
+        req.params.id as string,
+        req.params.deptId as string,
+      );
+      return res.status(200).json({ message: "Department deleted", data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async addDepartmentMembers(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await organizationService.addDepartmentMembers(
+        req.params.id as string,
+        req.params.deptId as string,
+        req.body,
+      );
+      return res.status(200).json({ message: "Department members assigned", data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async removeDepartmentMember(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await organizationService.removeDepartmentMember(
+        req.params.id as string,
+        req.params.deptId as string,
+        req.params.employeeId as string,
+      );
+      return res.status(200).json({ message: "Member removed from department", data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Categories
+  // -------------------------------------------------------------------------
+
   async listCategories(req: Request, res: Response, next: NextFunction) {
     try {
-      const data = await organizationService.listCategories(req.params.id as string);
+      const departmentId =
+        (req.params.deptId as string | undefined) ||
+        (req.query.departmentId as string | undefined);
+      const data = await organizationService.listCategories(req.params.id as string, departmentId);
       return res.status(200).json({ data });
     } catch (error) {
       next(error);
@@ -67,8 +159,11 @@ export class OrganizationController {
 
   async upsertCategory(req: Request, res: Response, next: NextFunction) {
     try {
+      if (req.params.deptId && !req.body.departmentId) {
+        req.body.departmentId = req.params.deptId;
+      }
       const data = await organizationService.upsertCategory(req.params.id as string, req.body);
-      return res.status(200).json({ message: 'Category rule saved', data });
+      return res.status(200).json({ message: "Category rule saved", data });
     } catch (error) {
       next(error);
     }
@@ -78,9 +173,9 @@ export class OrganizationController {
     try {
       const data = await organizationService.deleteCategory(
         req.params.id as string,
-        req.params.categoryId as string
+        req.params.categoryId as string,
       );
-      return res.status(200).json({ message: 'Category rule deleted', data });
+      return res.status(200).json({ message: "Category rule deleted", data });
     } catch (error) {
       next(error);
     }

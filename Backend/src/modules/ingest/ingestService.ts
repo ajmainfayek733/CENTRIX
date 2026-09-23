@@ -28,6 +28,7 @@ export interface DeviceContext {
   id: string;
   employeeId: string;
   organizationId: string;
+  departmentId?: string | null;
   deviceId: string;
   deviceName: string;
 }
@@ -369,7 +370,7 @@ class IngestService {
               "totalActiveSeconds" = EXCLUDED."totalActiveSeconds",
               "totalIdleSeconds" = EXCLUDED."totalIdleSeconds",
               "updatedAt" = CURRENT_TIMESTAMP
-            WHERE "attendance_sessions"."revision" < EXCLUDED."revision"
+            WHERE ("attendance_sessions"."revision" < EXCLUDED."revision" OR ("attendance_sessions"."revision" = 0 AND EXCLUDED."revision" = 0))
               AND (
                 "attendance_sessions"."logoutTime" IS NULL
                 OR "attendance_sessions"."logoutSource" = 'Server'::"LogoutSource"
@@ -465,6 +466,7 @@ class IngestService {
         e.appName,
         e.processName,
         e.executablePath,
+        device.departmentId,
       );
 
       const productivityTag = match ? match.tag : (e.productivityTag as ProductivityTag);
@@ -550,7 +552,11 @@ class IngestService {
     const rows: Prisma.BrowserActivityCreateManyInput[] = [];
 
     for (const e of fresh) {
-      const match = await categoryService.categorizeDomain(device.organizationId, e.domain);
+      const match = await categoryService.categorizeDomain(
+        device.organizationId,
+        e.domain,
+        device.departmentId,
+      );
 
       const parentSession = e.activitySessionId
         ? parentSessionId.get(e.activitySessionId)
@@ -724,8 +730,8 @@ class IngestService {
   // -------------------------------------------------------------------------
 
   /** GET /api/v1/policy - always the full document, never a diff. */
-  async getPolicy(organizationId: string) {
-    return getOrCreatePolicy(organizationId);
+  async getPolicy(organizationId: string, departmentId?: string | null) {
+    return getOrCreatePolicy(organizationId, departmentId);
   }
 
   /** POST /api/v1/consent - idempotent on (device, userSid, policyVersion). */
@@ -829,17 +835,28 @@ class IngestService {
     // assign. Rejecting it instead would mean no telemetry until someone notices the device.
     const placeholder = await this.unassignedEmployee(organization.id);
 
-    const created = await prisma.device.create({
-      data: {
-        organizationId: organization.id,
-        employeeId: placeholder.id,
-        deviceId: dto.deviceId,
-        apiKeyHash,
-        ...profile,
-      },
-    });
+    try {
+      const created = await prisma.device.create({
+        data: {
+          organizationId: organization.id,
+          employeeId: placeholder.id,
+          deviceId: dto.deviceId,
+          apiKeyHash,
+          ...profile,
+        },
+      });
 
-    return { apiKey, deviceId: created.id, employeeId: created.employeeId, enrolled: true };
+      return { apiKey, deviceId: created.id, employeeId: created.employeeId, enrolled: true };
+    } catch (err: any) {
+      if (err?.code === "P2002") {
+        const updated = await prisma.device.update({
+          where: { deviceId: dto.deviceId },
+          data: { ...profile, apiKeyHash },
+        });
+        return { apiKey, deviceId: updated.id, employeeId: updated.employeeId, enrolled: false };
+      }
+      throw err;
+    }
   }
 
   private async unassignedEmployee(organizationId: string) {

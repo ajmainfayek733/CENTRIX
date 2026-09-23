@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { apiGet } from "@/lib/api-client";
 import { getSessionUser } from "@/lib/session";
 import { Card, PageHeader, Notice, EmptyState } from "@/components/ui";
-import type { CategoryRow, Organization, Policy } from "@/types/api";
+import type { CategoryRow, Organization, Policy, DepartmentSummary } from "@/types/api";
 import { PolicyForm } from "./PolicyForm";
 import { CategoryEditor } from "./CategoryEditor";
 
@@ -33,9 +33,12 @@ export default async function SettingsPage() {
   // Categories are fetched separately rather than read off the policy document: the policy
   // is shaped for the agent, which has no use for row ids, and the editor needs them to
   // delete a rule.
-  const [policy, categories] = await Promise.all([
+  const [policy, categories, departments] = await Promise.all([
     apiGet<Policy>(`/v1/dashboard/organizations/${organization.id}/policy`),
     apiGet<CategoryRow[]>(`/v1/dashboard/organizations/${organization.id}/categories`),
+    apiGet<DepartmentSummary[]>(`/v1/dashboard/organizations/${organization.id}/departments`).catch(
+      () => [],
+    ),
   ]);
 
   return (
@@ -51,7 +54,11 @@ export default async function SettingsPage() {
       </Notice>
 
       <PolicyForm organizationId={organization.id} policy={policy} />
-      <CategoryEditor organizationId={organization.id} categories={categories} />
+      <CategoryEditor
+        organizationId={organization.id}
+        categories={categories}
+        departments={departments}
+      />
     </div>
   );
 }

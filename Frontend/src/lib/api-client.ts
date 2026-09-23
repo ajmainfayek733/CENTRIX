@@ -77,6 +77,72 @@ export async function serverFetch(path: string, init?: RequestInit): Promise<Res
  * than a redirect because redirect() cannot be called from every context this runs in; the
  * dashboard layout catches it and sends the user to /login.
  */
+function parseErrorMessage(text: string, status: number, statusText: string): string {
+  if (!text) {
+    if (status === 404) return "The requested item or page could not be found. Please refresh and try again.";
+    if (status === 401) return "Your session has expired. Please log in again to continue.";
+    if (status === 403) return "You do not have permission to perform this action. Administrator rights required.";
+    if (status >= 500) return "The server encountered an issue processing your request. Please try again in a moment.";
+    return `The request could not be completed (${statusText || `code ${status}`}).`;
+  }
+
+  // If the server or an upstream reverse proxy responded with HTML (e.g. 404 or 502 page)
+  if (text.trim().startsWith("<") || text.includes("<!DOCTYPE") || text.includes("<html")) {
+    if (status === 404) {
+      return "The requested department, rule, or resource could not be found. Please refresh your page.";
+    }
+    if (status === 502 || status === 504) {
+      return "The service is temporarily unreachable or undergoing maintenance. Please try again shortly.";
+    }
+    return "The server responded with an unexpected error. Please refresh the page and try again.";
+  }
+
+  // Attempt to parse JSON error message
+  try {
+    const parsed = JSON.parse(text);
+    if (typeof parsed === "string") return humanizeMessage(parsed);
+    if (parsed && typeof parsed === "object") {
+      // If validation details exist (e.g. Zod error issues)
+      if (Array.isArray(parsed.details) && parsed.details.length > 0) {
+        const detailMsgs = (parsed.details as Array<{ message?: string }>)
+          .map((d) => d?.message)
+          .filter(Boolean)
+          .join(". ");
+        if (detailMsgs) return detailMsgs;
+      }
+      if (typeof parsed.error === "string") return humanizeMessage(parsed.error);
+      if (typeof parsed.message === "string") return humanizeMessage(parsed.message);
+    }
+  } catch {
+    // Plain text message
+  }
+
+  return humanizeMessage(text);
+}
+
+function humanizeMessage(msg: string): string {
+  if (!msg) return "An unexpected error occurred. Please try again.";
+
+  // Clean out technical jargon so non-technical org admins get actionable messages
+  if (msg.includes("Cannot POST") || msg.includes("Cannot GET") || msg.includes("Endpoint not found")) {
+    return "The requested action or server endpoint could not be found. Please refresh the page and try again.";
+  }
+  if (msg.includes("Unauthorized") || msg.includes("Session missing") || msg.includes("expired")) {
+    return "Your session has expired or is invalid. Please log in again to continue.";
+  }
+  if (msg.includes("Forbidden") || msg.includes("permission") || msg.includes("requireRole")) {
+    return "You do not have administrative permission to modify these settings.";
+  }
+  if (msg.includes("PrismaClient") || msg.includes("database") || msg.includes("Unique constraint")) {
+    return "A record with this information already exists, or a database conflict occurred. Please check your inputs.";
+  }
+  if (msg.includes("JSON at position") || msg.includes("Expected property name")) {
+    return "The submitted data was malformed. Please check your inputs and try again.";
+  }
+
+  return msg.length > 250 ? `${msg.substring(0, 250)}...` : msg;
+}
+
 export async function apiGet<T>(path: string): Promise<T> {
   const response = await serverFetch(path);
 
@@ -90,7 +156,7 @@ export async function apiGet<T>(path: string): Promise<T> {
       );
     }
 
-    throw new ApiError(body || response.statusText, response.status);
+    throw new ApiError(parseErrorMessage(body, response.status, response.statusText), response.status);
   }
 
   const json = (await response.json()) as { data: T };
@@ -114,7 +180,7 @@ export async function apiSend<T>(path: string, method: string, body?: unknown): 
       );
     }
 
-    throw new ApiError(text || response.statusText, response.status);
+    throw new ApiError(parseErrorMessage(text, response.status, response.statusText), response.status);
   }
 
   const json = (await response.json()) as { data: T };

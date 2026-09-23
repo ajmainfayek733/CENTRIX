@@ -1,63 +1,88 @@
-import { PageHeader, StatTile } from "@/components/ui";
-import { TemplateNotice } from "@/components/TemplateNotice";
+import { apiGet } from "@/lib/api-client";
+import { getSessionUser } from "@/lib/session";
+import { PageHeader, StatTile, Card, EmptyState } from "@/components/ui";
+import type { Organization, DepartmentSummary, Roster } from "@/types/api";
+import { DepartmentManager } from "./DepartmentManager";
 
 export const metadata = { title: "Departments - C E N T R I X" };
+export const dynamic = "force-dynamic";
 
-/**
- * Team structure and headcount, laid out from the blueprint.
- *
- * Static by design: there is no departments endpoint yet, so this fetches nothing and holds no
- * `dynamic` directive. When the API lands, this becomes an async server component reading
- * through `apiGet`, and the placeholder constant below goes with it.
- */
+export default async function DepartmentsPage() {
+  const [user, organizations, roster] = await Promise.all([
+    getSessionUser(),
+    apiGet<Organization[]>("/v1/dashboard/organizations").catch(() => []),
+    apiGet<Roster>("/v1/dashboard/reports/roster").catch(() => ({
+      period: { start: "", end: "" },
+      employees: [],
+    })),
+  ]);
 
-/** Invented. Generic names on purpose - see the note in TemplateNotice. */
-const PLACEHOLDER_DEPARTMENTS = [
-  { name: "Department A", lead: "Lead: not set", employees: 0, devices: 0 },
-  { name: "Department B", lead: "Lead: not set", employees: 0, devices: 0 },
-  { name: "Department C", lead: "Lead: not set", employees: 0, devices: 0 },
-  { name: "Unassigned", lead: "No members yet", employees: 0, devices: 0 },
-];
+  const organization = organizations[0];
+  if (!organization) {
+    return (
+      <div className="space-y-3.5">
+        <PageHeader title="Departments" subtitle="Team structure and headcount" />
+        <Card>
+          <EmptyState message="No organization found. Please enroll devices or configure the organization first." />
+        </Card>
+      </div>
+    );
+  }
 
-export default function DepartmentsPage() {
+  const departments = await apiGet<DepartmentSummary[]>(
+    `/v1/dashboard/organizations/${organization.id}/departments`,
+  ).catch(() => []);
+
+  const totalEmployees = roster.employees.length;
+  const assignedEmployees = roster.employees.filter((e) => !!e.department).length;
+  const unassignedEmployees = totalEmployees - assignedEmployees;
+
+  // Largest team calculation
+  const deptCounts = departments.map((d) => ({
+    name: d.name,
+    count: roster.employees.filter((e) => e.department?.toLowerCase() === d.name.toLowerCase())
+      .length,
+  }));
+  const largestTeam = deptCounts.sort((a, b) => b.count - a.count)[0];
+
   return (
-    <div className="space-y-3.5">
-      <PageHeader title="Departments" subtitle="Team structure and headcount" />
+    <div className="space-y-6">
+      <PageHeader
+        title="Departments"
+        subtitle={`${organization.name} - Team organization & department productivity rules`}
+      />
 
-      <TemplateNotice endpoint="a department rollup endpoint" />
-
+      {/* Headline Stats */}
       <div className="grid gap-3 sm:grid-cols-3">
-        <StatTile label="Total departments" value="-" />
-        <StatTile label="Largest team" value="-" hint="By headcount" />
-        <StatTile label="Active devices" value="-" hint="Across all departments" />
+        <StatTile
+          label="Total departments"
+          value={departments.length}
+          hint={`${assignedEmployees} of ${totalEmployees} employees assigned`}
+        />
+        <StatTile
+          label="Largest team"
+          value={largestTeam && largestTeam.count > 0 ? largestTeam.name : "None yet"}
+          hint={
+            largestTeam && largestTeam.count > 0
+              ? `${largestTeam.count} member(s)`
+              : "No assigned members"
+          }
+        />
+        <StatTile
+          label="Unassigned staff"
+          value={unassignedEmployees}
+          hint="Employees awaiting department assignment"
+          tone={unassignedEmployees > 0 ? "warning" : "success"}
+        />
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {PLACEHOLDER_DEPARTMENTS.map((department) => (
-          <div
-            key={department.name}
-            className="rounded-lg border border-glass-border bg-surface p-[18px] shadow-glass-sm transition-transform duration-200 ease-out hover:-translate-y-0.5"
-          >
-            <p className="text-[14.5px] font-semibold text-text-primary">{department.name}</p>
-            <p className="mt-[3px] text-[12.5px] text-text-secondary">{department.lead}</p>
-
-            <dl className="mt-3 flex gap-[18px]">
-              <div>
-                <dd className="tnum text-lg font-semibold text-text-primary">
-                  {department.employees || "-"}
-                </dd>
-                <dt className="mt-0.5 text-[11px] text-text-tertiary">Employees</dt>
-              </div>
-              <div>
-                <dd className="tnum text-lg font-semibold text-text-primary">
-                  {department.devices || "-"}
-                </dd>
-                <dt className="mt-0.5 text-[11px] text-text-tertiary">Devices</dt>
-              </div>
-            </dl>
-          </div>
-        ))}
-      </div>
+      {/* Main Department Interactive Workspace */}
+      <DepartmentManager
+        organizationId={organization.id}
+        departments={departments}
+        allEmployees={roster.employees}
+        userRole={user?.role}
+      />
     </div>
   );
 }

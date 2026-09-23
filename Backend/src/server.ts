@@ -87,6 +87,13 @@ app.use("/v1/dashboard/organizations", organizationRoutes);
 app.use("/v1/dashboard/employees", employeeRoutes);
 app.use("/v1/dashboard/reports", reportRoutes);
 
+// 404 Not Found Middleware - ensures API consumers receive JSON instead of default Express HTML
+app.use((req, res) => {
+  res.status(404).json({
+    error: `Endpoint not found: ${req.method} ${req.originalUrl}`,
+  });
+});
+
 // Global Error Handler Middleware
 app.use(errorHandler);
 

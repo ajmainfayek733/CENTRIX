@@ -1,13 +1,21 @@
-import { CategoryTarget, ProductivityTag } from '@prisma/client';
-import { prisma } from '../../config/db';
+import { CategoryTarget, ProductivityTag } from "@prisma/client";
+import { prisma } from "../../config/db";
 
 export interface CategoryMatch {
   tag: ProductivityTag;
   isBlacklisted: boolean;
 }
 
+export interface CategoryRule {
+  pattern: string;
+  target: CategoryTarget;
+  tag: ProductivityTag;
+  isBlacklisted: boolean;
+  departmentId: string | null;
+}
+
 interface CachedRules {
-  rules: Array<{ pattern: string; target: CategoryTarget; tag: ProductivityTag; isBlacklisted: boolean }>;
+  rules: CategoryRule[];
   expiresAt: number;
 }
 
@@ -20,22 +28,9 @@ const CACHE_TTL_MS = 30_000;
 
 export class CategoryService {
   private cache = new Map<string, CachedRules>();
-
-  /**
-   * Bumped on every invalidation, per organization.
-   *
-   * `rulesFor` reads the cache, awaits a query, then writes the cache - and an invalidation can
-   * land in that gap. Without this counter the in-flight query's result (fetched *before* the
-   * admin's write committed) is stored after the delete, and the stale rules then serve for the
-   * full 30s TTL. The invalidation is silently undone.
-   *
-   * That is a real hazard once a fleet is ingesting continuously: with 30-100 agents pushing,
-   * some request is almost always mid-fetch when an admin saves a rule, so the save appears to
-   * do nothing for half a minute.
-   */
   private generation = new Map<string, number>();
 
-  private async rulesFor(organizationId: string) {
+  private async rulesFor(organizationId: string): Promise<CategoryRule[]> {
     const cached = this.cache.get(organizationId);
     if (cached && cached.expiresAt > Date.now()) return cached.rules;
 
@@ -43,13 +38,13 @@ export class CategoryService {
 
     const rows = await prisma.category.findMany({
       where: { organizationId },
-      select: { pattern: true, target: true, tag: true, isBlacklisted: true },
+      select: { pattern: true, target: true, tag: true, isBlacklisted: true, departmentId: true },
     });
-    const rules = rows.map((r) => ({ ...r, pattern: r.pattern.toLowerCase() }));
+    const rules: CategoryRule[] = rows.map((r) => ({
+      ...r,
+      pattern: r.pattern.toLowerCase(),
+    }));
 
-    // Only publish if nothing invalidated while the query was in flight. If something did, this
-    // result may predate the write, so it is returned to the caller but not cached - the next
-    // request re-reads and sees the new rules.
     if ((this.generation.get(organizationId) ?? 0) === startedAt) {
       this.cache.set(organizationId, { rules, expiresAt: Date.now() + CACHE_TTL_MS });
     }
@@ -64,17 +59,59 @@ export class CategoryService {
   }
 
   /**
-   * Categorize a foreground application. Matches against app name, process name and
-   * executable path so a rule of "chrome" catches all three spellings.
+   * Returns the merged effective rules for a specific department (or org-wide if departmentId is null).
+   * Department rules override org-wide rules with the same target and pattern.
+   */
+  async getEffectiveRules(
+    organizationId: string,
+    departmentId?: string | null,
+  ): Promise<
+    Array<{ pattern: string; target: CategoryTarget; tag: ProductivityTag; isBlacklisted: boolean }>
+  > {
+    const allRules = await this.rulesFor(organizationId);
+    if (allRules.length === 0) return [];
+
+    const ruleMap = new Map<string, CategoryRule>();
+
+    // 1. First add org-wide rules (departmentId === null)
+    for (const rule of allRules) {
+      if (rule.departmentId === null) {
+        ruleMap.set(`${rule.target}:${rule.pattern}`, rule);
+      }
+    }
+
+    // 2. If a department is specified, override with department-specific rules
+    if (departmentId) {
+      for (const rule of allRules) {
+        if (rule.departmentId === departmentId) {
+          ruleMap.set(`${rule.target}:${rule.pattern}`, rule);
+        }
+      }
+    }
+
+    return [...ruleMap.values()].map(({ pattern, target, tag, isBlacklisted }) => ({
+      pattern,
+      target,
+      tag,
+      isBlacklisted,
+    }));
+  }
+
+  /**
+   * Categorize a foreground application.
    *
-   * Blacklist wins over any other rule: a match that is blacklisted returns immediately
-   * rather than being overridden by a later Productive rule.
+   * Priority:
+   * 1. Department-specific Blacklist rule
+   * 2. Org-wide Blacklist rule
+   * 3. Department-specific rule (Productive / Unproductive / Neutral)
+   * 4. Org-wide rule (Productive / Unproductive / Neutral)
    */
   async categorizeApp(
     organizationId: string,
     appName?: string | null,
     processName?: string | null,
-    executablePath?: string | null
+    executablePath?: string | null,
+    departmentId?: string | null,
   ): Promise<CategoryMatch | null> {
     const rules = await this.rulesFor(organizationId);
     if (rules.length === 0) return null;
@@ -84,33 +121,123 @@ export class CategoryService {
       .map((v) => v.toLowerCase());
     if (haystacks.length === 0) return null;
 
-    let firstMatch: CategoryMatch | null = null;
-    for (const rule of rules) {
-      if (rule.target !== CategoryTarget.Application) continue;
-      if (!haystacks.some((h) => h.includes(rule.pattern))) continue;
-      if (rule.isBlacklisted) return { tag: ProductivityTag.Blacklisted, isBlacklisted: true };
-      firstMatch ??= { tag: rule.tag, isBlacklisted: false };
+    // Filter relevant rules (department-specific for this department, or org-wide)
+    const appRules = rules.filter(
+      (r) =>
+        r.target === CategoryTarget.Application &&
+        (r.departmentId === null || (departmentId && r.departmentId === departmentId)),
+    );
+
+    if (appRules.length === 0) return null;
+
+    // Pass 1: Check Blacklists (Department blacklist first, then Org blacklist)
+    if (departmentId) {
+      for (const rule of appRules) {
+        if (rule.departmentId === departmentId && rule.isBlacklisted) {
+          if (haystacks.some((h) => h.includes(rule.pattern))) {
+            return { tag: ProductivityTag.Blacklisted, isBlacklisted: true };
+          }
+        }
+      }
     }
-    return firstMatch;
+    for (const rule of appRules) {
+      if (rule.departmentId === null && rule.isBlacklisted) {
+        if (haystacks.some((h) => h.includes(rule.pattern))) {
+          return { tag: ProductivityTag.Blacklisted, isBlacklisted: true };
+        }
+      }
+    }
+
+    // Pass 2: Department-specific non-blacklisted rules
+    if (departmentId) {
+      for (const rule of appRules) {
+        if (rule.departmentId === departmentId && !rule.isBlacklisted) {
+          if (haystacks.some((h) => h.includes(rule.pattern))) {
+            return { tag: rule.tag, isBlacklisted: false };
+          }
+        }
+      }
+    }
+
+    // Pass 3: Org-wide non-blacklisted rules
+    for (const rule of appRules) {
+      if (rule.departmentId === null && !rule.isBlacklisted) {
+        if (haystacks.some((h) => h.includes(rule.pattern))) {
+          return { tag: rule.tag, isBlacklisted: false };
+        }
+      }
+    }
+
+    return null;
   }
 
   /**
-   * Categorize a visited domain. Matches on suffix so a rule of "facebook.com" also covers
-   * "m.facebook.com", without "notfacebook.com" matching.
+   * Categorize a visited domain.
+   *
+   * Priority:
+   * 1. Department-specific Blacklist rule
+   * 2. Org-wide Blacklist rule
+   * 3. Department-specific rule (Productive / Unproductive / Neutral)
+   * 4. Org-wide rule (Productive / Unproductive / Neutral)
    */
-  async categorizeDomain(organizationId: string, domain?: string | null): Promise<CategoryMatch | null> {
+  async categorizeDomain(
+    organizationId: string,
+    domain?: string | null,
+    departmentId?: string | null,
+  ): Promise<CategoryMatch | null> {
     const rules = await this.rulesFor(organizationId);
     if (rules.length === 0 || !domain) return null;
 
     const host = domain.toLowerCase();
-    let firstMatch: CategoryMatch | null = null;
-    for (const rule of rules) {
-      if (rule.target !== CategoryTarget.Domain) continue;
-      if (host !== rule.pattern && !host.endsWith(`.${rule.pattern}`)) continue;
-      if (rule.isBlacklisted) return { tag: ProductivityTag.Blacklisted, isBlacklisted: true };
-      firstMatch ??= { tag: rule.tag, isBlacklisted: false };
+    const domainRules = rules.filter(
+      (r) =>
+        r.target === CategoryTarget.Domain &&
+        (r.departmentId === null || (departmentId && r.departmentId === departmentId)),
+    );
+
+    if (domainRules.length === 0) return null;
+
+    const matchesDomain = (pattern: string) => host === pattern || host.endsWith(`.${pattern}`);
+
+    // Pass 1: Check Blacklists (Department blacklist first, then Org blacklist)
+    if (departmentId) {
+      for (const rule of domainRules) {
+        if (rule.departmentId === departmentId && rule.isBlacklisted) {
+          if (matchesDomain(rule.pattern)) {
+            return { tag: ProductivityTag.Blacklisted, isBlacklisted: true };
+          }
+        }
+      }
     }
-    return firstMatch;
+    for (const rule of domainRules) {
+      if (rule.departmentId === null && rule.isBlacklisted) {
+        if (matchesDomain(rule.pattern)) {
+          return { tag: ProductivityTag.Blacklisted, isBlacklisted: true };
+        }
+      }
+    }
+
+    // Pass 2: Department-specific non-blacklisted rules
+    if (departmentId) {
+      for (const rule of domainRules) {
+        if (rule.departmentId === departmentId && !rule.isBlacklisted) {
+          if (matchesDomain(rule.pattern)) {
+            return { tag: rule.tag, isBlacklisted: false };
+          }
+        }
+      }
+    }
+
+    // Pass 3: Org-wide non-blacklisted rules
+    for (const rule of domainRules) {
+      if (rule.departmentId === null && !rule.isBlacklisted) {
+        if (matchesDomain(rule.pattern)) {
+          return { tag: rule.tag, isBlacklisted: false };
+        }
+      }
+    }
+
+    return null;
   }
 }
 

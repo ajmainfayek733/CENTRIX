@@ -354,49 +354,79 @@ export class ReportService {
       addApplication(totals, row.appName, row.productivityTag, row.durationSeconds);
     }
 
-    // Inherit browser domain productivity for browser applications
-    const domainGroups = await this.getBrowserDomainGroups(employeeId, deviceIds, start, end);
-    let totalDomainProductive = 0;
-    let totalDomainUnproductive = 0;
-    let totalDomainBlacklisted = 0;
-    let totalDomainNeutral = 0;
+    // Map browser domain productivity specifically to the browser application that ran it
+    const rawBrowserRows =
+      start <= end && deviceIds.length > 0
+        ? await prisma.browserActivity.findMany({
+            where: {
+              deviceId: { in: deviceIds },
+              startTime: { gte: start, lte: end },
+            },
+            select: {
+              activitySessionId: true,
+              browser: true,
+              productivityTag: true,
+              durationSeconds: true,
+              activitySession: {
+                select: { appName: true },
+              },
+            },
+          })
+        : [];
 
-    for (const domain of domainGroups) {
-      totalDomainProductive += domain.productiveSeconds;
-      totalDomainUnproductive += domain.unproductiveSeconds;
-      totalDomainBlacklisted += domain.blacklistedSeconds;
-      totalDomainNeutral += domain.neutralSeconds;
-    }
+    const matchBrowserApp = (appName: string | null | undefined, browserKind: string): boolean => {
+      if (!appName) return false;
+      const normApp = appName.toLowerCase();
+      const normKind = browserKind.toLowerCase();
+      if (normKind === "edge") return normApp.includes("edge") || normApp.includes("msedge");
+      return normApp.includes(normKind);
+    };
 
-    const browserApps: ApplicationTotals[] = [];
-    let totalBrowserDuration = 0;
+    for (const app of totals.values()) {
+      if (!isBrowserApplication(app.appName)) continue;
 
-    for (const row of totals.values()) {
-      if (isBrowserApplication(row.appName)) {
-        browserApps.push(row);
-        totalBrowserDuration += row.durationSeconds;
+      let appProd = 0;
+      let appUnprod = 0;
+      let appBlack = 0;
+      let appNeut = 0;
+
+      for (const bRow of rawBrowserRows) {
+        const sessionAppName = bRow.activitySession?.appName;
+        const isMatch =
+          (sessionAppName && sessionAppName.toLowerCase() === app.appName?.toLowerCase()) ||
+          matchBrowserApp(app.appName, bRow.browser);
+
+        if (isMatch) {
+          switch (bRow.productivityTag) {
+            case ProductivityTag.Productive:
+              appProd += bRow.durationSeconds;
+              break;
+            case ProductivityTag.Unproductive:
+              appUnprod += bRow.durationSeconds;
+              break;
+            case ProductivityTag.Blacklisted:
+              appBlack += bRow.durationSeconds;
+              break;
+            default:
+              appNeut += bRow.durationSeconds;
+          }
+        }
       }
-    }
 
-    if (browserApps.length > 0 && totalBrowserDuration > 0) {
-      for (const browserApp of browserApps) {
-        const ratio = browserApp.durationSeconds / totalBrowserDuration;
-        const appDomainProd = Math.round(totalDomainProductive * ratio);
-        const appDomainUnprod = Math.round(totalDomainUnproductive * ratio);
-        const appDomainBlack = Math.round(totalDomainBlacklisted * ratio);
-        const appDomainNeut = Math.round(totalDomainNeutral * ratio);
-        const appDomainSum = appDomainProd + appDomainUnprod + appDomainBlack + appDomainNeut;
-        const unassigned = Math.max(0, browserApp.durationSeconds - appDomainSum);
+      const domainSum = appProd + appUnprod + appBlack + appNeut;
+      const unassigned = Math.max(0, app.durationSeconds - domainSum);
 
-        const baseTag = dominantProductivityTag(browserApp);
-        browserApp.productiveSeconds = appDomainProd + (baseTag === "Productive" ? unassigned : 0);
-        browserApp.unproductiveSeconds =
-          appDomainUnprod + (baseTag === "Unproductive" ? unassigned : 0);
-        browserApp.blacklistedSeconds =
-          appDomainBlack + (baseTag === "Blacklisted" ? unassigned : 0);
-        browserApp.neutralSeconds =
-          appDomainNeut + (baseTag === "Neutral" || baseTag === "Productive" ? 0 : unassigned);
-      }
+      const baseTag = dominantProductivityTag(app);
+      app.productiveSeconds = appProd + (baseTag === "Productive" ? unassigned : 0);
+      app.unproductiveSeconds = appUnprod + (baseTag === "Unproductive" ? unassigned : 0);
+      app.blacklistedSeconds = appBlack + (baseTag === "Blacklisted" ? unassigned : 0);
+      app.neutralSeconds =
+        appNeut +
+        (baseTag === "Neutral" ||
+        !baseTag ||
+        (baseTag !== "Unproductive" && baseTag !== "Blacklisted" && baseTag !== "Productive")
+          ? unassigned
+          : 0);
     }
 
     return [...totals.values()]
@@ -612,20 +642,28 @@ export class ReportService {
       let blacklisted = row._sum.blacklistedSeconds ?? 0;
 
       if (domain) {
-        const domainUnproductive = domain.unproductive;
-        const domainBlacklisted = domain.blacklisted;
-        const shiftAmount = domainUnproductive + domainBlacklisted;
-
-        if (shiftAmount > 0) {
-          const shiftFromProductive = Math.min(productive, shiftAmount);
-          productive -= shiftFromProductive;
-          const remainingShift = shiftAmount - shiftFromProductive;
-          const shiftFromNeutral = Math.min(neutral, remainingShift);
-          neutral -= shiftFromNeutral;
-
-          unproductive += domainUnproductive;
-          blacklisted += domainBlacklisted;
+        // Shift blacklisted domain time (from neutral first, then productive)
+        const shiftBlacklisted = Math.min(neutral, domain.blacklisted);
+        neutral -= shiftBlacklisted;
+        blacklisted += domain.blacklisted;
+        const remBlacklisted = domain.blacklisted - shiftBlacklisted;
+        if (remBlacklisted > 0) {
+          productive = Math.max(0, productive - remBlacklisted);
         }
+
+        // Shift unproductive domain time (from neutral first, then productive)
+        const shiftUnproductive = Math.min(neutral, domain.unproductive);
+        neutral -= shiftUnproductive;
+        unproductive += domain.unproductive;
+        const remUnproductive = domain.unproductive - shiftUnproductive;
+        if (remUnproductive > 0) {
+          productive = Math.max(0, productive - remUnproductive);
+        }
+
+        // Shift productive domain time (credit productive browsing from neutral)
+        const shiftProductive = Math.min(neutral, domain.productive);
+        neutral -= shiftProductive;
+        productive += domain.productive;
       }
 
       totals.set(row.employeeId, {

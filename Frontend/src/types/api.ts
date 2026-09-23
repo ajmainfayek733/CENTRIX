@@ -276,10 +276,36 @@ export interface DeviceRow {
 
 export interface CategoryRow {
   id: string;
+  organizationId?: string;
+  departmentId?: string | null;
   pattern: string;
   target: CategoryTarget;
   tag: ProductivityTag;
   isBlacklisted: boolean;
+}
+
+export interface DepartmentSummary {
+  id: string;
+  organizationId: string;
+  name: string;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+  _count?: {
+    employees: number;
+    categories: number;
+  };
+  categories?: CategoryRow[];
+}
+
+export interface DepartmentDetail extends DepartmentSummary {
+  employees: Array<{
+    id: string;
+    name: string;
+    email: string;
+    status: string;
+  }>;
+  categories: CategoryRow[];
 }
 
 export interface Policy {

@@ -64,13 +64,43 @@ export async function updatePolicy(organizationId: string, values: PolicyFormVal
 
 export async function upsertCategory(
   organizationId: string,
-  rule: { pattern: string; target: CategoryTarget; tag: ProductivityTag; isBlacklisted: boolean },
+  rule: {
+    pattern: string;
+    target: CategoryTarget;
+    tag: ProductivityTag;
+    isBlacklisted: boolean;
+    departmentId?: string | null;
+  },
 ) {
-  await apiSend(`/v1/dashboard/organizations/${organizationId}/categories`, "PUT", rule);
+  if (rule.departmentId) {
+    await apiSend(
+      `/v1/dashboard/organizations/${organizationId}/departments/${rule.departmentId}/categories`,
+      "POST",
+      rule,
+    );
+  } else {
+    await apiSend(`/v1/dashboard/organizations/${organizationId}/categories`, "PUT", rule);
+  }
   revalidatePath("/settings");
+  revalidatePath("/departments");
 }
 
-export async function deleteCategory(organizationId: string, categoryId: string) {
-  await apiSend(`/v1/dashboard/organizations/${organizationId}/categories/${categoryId}`, "DELETE");
+export async function deleteCategory(
+  organizationId: string,
+  categoryId: string,
+  departmentId?: string | null,
+) {
+  if (departmentId) {
+    await apiSend(
+      `/v1/dashboard/organizations/${organizationId}/departments/${departmentId}/categories/${categoryId}`,
+      "DELETE",
+    );
+  } else {
+    await apiSend(
+      `/v1/dashboard/organizations/${organizationId}/categories/${categoryId}`,
+      "DELETE",
+    );
+  }
   revalidatePath("/settings");
+  revalidatePath("/departments");
 }

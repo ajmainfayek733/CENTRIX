@@ -1,5 +1,6 @@
 import { Policy } from "@prisma/client";
 import { prisma } from "../../config/db";
+import { categoryService } from "../report/categoryService";
 
 const DEFAULT_REPORT_SUMMARY_SCHEDULE_TIME = "23:00";
 const LOCAL_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -146,20 +147,28 @@ export function toAgentPolicy(
 /**
  * Returns the org's policy, creating the default row on first read. Every column has a
  * database-level default matching Features.md, so an empty `create` seeds a complete policy.
+ * Resolves effective categories for the device's department if departmentId is provided.
  */
-export async function getOrCreatePolicy(organizationId: string): Promise<AgentPolicyDto> {
+export async function getOrCreatePolicy(
+  organizationId: string,
+  departmentId?: string | null,
+): Promise<AgentPolicyDto> {
   const [policy, categories] = await Promise.all([
     prisma.policy.upsert({
       where: { organizationId },
       create: { organizationId },
       update: {},
     }),
-    prisma.category.findMany({
-      where: { organizationId },
-      select: { pattern: true, target: true, tag: true, isBlacklisted: true },
-      orderBy: { pattern: "asc" },
-    }),
+    categoryService.getEffectiveRules(organizationId, departmentId),
   ]);
 
-  return toAgentPolicy(policy, categories);
+  return toAgentPolicy(
+    policy,
+    categories.map((c) => ({
+      pattern: c.pattern,
+      target: c.target === "Application" ? "Application" : "Domain",
+      tag: c.tag,
+      isBlacklisted: c.isBlacklisted,
+    })),
+  );
 }

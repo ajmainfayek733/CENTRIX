@@ -3,7 +3,14 @@ import { categoryService } from "../report/categoryService";
 import { toAgentPolicy } from "../ingest/policyService";
 import { generateEnrollmentToken, hashEnrollmentToken } from "../../utils/token";
 import { broadcastPolicyUpdated } from "../../realtime";
-import { CreateOrganizationDto, UpdatePolicyDto, UpsertCategoryDto } from "./organization.dto";
+import {
+  AddDepartmentMembersDto,
+  CreateDepartmentDto,
+  CreateOrganizationDto,
+  UpdateDepartmentDto,
+  UpdatePolicyDto,
+  UpsertCategoryDto,
+} from "./organization.dto";
 
 const DEFAULT_WORKING_HOURS_START = "09:00";
 const DEFAULT_WORKING_HOURS_END = "17:00";
@@ -90,12 +97,17 @@ export class OrganizationService {
     await this.getOrganizationById(organizationId);
     const [policy, categories] = await Promise.all([
       prisma.policy.upsert({ where: { organizationId }, create: { organizationId }, update: {} }),
-      prisma.category.findMany({
-        where: { organizationId },
-        select: { pattern: true, target: true, tag: true, isBlacklisted: true },
-      }),
+      categoryService.getEffectiveRules(organizationId),
     ]);
-    return toAgentPolicy(policy, categories);
+    return toAgentPolicy(
+      policy,
+      categories.map((c) => ({
+        pattern: c.pattern,
+        target: c.target === "Application" ? "Application" : "Domain",
+        tag: c.tag,
+        isBlacklisted: c.isBlacklisted,
+      })),
+    );
   }
 
   /**
@@ -141,50 +153,247 @@ export class OrganizationService {
       update: { ...dto, version: { increment: 1 } },
     });
 
-    // Push the version bump to every connected agent instead of leaving them to discover it on
-    // the next heartbeat. Agents still poll - this only shortens the window, it does not replace
-    // it, because an agent that was offline for the broadcast must still converge on its own.
     broadcastPolicyUpdated(organizationId, updated.version);
 
-    const categories = await prisma.category.findMany({
-      where: { organizationId },
-      select: { pattern: true, target: true, tag: true, isBlacklisted: true },
-    });
+    const categories = await categoryService.getEffectiveRules(organizationId);
 
-    return toAgentPolicy(updated, categories);
+    return toAgentPolicy(
+      updated,
+      categories.map((c) => ({
+        pattern: c.pattern,
+        target: c.target === "Application" ? "Application" : "Domain",
+        tag: c.tag,
+        isBlacklisted: c.isBlacklisted,
+      })),
+    );
   }
 
   // -------------------------------------------------------------------------
-  // Productivity categories / blacklist
+  // Departments & Membership
   // -------------------------------------------------------------------------
 
-  async listCategories(organizationId: string) {
+  async listDepartments(organizationId: string) {
+    await this.getOrganizationById(organizationId);
+    return prisma.department.findMany({
+      where: { organizationId },
+      orderBy: { name: "asc" },
+      include: {
+        _count: {
+          select: { employees: true, categories: true },
+        },
+        categories: {
+          orderBy: [{ target: "asc" }, { pattern: "asc" }],
+        },
+      },
+    });
+  }
+
+  async getDepartmentById(organizationId: string, departmentId: string) {
+    const dept = await prisma.department.findUnique({
+      where: { id: departmentId },
+      include: {
+        employees: {
+          select: { id: true, name: true, email: true, status: true },
+          orderBy: { name: "asc" },
+        },
+        categories: {
+          orderBy: [{ target: "asc" }, { pattern: "asc" }],
+        },
+      },
+    });
+
+    if (!dept || dept.organizationId !== organizationId) {
+      throw { statusCode: 404, message: "Department not found" };
+    }
+
+    return dept;
+  }
+
+  async createDepartment(organizationId: string, dto: CreateDepartmentDto) {
+    await this.getOrganizationById(organizationId);
+    const name = dto.name.trim();
+
+    const existing = await prisma.department.findUnique({
+      where: { organizationId_name: { organizationId, name } },
+    });
+    if (existing) {
+      throw { statusCode: 409, message: `Department with name '${name}' already exists` };
+    }
+
+    return prisma.department.create({
+      data: {
+        organizationId,
+        name,
+        description: dto.description?.trim() || null,
+      },
+    });
+  }
+
+  async updateDepartment(organizationId: string, departmentId: string, dto: UpdateDepartmentDto) {
+    await this.getDepartmentById(organizationId, departmentId);
+
+    if (dto.name) {
+      const name = dto.name.trim();
+      const duplicate = await prisma.department.findFirst({
+        where: { organizationId, name, id: { not: departmentId } },
+      });
+      if (duplicate) {
+        throw { statusCode: 409, message: `Department with name '${name}' already exists` };
+      }
+    }
+
+    const updated = await prisma.department.update({
+      where: { id: departmentId },
+      data: {
+        name: dto.name ? dto.name.trim() : undefined,
+        description: dto.description !== undefined ? dto.description?.trim() || null : undefined,
+      },
+    });
+
+    // Also sync the string `department` column on employees in this department
+    if (dto.name) {
+      await prisma.employee.updateMany({
+        where: { departmentId },
+        data: { department: dto.name.trim() },
+      });
+    }
+
+    return updated;
+  }
+
+  async deleteDepartment(organizationId: string, departmentId: string) {
+    await this.getDepartmentById(organizationId, departmentId);
+
+    await prisma.$transaction(async (tx) => {
+      // Unassign members
+      await tx.employee.updateMany({
+        where: { departmentId },
+        data: { departmentId: null, department: null },
+      });
+      // Delete department (categories cascade)
+      await tx.department.delete({ where: { id: departmentId } });
+    });
+
+    categoryService.invalidate(organizationId);
+    await this.touchPolicyVersion(organizationId);
+
+    return { id: departmentId, deleted: true };
+  }
+
+  async addDepartmentMembers(
+    organizationId: string,
+    departmentId: string,
+    dto: AddDepartmentMembersDto,
+  ) {
+    const dept = await this.getDepartmentById(organizationId, departmentId);
+
+    // Verify all employees belong to this organization
+    const employees = await prisma.employee.findMany({
+      where: { id: { in: dto.employeeIds }, organizationId },
+      select: { id: true },
+    });
+
+    if (employees.length === 0) {
+      throw { statusCode: 400, message: "No matching employees found in this organization" };
+    }
+
+    const validIds = employees.map((e) => e.id);
+
+    await prisma.employee.updateMany({
+      where: { id: { in: validIds } },
+      data: { departmentId: dept.id, department: dept.name },
+    });
+
+    categoryService.invalidate(organizationId);
+    await this.touchPolicyVersion(organizationId);
+
+    return { departmentId, assignedCount: validIds.length };
+  }
+
+  async removeDepartmentMember(organizationId: string, departmentId: string, employeeId: string) {
+    await this.getDepartmentById(organizationId, departmentId);
+
+    const employee = await prisma.employee.findUnique({ where: { id: employeeId } });
+    if (
+      !employee ||
+      employee.organizationId !== organizationId ||
+      employee.departmentId !== departmentId
+    ) {
+      throw { statusCode: 404, message: "Employee not found in this department" };
+    }
+
+    await prisma.employee.update({
+      where: { id: employeeId },
+      data: { departmentId: null, department: null },
+    });
+
+    categoryService.invalidate(organizationId);
+    await this.touchPolicyVersion(organizationId);
+
+    return { employeeId, removed: true };
+  }
+
+  // -------------------------------------------------------------------------
+  // Productivity categories / blacklist (Org-wide & Department-scoped)
+  // -------------------------------------------------------------------------
+
+  async listCategories(organizationId: string, departmentId?: string) {
     await this.getOrganizationById(organizationId);
     return prisma.category.findMany({
-      where: { organizationId },
+      where: {
+        organizationId,
+        ...(departmentId !== undefined ? { departmentId: departmentId || null } : {}),
+      },
+      include: {
+        department: { select: { id: true, name: true } },
+      },
       orderBy: [{ target: "asc" }, { pattern: "asc" }],
     });
   }
 
-  /** Upsert on (org, target, pattern) so re-adding an existing rule edits it instead of 409ing. */
+  /** Upsert on (org, departmentId, target, pattern) so re-adding an existing rule edits it. */
   async upsertCategory(organizationId: string, dto: UpsertCategoryDto) {
     await this.getOrganizationById(organizationId);
     const pattern = dto.pattern.trim().toLowerCase();
+    const departmentId = dto.departmentId || null;
 
-    const row = await prisma.category.upsert({
-      where: { organizationId_target_pattern: { organizationId, target: dto.target, pattern } },
-      create: {
+    if (departmentId) {
+      const dept = await prisma.department.findUnique({ where: { id: departmentId } });
+      if (!dept || dept.organizationId !== organizationId) {
+        throw { statusCode: 404, message: "Department not found in this organization" };
+      }
+    }
+
+    // Find existing rule matching target + pattern for this department/org
+    const existing = await prisma.category.findFirst({
+      where: {
         organizationId,
-        pattern,
+        departmentId,
         target: dto.target,
-        tag: dto.tag,
-        isBlacklisted: dto.isBlacklisted,
+        pattern,
       },
-      update: { tag: dto.tag, isBlacklisted: dto.isBlacklisted },
     });
 
-    // Agents pull categories with the policy, and ingest re-categorizes against the cache -
-    // both must see the new rule immediately, so drop the cache and bump the policy version.
+    let row;
+    if (existing) {
+      row = await prisma.category.update({
+        where: { id: existing.id },
+        data: { tag: dto.tag, isBlacklisted: dto.isBlacklisted },
+      });
+    } else {
+      row = await prisma.category.create({
+        data: {
+          organizationId,
+          departmentId,
+          pattern,
+          target: dto.target,
+          tag: dto.tag,
+          isBlacklisted: dto.isBlacklisted,
+        },
+      });
+    }
+
+    // Drop cache and bump policy version so agents and ingest immediately see the update
     categoryService.invalidate(organizationId);
     await this.touchPolicyVersion(organizationId);
 

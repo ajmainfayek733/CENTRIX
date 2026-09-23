@@ -18,6 +18,7 @@ import type { LogPage } from "@/lib/use-log-feed";
 import { getSessionUser, canViewScreenshots } from "@/lib/session";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { ScreenshotGallery } from "@/components/ScreenshotGallery";
+import { ExportPdfButton } from "@/components/ExportPdfButton";
 import { TimelineTable } from "./TimelineTable";
 import { EmployeeUsbTable } from "./EmployeeUsbTable";
 import { WeeklyAttendance } from "./WeeklyAttendance";
@@ -107,7 +108,17 @@ export default async function EmployeeDetailPage({
             Back to employees
           </Link>
         }
-        action={<DateRangePicker startDate={range.startDate} endDate={range.endDate} />}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <DateRangePicker startDate={range.startDate} endDate={range.endDate} />
+            <ExportPdfButton
+              employeeId={employee.id}
+              employeeName={employee.name}
+              startDate={range.startDate}
+              endDate={range.endDate}
+            />
+          </div>
+        }
       />
 
       <div className="grid gap-3 sm:grid-cols-4">

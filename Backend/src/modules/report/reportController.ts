@@ -52,6 +52,35 @@ export class ReportController {
   }
 
   /**
+   * GET /v1/dashboard/reports/employees/:employeeId/pdf
+   *
+   * Streams a formatted PDF report for the employee over the given date range.
+   */
+  async getEmployeePdfReport(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate } = req.query;
+      const data = await reportService.getEmployeeDetail(
+        req.params.employeeId as string,
+        startDate as string,
+        endDate as string,
+      );
+
+      const sanitizedName = data.employee.name.replace(/[^a-z0-9_-]/gi, "_").toLowerCase();
+      const dateTag = (startDate as string) || new Date().toISOString().slice(0, 10);
+      const filename = `report_${sanitizedName}_${dateTag}.pdf`;
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+
+      const { generateEmployeeReportPdf } = await import("./pdfReportService");
+      const pdfStream = generateEmployeeReportPdf(data as any);
+      pdfStream.pipe(res);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * GET /v1/dashboard/reports/employees/:employeeId/activity
    *
    * The paging endpoint behind the timeline's scroll window. `cursor` is opaque to the client -

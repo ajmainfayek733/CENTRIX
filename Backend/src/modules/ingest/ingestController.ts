@@ -65,7 +65,9 @@ export class IngestController {
   /** GET /api/v1/policy */
   async getPolicy(req: DeviceAuthenticatedRequest, res: Response, next: NextFunction) {
     try {
-      return res.status(200).json(await ingestService.getPolicy(req.device!.organizationId));
+      return res
+        .status(200)
+        .json(await ingestService.getPolicy(req.device!.organizationId, req.device!.departmentId));
     } catch (error) {
       next(error);
     }

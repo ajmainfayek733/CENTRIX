@@ -144,6 +144,7 @@ model Organization {
   /// stored, so a database read cannot recover the token.
   enrollmentTokenHash String? @unique
 
+  departments  Department[]
   employees    Employee[]
   devices      Device[]
   policy       Policy?
@@ -156,6 +157,25 @@ model Organization {
   @@map("organizations")
 }
 
+model Department {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?
+
+  employees  Employee[]
+  categories Category[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("departments")
+}
+
 model Employee {
   id             String       @id @default(uuid())
   organizationId String
@@ -163,6 +183,8 @@ model Employee {
   name           String
   email          String       @unique
   department     String?
+  departmentId   String?
+  departmentRef  Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   status         String       @default("active")
   createdAt      DateTime     @default(now())
 
@@ -173,6 +195,7 @@ model Employee {
   activitySessionDailySummaries ActivitySessionDailySummary[]
 
   @@index([organizationId])
+  @@index([departmentId])
   @@map("employees")
 }
 
@@ -903,6 +926,9 @@ model Category {
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
+  departmentId   String?
+  department     Department?  @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
   /// App name or domain to match, case-insensitive.
   pattern       String
   target        CategoryTarget
@@ -912,8 +938,9 @@ model Category {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([organizationId, target, pattern])
+  @@unique([organizationId, departmentId, target, pattern])
   @@index([organizationId, target])
+  @@index([departmentId])
   @@map("categories")
 }
 

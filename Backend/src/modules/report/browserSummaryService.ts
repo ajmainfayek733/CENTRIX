@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { prisma } from "../../config/db";
 
 /** Rebuilds one completed work date from the immutable browser log. */
 export async function summarizeBrowserDay(
@@ -136,7 +137,70 @@ export async function summarizeActivitySessionDay(
   );
 }
 
-/** Runs only for organizations whose configured time matches the server's local clock. */
+/**
+ * Scans for past work dates (< CURRENT_DATE) that have activity records but lack summaries,
+ * and automatically rebuilds them. This guarantees fault tolerance if the server was offline
+ * or experiencing load shedding during scheduled summary times.
+ */
+export async function backfillMissingDailySummaries(
+  clientOrOrgId?: Prisma.TransactionClient | string,
+  organizationId?: string,
+): Promise<number> {
+  const isTx =
+    typeof clientOrOrgId === "object" && clientOrOrgId !== null && "$queryRaw" in clientOrOrgId;
+  const tx = isTx ? clientOrOrgId : (prisma as any);
+  const targetOrgId = isTx
+    ? organizationId
+    : typeof clientOrOrgId === "string"
+      ? clientOrOrgId
+      : undefined;
+
+  const missingDates = await tx.$queryRaw<{ workDateStr: string; organizationId: string }[]>`
+    WITH raw_dates AS (
+      SELECT DISTINCT
+        device."organizationId",
+        COALESCE(attendance."workDate", activity."startTime"::date)::text AS "workDateStr"
+      FROM activity_sessions activity
+      JOIN devices device ON device.id = activity."deviceId"
+      LEFT JOIN attendance_sessions attendance ON attendance."sessionId" = activity."sessionId"
+      WHERE COALESCE(attendance."workDate", activity."startTime"::date) < CURRENT_DATE
+        ${targetOrgId ? Prisma.sql`AND device."organizationId" = ${targetOrgId}` : Prisma.empty}
+
+      UNION
+
+      SELECT DISTINCT
+        device."organizationId",
+        COALESCE(attendance."workDate", browser."startTime"::date)::text AS "workDateStr"
+      FROM browser_activity browser
+      JOIN devices device ON device.id = browser."deviceId"
+      LEFT JOIN activity_sessions activity ON activity."activitySessionId" = browser."activitySessionId"
+      LEFT JOIN attendance_sessions attendance ON attendance."sessionId" = activity."sessionId"
+      WHERE COALESCE(attendance."workDate", browser."startTime"::date) < CURRENT_DATE
+        ${targetOrgId ? Prisma.sql`AND device."organizationId" = ${targetOrgId}` : Prisma.empty}
+    )
+    SELECT rd."workDateStr", rd."organizationId"
+    FROM raw_dates rd
+    LEFT JOIN activity_session_daily_summaries summ
+      ON summ."workDate" = rd."workDateStr"::date AND summ."organizationId" = rd."organizationId"
+    WHERE summ.id IS NULL
+    ORDER BY rd."workDateStr" ASC
+    LIMIT 30;
+  `;
+
+  let totalRebuilt = 0;
+  for (const entry of missingDates) {
+    totalRebuilt += await summarizeBrowserDay(tx, entry.workDateStr, entry.organizationId);
+    totalRebuilt += await summarizeActivityMetricDay(tx, entry.workDateStr, entry.organizationId);
+    totalRebuilt += await summarizeActivitySessionDay(tx, entry.workDateStr, entry.organizationId);
+  }
+
+  return totalRebuilt;
+}
+
+/**
+ * Runs daily summary generation. Handles both the configured local clock match
+ * and automatic catch-up of any previously unsummarized historical dates.
+ */
 export async function runBrowserSummarySchedule(
   tx: Prisma.TransactionClient,
   now = new Date(),
@@ -146,16 +210,22 @@ export async function runBrowserSummarySchedule(
     where: { reportSummaryScheduleTimeLocal: currentTime },
     select: { organizationId: true },
   });
-  if (policies.length === 0) return null;
 
   const previousWorkDate = new Date(now);
   previousWorkDate.setDate(previousWorkDate.getDate() - 1);
   const workDate = previousWorkDate.toISOString().slice(0, "YYYY-MM-DD".length);
   let rows = 0;
+
   for (const policy of policies) {
     rows += await summarizeBrowserDay(tx, workDate, policy.organizationId);
     rows += await summarizeActivityMetricDay(tx, workDate, policy.organizationId);
     rows += await summarizeActivitySessionDay(tx, workDate, policy.organizationId);
   }
-  return `summarized ${rows} daily summary row(s) for ${workDate}`;
+
+  // Also backfill any unsummarized historical days (e.g. from server downtime / load shedding)
+  const backfilled = await backfillMissingDailySummaries(tx);
+  rows += backfilled;
+
+  if (rows === 0) return null;
+  return `summarized ${rows} daily summary row(s) (including ${backfilled} backfilled)`;
 }

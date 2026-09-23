@@ -23,8 +23,14 @@ import { currentOrganizationId } from "../src/config/tenant";
 import { generateDeviceApiKey, hashDeviceApiKey } from "../src/utils/token";
 import { organizationService } from "../src/modules/organization/organizationService";
 import { employeeService } from "../src/modules/employee/employeeService";
-import { resolveRange } from "../src/modules/report/reportService";
+import { resolveRange, reportService } from "../src/modules/report/reportService";
 import { formatDuration } from "../src/lib/format";
+import {
+  summarizeBrowserDay,
+  backfillMissingDailySummaries,
+} from "../src/modules/report/browserSummaryService";
+import { categoryService } from "../src/modules/report/categoryService";
+import { pdfReportService } from "../src/modules/report/pdfReportService";
 
 const BASE = `http://127.0.0.1:${env.PORT}`;
 
@@ -629,6 +635,10 @@ async function main() {
       storedBrowser,
     );
 
+    await prisma.$transaction((tx) =>
+      summarizeBrowserDay(tx, now.toISOString().slice(0, 10), org.id),
+    );
+
     const browserSummary = await prisma.browserDailySummary.findFirst({
       where: { organizationId: org.id, domain: "github.com" },
     });
@@ -1159,6 +1169,117 @@ async function main() {
       blacklisted?.productivityTag,
     );
 
+    // -- Department-based productivity categorization -----------------------
+    console.log("\nDepartment-based productivity categorization");
+
+    const engineeringDept = await organizationService.createDepartment(org.id, {
+      name: "Engineering",
+      description: "Software engineering team",
+    });
+    check(
+      "creates a department successfully",
+      engineeringDept.name === "Engineering",
+      engineeringDept,
+    );
+
+    const salesDept = await organizationService.createDepartment(org.id, {
+      name: "Sales",
+      description: "Sales and BD team",
+    });
+    check("creates second department successfully", salesDept.name === "Sales", salesDept);
+
+    // Set org-wide default: canva.com is Unproductive
+    await organizationService.upsertCategory(org.id, {
+      pattern: "canva.com",
+      target: "Domain",
+      tag: "Unproductive",
+      isBlacklisted: false,
+    });
+
+    // Set department override: canva.com is Productive for Engineering
+    await organizationService.upsertCategory(org.id, {
+      pattern: "canva.com",
+      target: "Domain",
+      tag: "Productive",
+      isBlacklisted: false,
+      departmentId: engineeringDept.id,
+    });
+
+    // Set department blacklist: reddit.com is Blacklisted for Sales only
+    await organizationService.upsertCategory(org.id, {
+      pattern: "reddit.com",
+      target: "Domain",
+      tag: "Unproductive",
+      isBlacklisted: true,
+      departmentId: salesDept.id,
+    });
+
+    const orgDefaultCanva = await categoryService.categorizeDomain(org.id, "canva.com", null);
+    check(
+      "org-wide fallback applies when no department specified (canva -> Unproductive)",
+      orgDefaultCanva?.tag === "Unproductive" && !orgDefaultCanva.isBlacklisted,
+      orgDefaultCanva,
+    );
+
+    const deptCanva = await categoryService.categorizeDomain(
+      org.id,
+      "canva.com",
+      engineeringDept.id,
+    );
+    check(
+      "department-specific rule overrides org-wide default (Engineering canva -> Productive)",
+      deptCanva?.tag === "Productive",
+      deptCanva,
+    );
+
+    const salesReddit = await categoryService.categorizeDomain(org.id, "reddit.com", salesDept.id);
+    check(
+      "department-specific blacklist rule applies to that department (Sales reddit -> Blacklisted)",
+      salesReddit?.tag === "Blacklisted" && salesReddit.isBlacklisted,
+      salesReddit,
+    );
+
+    const engReddit = await categoryService.categorizeDomain(
+      org.id,
+      "reddit.com",
+      engineeringDept.id,
+    );
+    check(
+      "other departments do not inherit sales department blacklist",
+      engReddit === null || engReddit.tag !== "Blacklisted",
+      engReddit,
+    );
+
+    // Verify department category POST route exists and is handled (responds with 401 unauthenticated, never 404 Cannot POST)
+    const unauthDeptCategory = await fetch(
+      `${BASE}/v1/dashboard/organizations/${org.id}/departments/${engineeringDept.id}/categories`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          pattern: "facebook.com",
+          target: "Domain",
+          tag: "Productive",
+          isBlacklisted: false,
+        }),
+      },
+    );
+    const unauthBody = (await unauthDeptCategory.json()) as any;
+    check(
+      "department category POST route exists and is protected by auth (401 JSON, not 404 HTML)",
+      unauthDeptCategory.status === 401 && typeof unauthBody?.error === "string",
+      unauthBody,
+    );
+
+    // Verify unmatched route receives JSON 404 rather than Express default HTML
+    const notFoundRes = await fetch(`${BASE}/v1/dashboard/nonexistent-endpoint-test`);
+    const notFoundBody = (await notFoundRes.json()) as any;
+    check(
+      "unmatched dashboard endpoint returns JSON 404 instead of HTML",
+      notFoundRes.status === 404 && typeof notFoundBody?.error === "string" && notFoundBody.error.includes("Endpoint not found"),
+      notFoundBody,
+    );
+
     // -- Fleet onboarding ----------------------------------------------------
     // A single org holds 30-100+ people, so both of these are the difference between a
     // ten-minute rollout and an afternoon of one-at-a-time API calls.
@@ -1214,6 +1335,193 @@ async function main() {
       "device can be assigned off the Unassigned placeholder",
       assignedDevice?.employeeId === targetEmployee!.id,
       { employeeId: assignedDevice?.employeeId },
+    );
+
+    // Assign targetEmployee to engineeringDept and test policy endpoint resolution
+    await organizationService.addDepartmentMembers(org.id, engineeringDept.id, {
+      employeeIds: [targetEmployee!.id],
+    });
+    const assignedEmp = await prisma.employee.findUnique({ where: { id: targetEmployee!.id } });
+    check(
+      "employee is assigned to department",
+      assignedEmp?.departmentId === engineeringDept.id,
+      assignedEmp?.departmentId,
+    );
+
+    const deptPolicyRes = await fetch(`${BASE}/api/v1/policy`, { headers: auth });
+    const deptPolicy = (await deptPolicyRes.json()) as any;
+    const canvaPolicyRule = deptPolicy.categories?.find((c: any) => c.pattern === "canva.com");
+    check(
+      "device in engineering department receives department-specific rule (canva.com -> Productive)",
+      canvaPolicyRule?.tag === "Productive" && canvaPolicyRule?.isBlacklisted === false,
+      canvaPolicyRule,
+    );
+    const redditPolicyRule = deptPolicy.categories?.find((c: any) => c.pattern === "reddit.com");
+    check(
+      "device in engineering does not receive sales department blacklist rule",
+      !redditPolicyRule || !redditPolicyRule.isBlacklisted,
+      redditPolicyRule,
+    );
+
+    // -- Brave Browser Isolation & Aggregation Accuracy --------------------
+    console.log("\nBrave Browser Isolation & Aggregation");
+
+    const braveSessionId = randomUUID();
+    const braveAppSessionId = randomUUID();
+    const chromeAppSessionId = randomUUID();
+    const testWorkDate = now.toISOString().slice(0, 10);
+
+    // 1. Attendance session for targetEmployee
+    await push("attendance", [
+      {
+        clientEventId: randomUUID(),
+        sessionId: braveSessionId,
+        userSid: "S-1-5-21-ada",
+        loginTime: earlier.toISOString(),
+        logoutTime: now.toISOString(),
+        endReason: "Logout",
+        workDate: testWorkDate,
+        totalActiveSeconds: 240,
+        totalIdleSeconds: 0,
+      },
+    ]);
+
+    // 2. Brave activity session (120s)
+    await push("activity-session", [
+      {
+        clientEventId: randomUUID(),
+        activitySessionId: braveAppSessionId,
+        sessionId: braveSessionId,
+        appName: "Brave Browser",
+        processName: "brave",
+        executablePath: "C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
+        type: "Application",
+        windowTitle: "GitHub: Let's build from here - Brave",
+        startTime: earlier.toISOString(),
+        endTime: now.toISOString(),
+        durationSeconds: 120,
+        reason: "AppSwitch",
+        productivityTag: "Productive",
+      },
+    ]);
+
+    // 3. Browser activity visited inside Brave: only productive domain (github.com)
+    await push("browser-activity", [
+      {
+        clientEventId: randomUUID(),
+        browserActivityId: randomUUID(),
+        activitySessionId: braveAppSessionId,
+        browser: "Brave",
+        browserVersion: "1.70.0",
+        domain: "github.com",
+        rawUrl: "https://github.com/microsoft/vscode",
+        pageTitle: "GitHub - microsoft/vscode",
+        protocol: "Https",
+        startTime: earlier.toISOString(),
+        endTime: now.toISOString(),
+        durationSeconds: 120,
+        productivityTag: "Productive",
+      },
+    ]);
+
+    // 4. Chrome activity session (120s)
+    await push("activity-session", [
+      {
+        clientEventId: randomUUID(),
+        activitySessionId: chromeAppSessionId,
+        sessionId: braveSessionId,
+        appName: "Google Chrome",
+        processName: "chrome",
+        executablePath: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        type: "Application",
+        windowTitle: "Facebook - Chrome",
+        startTime: earlier.toISOString(),
+        endTime: now.toISOString(),
+        durationSeconds: 120,
+        reason: "AppSwitch",
+        productivityTag: "Productive",
+      },
+    ]);
+
+    // 5. Browser activity visited inside Chrome: blacklisted domain (facebook.com)
+    await push("browser-activity", [
+      {
+        clientEventId: randomUUID(),
+        browserActivityId: randomUUID(),
+        activitySessionId: chromeAppSessionId,
+        browser: "Chrome",
+        browserVersion: "130.0",
+        domain: "facebook.com",
+        rawUrl: "https://facebook.com/feed",
+        pageTitle: "Facebook",
+        protocol: "Https",
+        startTime: earlier.toISOString(),
+        endTime: now.toISOString(),
+        durationSeconds: 120,
+        productivityTag: "Productive",
+      },
+    ]);
+
+    // Query employee detail to verify application and browser aggregation
+    const employeeReport = await reportService.getEmployeeDetail(
+      targetEmployee!.id,
+      testWorkDate,
+      testWorkDate,
+    );
+
+    const braveAppGroup = employeeReport.topApps.find((a: any) =>
+      a.appName?.toLowerCase().includes("brave"),
+    );
+    const chromeAppGroup = employeeReport.topApps.find((a: any) =>
+      a.appName?.toLowerCase().includes("chrome"),
+    );
+
+    check("Brave application group exists in employee report", !!braveAppGroup, braveAppGroup);
+    check(
+      "Brave has strictly ZERO unproductive seconds when only visiting clean/productive sites",
+      braveAppGroup?.unproductiveSeconds === 0,
+      { unproductiveSeconds: braveAppGroup?.unproductiveSeconds },
+    );
+    check(
+      "Brave has strictly ZERO blacklisted seconds (not contaminated by Chrome's facebook visit)",
+      braveAppGroup?.blacklistedSeconds === 0,
+      { blacklistedSeconds: braveAppGroup?.blacklistedSeconds },
+    );
+    check(
+      "Brave maintains its productive duration (120s)",
+      braveAppGroup?.productiveSeconds === 120,
+      { productiveSeconds: braveAppGroup?.productiveSeconds },
+    );
+
+    check(
+      "Chrome application group reflects both blacklisted visits (180s total)",
+      chromeAppGroup?.blacklistedSeconds === 180,
+      { blacklistedSeconds: chromeAppGroup?.blacklistedSeconds },
+    );
+
+    // -- Fault-Tolerant Daily Summaries Backfilling ------------------------
+    console.log("\nFault-Tolerant Daily Summaries Backfill");
+
+    const backfilledCount = await backfillMissingDailySummaries(org.id);
+    check(
+      "backfillMissingDailySummaries runs cleanly without error",
+      typeof backfilledCount === "number",
+      { backfilledCount },
+    );
+
+    // -- Employee PDF Report Generation -------------------------------------
+    console.log("\nEmployee PDF Report Generation");
+
+    const pdfBuffer = await pdfReportService.generateEmployeeReportPdfBuffer(employeeReport as any);
+    check(
+      "generates a valid binary PDF buffer",
+      Buffer.isBuffer(pdfBuffer) && pdfBuffer.length > 1000,
+      { isBuffer: Buffer.isBuffer(pdfBuffer), length: pdfBuffer?.length },
+    );
+    check(
+      "PDF buffer starts with standard PDF file header (%PDF)",
+      pdfBuffer.subarray(0, 4).toString() === "%PDF",
+      pdfBuffer.subarray(0, 8).toString(),
     );
 
     // -- Rate limiting -------------------------------------------------------
