@@ -474,7 +474,7 @@ export class ReportService {
       .slice(0, TOP_LIST_SIZE);
   }
 
-  /** Backs the authenticated screenshot viewer route. */
+  /** Resolves the authenticated screenshot viewer route to its stored object key/path. */
   async getScreenshotPath(deviceId: string, clientEventId: string) {
     const screenshot = await prisma.screenshot.findUnique({ where: { clientEventId } });
     if (!screenshot || screenshot.deviceId !== deviceId) {

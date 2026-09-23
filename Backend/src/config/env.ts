@@ -18,10 +18,17 @@ const envSchema = z.object({
   // Pepper for hashing Agent device API keys (HMAC-SHA256). Required in production - a default
   // is provided only so local dev works out of the box; never rely on it beyond that.
   DEVICE_TOKEN_PEPPER: z.string().min(16).default("dev-only-device-token-pepper-change-me"),
-  // Local filesystem root for uploaded screenshots (spec section 6). Swap for blob storage (S3/Azure
-  // Blob) behind the same ScreenshotStorage interface if volume grows beyond the ~30-device
-  // deployment this was built for (spec section 7.1).
+  // Screenshot bytes use local disk by default for development. Production should use S3 so
+  // container replacement cannot remove historical screenshots.
+  SCREENSHOT_STORAGE_PROVIDER: z.enum(["local", "s3"]).default("local"),
   SCREENSHOT_STORAGE_DIR: z.string().default("./storage/screenshots"),
+  SCREENSHOT_S3_BUCKET: z.string().min(1).optional(),
+  SCREENSHOT_S3_REGION: z.string().min(1).default("us-east-1"),
+  SCREENSHOT_S3_ENDPOINT: z.string().url().optional(),
+  SCREENSHOT_S3_FORCE_PATH_STYLE: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
   // Base URL used to build the `remoteUri` returned from POST /api/v1/screenshots. The Agent
   // only logs this value locally - it is never read back - so it does not need to be publicly
   // resolvable, just stable.
@@ -155,5 +162,11 @@ if (
 ) {
   throw new Error(
     "DEVICE_TOKEN_PEPPER must be set to a unique secret in production (see .env.example)",
+  );
+}
+
+if (env.SCREENSHOT_STORAGE_PROVIDER === "s3" && !env.SCREENSHOT_S3_BUCKET) {
+  throw new Error(
+    "SCREENSHOT_S3_BUCKET must be set when SCREENSHOT_STORAGE_PROVIDER=s3 (see .env.example)",
   );
 }

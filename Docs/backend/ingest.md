@@ -225,11 +225,14 @@ offline stretch can carry a week. The unit of accumulation is therefore the **da
 ## 7. Screenshots
 
 `POST /api/v1/screenshots` - multipart, field name `file`, idempotent on `clientEventId`
-(overwrite, not append). The image goes to `SCREENSHOT_STORAGE_DIR`; the row records the path.
+(overwrite, not append). Set `SCREENSHOT_STORAGE_PROVIDER=s3` in production. The backend uploads
+to `SCREENSHOT_S3_BUCKET` using the AWS SDK default credential chain (an IAM task/instance role
+is preferred) and stores the object key in the row. `SCREENSHOT_STORAGE_PROVIDER=local` keeps
+the filesystem path behavior for development and smoke tests.
 
-`screenshotStorage.ts` is deliberately a two-function surface so an S3/Azure Blob backend can be
-swapped in behind it. **The local filesystem is what blocks horizontal scaling** - with more than
-one replica each holds a different subset and the dashboard 404s whichever it asks.
+`screenshotStorage.ts` owns both persistence and reads. S3 keys are grouped by device and event
+(`{deviceId}/{clientEventId}.jpg`), and the report route streams the object
+through the API so bucket URLs and credentials are never exposed to dashboard clients.
 
 ## 8. Policy and consent
 

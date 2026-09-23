@@ -1,6 +1,7 @@
-import { Request, Response, NextFunction } from 'express';
-import path from 'path';
-import { reportService } from './reportService';
+import { Request, Response, NextFunction } from "express";
+import path from "path";
+import { reportService } from "./reportService";
+import { getScreenshot } from "../ingest/screenshotStorage";
 
 /**
  * A `limit` query parameter, or undefined to let policy decide.
@@ -10,7 +11,7 @@ import { reportService } from './reportService';
  * only shows up as "the table is blank sometimes".
  */
 function parseLimit(raw: unknown): number | undefined {
-  if (typeof raw !== 'string' || raw.length === 0) return undefined;
+  if (typeof raw !== "string" || raw.length === 0) return undefined;
   const parsed = Number(raw);
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : undefined;
 }
@@ -42,7 +43,7 @@ export class ReportController {
       const data = await reportService.getEmployeeDetail(
         req.params.employeeId as string,
         startDate as string,
-        endDate as string
+        endDate as string,
       );
       return res.status(200).json({ data });
     } catch (error) {
@@ -75,7 +76,7 @@ export class ReportController {
       const data = await reportService.getAlerts({
         cursor: req.query.cursor as string | undefined,
         limit: parseLimit(req.query.limit),
-        includeResolved: req.query.includeResolved === 'true',
+        includeResolved: req.query.includeResolved === "true",
       });
       return res.status(200).json({ data });
     } catch (error) {
@@ -143,9 +144,15 @@ export class ReportController {
   async getScreenshotFile(req: Request, res: Response, next: NextFunction) {
     try {
       const deviceId = req.params.deviceId as string;
-      const clientEventId = path.basename(req.params.file as string, '.jpg');
+      const clientEventId = path.basename(req.params.file as string, ".jpg");
       const storagePath = await reportService.getScreenshotPath(deviceId, clientEventId);
-      return res.sendFile(path.resolve(storagePath));
+      const screenshot = await getScreenshot(deviceId, storagePath);
+      res.type(screenshot.contentType);
+      if (screenshot.contentLength !== undefined)
+        res.setHeader("Content-Length", screenshot.contentLength);
+      screenshot.body.once("error", next);
+      screenshot.body.pipe(res);
+      return;
     } catch (error) {
       next(error);
     }
