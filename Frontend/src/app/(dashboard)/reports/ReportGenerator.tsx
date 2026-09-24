@@ -145,7 +145,9 @@ export function ReportGenerator({ employees, departments }: ReportGeneratorProps
       link.href = downloadUrl;
 
       const currentDept = departments.find((d) => d.id === deptId);
-      const safeDeptName = (currentDept?.name || deptId).replace(/[^a-z0-9_-]/gi, "_").toLowerCase();
+      const safeDeptName = (currentDept?.name || deptId)
+        .replace(/[^a-z0-9_-]/gi, "_")
+        .toLowerCase();
       link.download = `department_performance_${safeDeptName}_${startDate || "overview"}.pdf`;
 
       document.body.appendChild(link);
@@ -188,7 +190,9 @@ export function ReportGenerator({ employees, departments }: ReportGeneratorProps
       link.href = downloadUrl;
 
       const currentDept = departments.find((d) => d.id === deptId);
-      const safeDeptName = (currentDept?.name || deptId).replace(/[^a-z0-9_-]/gi, "_").toLowerCase();
+      const safeDeptName = (currentDept?.name || deptId)
+        .replace(/[^a-z0-9_-]/gi, "_")
+        .toLowerCase();
       link.download = `department_bundle_${safeDeptName}_${startDate || "all"}.zip`;
 
       document.body.appendChild(link);

@@ -1,16 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import {
-  Plus,
-  Trash2,
-  UserPlus,
-  UserMinus,
-  Layers,
-  X,
-  Loader2,
-  Info,
-} from "lucide-react";
+import { Plus, Trash2, UserPlus, UserMinus, Layers, X, Loader2, Info } from "lucide-react";
 import {
   Card,
   Button,
@@ -200,7 +191,9 @@ export function DepartmentManager({
   function handleAddRule(deptId: string) {
     const trimmedPattern = rulePattern.trim().toLowerCase();
     if (!trimmedPattern) {
-      toast.warning("Please enter a domain (e.g. facebook.com) or application name before adding a rule.");
+      toast.warning(
+        "Please enter a domain (e.g. facebook.com) or application name before adding a rule.",
+      );
       return;
     }
 
@@ -718,7 +711,8 @@ export function DepartmentManager({
               Are you sure you want to delete the department <strong>{deptToDelete?.name}</strong>?
             </p>
             <p className="text-xs text-text-tertiary mt-2">
-              All assigned team members will be safely unassigned, and department-specific productivity rules will be removed.
+              All assigned team members will be safely unassigned, and department-specific
+              productivity rules will be removed.
             </p>
           </div>
         }
