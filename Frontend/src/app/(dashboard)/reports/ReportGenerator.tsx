@@ -13,7 +13,7 @@ import {
   FileText,
   Archive,
 } from "lucide-react";
-import { Button, Card, Badge } from "@/components/ui";
+import { Button, Card, Badge, useToast } from "@/components/ui";
 import type { RosterEmployee, DepartmentSummary } from "@/types/api";
 
 const SAVE_PRIMARY_CLASS =
@@ -35,6 +35,8 @@ function getInitialDates() {
 }
 
 export function ReportGenerator({ employees, departments }: ReportGeneratorProps) {
+  const toast = useToast();
+
   // Mode selection
   const [reportScope, setReportScope] = useState<ReportScope>("employee");
 
@@ -107,9 +109,13 @@ export function ReportGenerator({ employees, departments }: ReportGeneratorProps
       link.click();
       link.remove();
       window.URL.revokeObjectURL(downloadUrl);
+      toast.success(`PDF report for ${currentEmp?.name || "employee"} downloaded successfully.`);
     } catch (err) {
       console.error("PDF download error:", err);
-      alert("Could not generate the employee PDF report. Please verify parameters and try again.");
+      toast.error(
+        "Could not generate the employee PDF report. Please verify parameters and try again.",
+        "Download Error",
+      );
     } finally {
       setGeneratingPdf(false);
     }
@@ -146,9 +152,13 @@ export function ReportGenerator({ employees, departments }: ReportGeneratorProps
       link.click();
       link.remove();
       window.URL.revokeObjectURL(downloadUrl);
+      toast.success(`Performance PDF for ${currentDept?.name || "department"} downloaded.`);
     } catch (err) {
       console.error("Department PDF download error:", err);
-      alert("Could not generate the department PDF report. Please verify parameters and try again.");
+      toast.error(
+        "Could not generate the department PDF report. Please verify parameters and try again.",
+        "Download Error",
+      );
     } finally {
       setGeneratingDeptPdf(false);
     }
@@ -185,9 +195,13 @@ export function ReportGenerator({ employees, departments }: ReportGeneratorProps
       link.click();
       link.remove();
       window.URL.revokeObjectURL(downloadUrl);
+      toast.success(`Batch ZIP bundle for ${currentDept?.name || "department"} downloaded.`);
     } catch (err) {
       console.error("Department ZIP download error:", err);
-      alert("Could not generate the department ZIP bundle. Please verify parameters and try again.");
+      toast.error(
+        "Could not generate the department ZIP bundle. Please verify parameters and try again.",
+        "Download Error",
+      );
     } finally {
       setGeneratingZip(false);
     }
@@ -259,9 +273,10 @@ export function ReportGenerator({ employees, departments }: ReportGeneratorProps
       link.click();
       link.remove();
       window.URL.revokeObjectURL(downloadUrl);
+      toast.success("Team roster exported successfully.");
     } catch (err) {
       console.error("CSV export error:", err);
-      alert("Could not export team roster CSV.");
+      toast.error("Could not export team roster CSV.", "Export Failed");
     } finally {
       setExportingRoster(false);
     }
@@ -303,9 +318,10 @@ export function ReportGenerator({ employees, departments }: ReportGeneratorProps
       link.click();
       link.remove();
       window.URL.revokeObjectURL(downloadUrl);
+      toast.success("Department summary exported successfully.");
     } catch (err) {
       console.error("Department export error:", err);
-      alert("Could not export department summary CSV.");
+      toast.error("Could not export department summary CSV.", "Export Failed");
     } finally {
       setExportingDept(false);
     }

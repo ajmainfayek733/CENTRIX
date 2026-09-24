@@ -24,6 +24,8 @@ import { RefreshButton } from "@/components/RefreshButton";
  *  Is it possible to apply this method to send message to a specific employee(while monitoring after founding something suspicious we want to give the employee a warning message and the employee only can read
   the message, he can't send any reply and it also shows when the message was sent and after 24 hr automatically will vanished after read but admin can see the message whenever want)
  */
+import { ToastProvider } from "@/components/ui";
+
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   let user: SessionUser | null;
 
@@ -32,26 +34,24 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   } catch (error) {
     if (!(error instanceof ApiUnavailableError)) throw error;
 
-    // The service is down, which says nothing about whether this user is signed in. Redirecting
-    // to /login here - as this did before - signs out every open dashboard on an API restart and
-    // sends people to a page that cannot authenticate them either. Instead the shell renders and
-    // the outage is stated plainly, so the session survives and returns when the service does.
     console.error("Dashboard layout: monitoring service unreachable:", error);
 
     return (
-      <Shell>
-        <ServiceUnavailable detail="Your session is unaffected. This screen recovers on its own once the service responds." />
-      </Shell>
+      <ToastProvider>
+        <Shell>
+          <ServiceUnavailable detail="Your session is unaffected. This screen recovers on its own once the service responds." />
+        </Shell>
+      </ToastProvider>
     );
   }
 
-  // proxy.ts only checks that a cookie exists. This is where an expired or revoked
-  // session is actually caught.
   if (!user) redirect("/login");
 
   return (
     <RealtimeProvider>
-      <Shell user={user}>{children}</Shell>
+      <ToastProvider>
+        <Shell user={user}>{children}</Shell>
+      </ToastProvider>
     </RealtimeProvider>
   );
 }

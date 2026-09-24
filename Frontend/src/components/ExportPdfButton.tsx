@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Download, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui";
+import { Button, useToast } from "@/components/ui";
 
 interface ExportPdfButtonProps {
   employeeId: string;
@@ -25,6 +25,7 @@ export function ExportPdfButton({
   className = "",
   label = "Export PDF",
 }: ExportPdfButtonProps) {
+  const toast = useToast();
   const [downloading, setDownloading] = useState(false);
 
   async function handleDownload() {
@@ -56,9 +57,10 @@ export function ExportPdfButton({
       link.click();
       link.remove();
       window.URL.revokeObjectURL(downloadUrl);
+      toast.success(`PDF report downloaded for ${employeeName || "employee"}.`);
     } catch (err) {
       console.error("PDF download error:", err);
-      alert("Could not download the PDF report. Please try again.");
+      toast.error("Could not download the PDF report. Please try again.", "Download Error");
     } finally {
       setDownloading(false);
     }

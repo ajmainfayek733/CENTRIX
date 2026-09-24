@@ -10,7 +10,6 @@ import {
   X,
   Loader2,
   Info,
-  AlertCircle,
 } from "lucide-react";
 import {
   Card,
@@ -22,6 +21,8 @@ import {
   Td,
   EmptyState,
   TagBadge,
+  ConfirmModal,
+  useToast,
 } from "@/components/ui";
 import type {
   DepartmentSummary,
@@ -56,12 +57,16 @@ export function DepartmentManager({
   allEmployees,
   userRole,
 }: DepartmentManagerProps) {
+  const toast = useToast();
   const [activeDeptId, setActiveDeptId] = useState<string | null>(departments[0]?.id || null);
 
   // New Department Form
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newDeptName, setNewDeptName] = useState("");
   const [newDeptDescription, setNewDeptDescription] = useState("");
+
+  // Delete Department Confirmation Modal state
+  const [deptToDelete, setDeptToDelete] = useState<{ id: string; name: string } | null>(null);
 
   // New Rule Form for Active Department
   const [rulePattern, setRulePattern] = useState("");
@@ -73,10 +78,6 @@ export function DepartmentManager({
 
   // Transition & status
   const [pending, startTransition] = useTransition();
-  const [statusMessage, setStatusMessage] = useState<{
-    type: "success" | "error";
-    text: string;
-  } | null>(null);
 
   const isAdmin = userRole === "super_admin";
 
@@ -85,14 +86,10 @@ export function DepartmentManager({
     e.preventDefault();
     const trimmedName = newDeptName.trim();
     if (!trimmedName) {
-      setStatusMessage({
-        type: "error",
-        text: "Please enter a department name (e.g., Marketing, Engineering).",
-      });
+      toast.warning("Please enter a department name (e.g., Marketing, Engineering).");
       return;
     }
 
-    setStatusMessage(null);
     startTransition(async () => {
       try {
         await createDepartment(organizationId, {
@@ -102,10 +99,7 @@ export function DepartmentManager({
         setNewDeptName("");
         setNewDeptDescription("");
         setShowCreateForm(false);
-        setStatusMessage({
-          type: "success",
-          text: `Department "${trimmedName}" created successfully.`,
-        });
+        toast.success(`Department "${trimmedName}" created successfully.`);
       } catch (err: unknown) {
         const raw = err instanceof Error ? err.message : "";
         let friendly = "Could not create the department. Please verify the name and try again.";
@@ -119,30 +113,24 @@ export function DepartmentManager({
         ) {
           friendly = raw;
         }
-        setStatusMessage({
-          type: "error",
-          text: friendly,
-        });
+        toast.error(friendly, "Creation Failed");
       }
     });
   }
 
-  // 2. Delete Department Handler
-  function handleDeleteDepartment(deptId: string, deptName: string) {
-    if (
-      !confirm(`Are you sure you want to delete "${deptName}"? Members will be safely unassigned.`)
-    ) {
-      return;
-    }
+  // 2. Delete Department Handler via Modal
+  function handleConfirmDeleteDepartment() {
+    if (!deptToDelete) return;
+    const { id: deptId, name: deptName } = deptToDelete;
 
-    setStatusMessage(null);
     startTransition(async () => {
       try {
         await deleteDepartment(organizationId, deptId);
         if (activeDeptId === deptId) {
           setActiveDeptId(null);
         }
-        setStatusMessage({ type: "success", text: `Department "${deptName}" deleted.` });
+        setDeptToDelete(null);
+        toast.success(`Department "${deptName}" deleted.`);
       } catch (err: unknown) {
         const raw = err instanceof Error ? err.message : "";
         let friendly = "Could not delete this department. Please refresh the page and try again.";
@@ -156,10 +144,7 @@ export function DepartmentManager({
         ) {
           friendly = raw;
         }
-        setStatusMessage({
-          type: "error",
-          text: friendly,
-        });
+        toast.error(friendly, "Delete Failed");
       }
     });
   }
@@ -168,15 +153,12 @@ export function DepartmentManager({
   function handleAddMembers(deptId: string) {
     if (selectedEmpIds.length === 0) return;
 
-    setStatusMessage(null);
     startTransition(async () => {
       try {
         await addDepartmentMembers(organizationId, deptId, selectedEmpIds);
+        const count = selectedEmpIds.length;
         setSelectedEmpIds([]);
-        setStatusMessage({
-          type: "success",
-          text: `Assigned ${selectedEmpIds.length} employee(s) to department.`,
-        });
+        toast.success(`Assigned ${count} employee(s) to department.`);
       } catch (err: unknown) {
         const raw = err instanceof Error ? err.message : "";
         let friendly =
@@ -192,31 +174,24 @@ export function DepartmentManager({
         ) {
           friendly = raw;
         }
-        setStatusMessage({
-          type: "error",
-          text: friendly,
-        });
+        toast.error(friendly, "Assignment Failed");
       }
     });
   }
 
   // 4. Remove Member Handler
   function handleRemoveMember(deptId: string, employeeId: string, empName: string) {
-    setStatusMessage(null);
     startTransition(async () => {
       try {
         await removeDepartmentMember(organizationId, deptId, employeeId);
-        setStatusMessage({ type: "success", text: `Removed ${empName} from department.` });
+        toast.success(`Removed ${empName} from department.`);
       } catch (err: unknown) {
         const raw = err instanceof Error ? err.message : "";
         let friendly = `Could not remove ${empName} from the department. Please try again.`;
         if (raw && !raw.includes("Cannot") && !raw.includes("<") && !raw.includes("Endpoint")) {
           friendly = raw;
         }
-        setStatusMessage({
-          type: "error",
-          text: friendly,
-        });
+        toast.error(friendly, "Removal Failed");
       }
     });
   }
@@ -225,14 +200,10 @@ export function DepartmentManager({
   function handleAddRule(deptId: string) {
     const trimmedPattern = rulePattern.trim().toLowerCase();
     if (!trimmedPattern) {
-      setStatusMessage({
-        type: "error",
-        text: "Please enter a domain (e.g. facebook.com) or application name before adding a rule.",
-      });
+      toast.warning("Please enter a domain (e.g. facebook.com) or application name before adding a rule.");
       return;
     }
 
-    setStatusMessage(null);
     startTransition(async () => {
       try {
         await upsertDepartmentCategory(organizationId, deptId, {
@@ -242,10 +213,7 @@ export function DepartmentManager({
           isBlacklisted: ruleTag === "Blacklisted",
         });
         setRulePattern("");
-        setStatusMessage({
-          type: "success",
-          text: `Saved department rule for "${trimmedPattern}" as ${ruleTag}.`,
-        });
+        toast.success(`Saved department rule for "${trimmedPattern}" as ${ruleTag}.`);
       } catch (err: unknown) {
         const raw = err instanceof Error ? err.message : "";
         let friendly = `Unable to save rule for "${trimmedPattern}". Please check the domain/app format and try again.`;
@@ -265,34 +233,24 @@ export function DepartmentManager({
         ) {
           friendly = raw;
         }
-        setStatusMessage({
-          type: "error",
-          text: friendly,
-        });
+        toast.error(friendly, "Rule Update Failed");
       }
     });
   }
 
   // 6. Delete Department Rule Handler
   function handleDeleteRule(deptId: string, categoryId: string, pattern: string) {
-    setStatusMessage(null);
     startTransition(async () => {
       try {
         await deleteDepartmentCategory(organizationId, deptId, categoryId);
-        setStatusMessage({
-          type: "success",
-          text: `Deleted department rule for "${pattern}".`,
-        });
+        toast.success(`Deleted department rule for "${pattern}".`);
       } catch (err: unknown) {
         const raw = err instanceof Error ? err.message : "";
         let friendly = `Could not delete rule for "${pattern}". It may have already been removed.`;
         if (raw && !raw.includes("Cannot") && !raw.includes("<") && !raw.includes("Endpoint")) {
           friendly = raw;
         }
-        setStatusMessage({
-          type: "error",
-          text: friendly,
-        });
+        toast.error(friendly, "Delete Failed");
       }
     });
   }
@@ -315,38 +273,6 @@ export function DepartmentManager({
 
   return (
     <div className="space-y-6">
-      {/* Top Banner Status Notification */}
-      {statusMessage && (
-        <div
-          className={`p-3.5 rounded-lg border text-sm flex items-start justify-between gap-3 ${
-            statusMessage.type === "success"
-              ? "bg-success/10 border-success/30 text-success"
-              : "bg-danger/10 border-danger/30 text-danger"
-          }`}
-        >
-          <div className="flex items-start gap-2.5">
-            {statusMessage.type === "error" ? (
-              <AlertCircle className="size-5 shrink-0 mt-0.5" />
-            ) : null}
-            <div>
-              <p className="font-medium text-[13px]">
-                {statusMessage.type === "success"
-                  ? "Action Completed"
-                  : "Notice for Organization Administrator"}
-              </p>
-              <p className="text-xs mt-0.5 opacity-90 leading-relaxed">{statusMessage.text}</p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setStatusMessage(null)}
-            className="text-xs hover:underline opacity-80 shrink-0"
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
-
       {/* Header Actions */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -499,7 +425,7 @@ export function DepartmentManager({
                   type="button"
                   variant="danger"
                   size="sm"
-                  onClick={() => handleDeleteDepartment(selectedDept.id, selectedDept.name)}
+                  onClick={() => setDeptToDelete({ id: selectedDept.id, name: selectedDept.name })}
                   className="text-xs"
                   title="Delete this department"
                 >
@@ -779,6 +705,27 @@ export function DepartmentManager({
           </Card>
         </div>
       )}
+
+      {/* Delete Department Confirmation Modal */}
+      <ConfirmModal
+        open={Boolean(deptToDelete)}
+        onClose={() => setDeptToDelete(null)}
+        onConfirm={handleConfirmDeleteDepartment}
+        title="Delete Department"
+        message={
+          <div>
+            <p>
+              Are you sure you want to delete the department <strong>{deptToDelete?.name}</strong>?
+            </p>
+            <p className="text-xs text-text-tertiary mt-2">
+              All assigned team members will be safely unassigned, and department-specific productivity rules will be removed.
+            </p>
+          </div>
+        }
+        confirmLabel="Delete Department"
+        tone="danger"
+        loading={pending}
+      />
     </div>
   );
 }

@@ -183,48 +183,26 @@ export function generateEmployeeReportPdf(data: EmployeeReportData): PDFKit.PDFD
     },
   });
 
-  const primaryColor = "#0f172a";
-  const secondaryColor = "#475569";
-  const accentBlue = "#2563eb";
-  const successColor = "#16a34a";
-  const warningColor = "#d97706";
-  const dangerColor = "#dc2626";
-  const neutralColor = "#64748b";
-  const tableBorder = "#e2e8f0";
-  const tableHeaderBg = "#f8fafc";
-
-  // --- Document Header ---
-  doc.rect(40, 40, 515, 65).fill("#f1f5f9");
   // ================= PAGE 1 =================
   // Header Banner
   doc.rect(40, 40, 515, 60).fill("#f1f5f9");
   doc
-    .fillColor(primaryColor)
-    .fontSize(18)
     .fillColor(PRIMARY_COLOR)
     .fontSize(16)
     .font("Helvetica-Bold")
     .text("EMPLOYEE ACTIVITY REPORT", 55, 52);
   doc
-    .fillColor(secondaryColor)
-    .fontSize(9)
     .fillColor(SECONDARY_COLOR)
     .fontSize(8.5)
     .font("Helvetica")
-    .text(`Generated: ${new Date().toUTCString()}`, 55, 75);
-
     .text(`Generated: ${new Date().toUTCString()}`, 55, 74);
   doc
-    .fillColor(accentBlue)
-    .fontSize(10)
     .fillColor(ACCENT_BLUE)
     .fontSize(9.5)
     .font("Helvetica-Bold")
     .text(
       `Period: ${formatDateStr(data.period.start)} to ${formatDateStr(data.period.end)}`,
       320,
-      56,
-      { align: "right", width: 220 },
       55,
       {
         align: "right",
@@ -232,65 +210,35 @@ export function generateEmployeeReportPdf(data: EmployeeReportData): PDFKit.PDFD
       },
     );
 
-  doc.moveDown(3);
-
-  // --- Employee Information Box ---
-  const empY = 120;
-  doc.rect(40, empY, 515, 60).strokeColor(tableBorder).lineWidth(1).stroke();
   // Employee Information Box
   const empY = 110;
   doc.rect(40, empY, 515, 50).strokeColor(TABLE_BORDER).lineWidth(1).stroke();
   doc
-    .fillColor(primaryColor)
-    .fontSize(12)
     .fillColor(PRIMARY_COLOR)
     .fontSize(11)
     .font("Helvetica-Bold")
-    .text(data.employee.name, 55, empY + 12);
     .text(data.employee.name, 55, empY + 10);
   doc
-    .fillColor(secondaryColor)
-    .fontSize(9)
     .fillColor(SECONDARY_COLOR)
     .fontSize(8.5)
     .font("Helvetica")
-    .text(`Email: ${data.employee.email}`, 55, empY + 28);
-  doc
-    .fillColor(secondaryColor)
-    .fontSize(9)
-    .font("Helvetica")
-    .text(`Department: ${data.employee.department || "General"}`, 55, empY + 42);
     .text(`Email: ${data.employee.email}`, 55, empY + 24);
   doc.text(`Department: ${data.employee.department || "General"}`, 55, empY + 36);
 
   const deviceNames = data.employee.devices.map((d) => d.deviceName).join(", ") || "None";
-  doc
-    .fillColor(secondaryColor)
-    .fontSize(9)
-    .font("Helvetica")
-    .text(`Tracked Devices: ${deviceNames}`, 320, empY + 28, { width: 220, align: "right" });
   doc.text(`Tracked Devices: ${deviceNames}`, 300, empY + 24, { width: 240, align: "right" });
 
-  // --- Key Summary Metrics (KPI Cards) ---
-  const kpiY = 195;
   // Key KPI Cards
   const kpiY = 170;
   const cardW = 120;
-  const cardH = 55;
   const cardH = 50;
   const gap = (515 - cardW * 4) / 3;
 
   const kpis = [
-    { label: "Active Time", value: formatDuration(data.totals.activeSeconds), color: accentBlue },
-    { label: "Idle Time", value: formatDuration(data.totals.idleSeconds), color: neutralColor },
-    { label: "Productivity", value: `${data.totals.productivityPercent}%`, color: successColor },
     { label: "Active Time", value: formatDuration(data.totals.activeSeconds), color: ACCENT_BLUE },
     { label: "Idle Time", value: formatDuration(data.totals.idleSeconds), color: NEUTRAL_COLOR },
     { label: "Productivity", value: `${data.totals.productivityPercent}%`, color: SUCCESS_COLOR },
     {
-      label: "Keystrokes / Clicks",
-      value: `${data.activityMetrics.keyCount} / ${data.activityMetrics.mouseCount}`,
-      color: primaryColor,
       label: "Keys / Clicks",
       value: `${data.activityMetrics.keyCount.toLocaleString()} / ${data.activityMetrics.mouseCount.toLocaleString()}`,
       color: PRIMARY_COLOR,
@@ -299,32 +247,22 @@ export function generateEmployeeReportPdf(data: EmployeeReportData): PDFKit.PDFD
 
   kpis.forEach((kpi, i) => {
     const x = 40 + i * (cardW + gap);
-    doc.rect(x, kpiY, cardW, cardH).fillAndStroke("#ffffff", tableBorder);
     doc.rect(x, kpiY, cardW, cardH).fillAndStroke("#ffffff", TABLE_BORDER);
     doc
-      .fillColor(secondaryColor)
-      .fontSize(8)
       .fillColor(SECONDARY_COLOR)
       .fontSize(7.5)
       .font("Helvetica-Bold")
-      .text(kpi.label.toUpperCase(), x + 8, kpiY + 10);
       .text(kpi.label.toUpperCase(), x + 8, kpiY + 8);
     doc
       .fillColor(kpi.color)
-      .fontSize(13)
       .fontSize(12)
       .font("Helvetica-Bold")
-      .text(kpi.value, x + 8, kpiY + 26);
       .text(kpi.value, x + 8, kpiY + 23);
   });
 
-  // --- Productivity Breakdown Bar ---
-  const barY = 265;
   // Productivity Breakdown Bar
   const barY = 230;
   doc
-    .fillColor(primaryColor)
-    .fontSize(11)
     .fillColor(PRIMARY_COLOR)
     .fontSize(10)
     .font("Helvetica-Bold")
@@ -337,35 +275,24 @@ export function generateEmployeeReportPdf(data: EmployeeReportData): PDFKit.PDFD
   const bW = (data.totals.blacklistedSeconds / totalSecs) * 515;
 
   let curX = 40;
-  doc.rect(curX, barY + 16, pW, 10).fill(successColor);
   doc.rect(curX, barY + 14, pW, 8).fill(SUCCESS_COLOR);
   curX += pW;
-  doc.rect(curX, barY + 16, nW, 10).fill(neutralColor);
   doc.rect(curX, barY + 14, nW, 8).fill(NEUTRAL_COLOR);
   curX += nW;
-  doc.rect(curX, barY + 16, uW, 10).fill(warningColor);
   doc.rect(curX, barY + 14, uW, 8).fill(WARNING_COLOR);
   curX += uW;
-  doc.rect(curX, barY + 16, bW, 10).fill(dangerColor);
   doc.rect(curX, barY + 14, bW, 8).fill(DANGER_COLOR);
 
   // Legend
-  const legY = barY + 32;
   const legY = barY + 26;
   const legItems = [
-    { label: `Productive (${formatDuration(data.totals.productiveSeconds)})`, color: successColor },
-    { label: `Neutral (${formatDuration(data.totals.neutralSeconds)})`, color: neutralColor },
     { label: `Productive: ${formatDuration(data.totals.productiveSeconds)}`, color: SUCCESS_COLOR },
     { label: `Neutral: ${formatDuration(data.totals.neutralSeconds)}`, color: NEUTRAL_COLOR },
     {
-      label: `Unproductive (${formatDuration(data.totals.unproductiveSeconds)})`,
-      color: warningColor,
       label: `Unproductive: ${formatDuration(data.totals.unproductiveSeconds)}`,
       color: WARNING_COLOR,
     },
     {
-      label: `Blacklisted (${formatDuration(data.totals.blacklistedSeconds)})`,
-      color: dangerColor,
       label: `Blacklisted: ${formatDuration(data.totals.blacklistedSeconds)}`,
       color: DANGER_COLOR,
     },
@@ -373,25 +300,17 @@ export function generateEmployeeReportPdf(data: EmployeeReportData): PDFKit.PDFD
 
   legItems.forEach((leg, idx) => {
     const lx = 40 + idx * 130;
-    doc.rect(lx, legY + 2, 8, 8).fill(leg.color);
     doc.rect(lx, legY + 2, 6, 6).fill(leg.color);
     doc
-      .fillColor(secondaryColor)
-      .fontSize(8)
       .fillColor(SECONDARY_COLOR)
       .fontSize(7.5)
       .font("Helvetica")
-      .text(leg.label, lx + 12, legY + 2);
       .text(leg.label, lx + 10, legY + 2);
   });
 
-  // --- Top Applications Table ---
-  let tableY = 320;
   // Top Applications Table (Top 6)
   let tableY = 280;
   doc
-    .fillColor(primaryColor)
-    .fontSize(11)
     .fillColor(PRIMARY_COLOR)
     .fontSize(10)
     .font("Helvetica-Bold")
@@ -407,35 +326,16 @@ export function generateEmployeeReportPdf(data: EmployeeReportData): PDFKit.PDFD
   doc.text("TOTAL TIME", 475, tableY + 4, { align: "right", width: 70 });
   tableY += 16;
 
-  // Header
-  doc.rect(40, tableY, 515, 18).fill(tableHeaderBg);
-  doc.fillColor(secondaryColor).fontSize(8).font("Helvetica-Bold");
-  doc.text("APPLICATION", 48, tableY + 5);
-  doc.text("TAG", 220, tableY + 5);
-  doc.text("PRODUCTIVE", 300, tableY + 5, { align: "right", width: 65 });
-  doc.text("UNPROD/BLACK", 380, tableY + 5, { align: "right", width: 75 });
-  doc.text("TOTAL TIME", 475, tableY + 5, { align: "right", width: 70 });
-  tableY += 18;
-
-  const apps = data.topApps.slice(0, 8);
   const apps = data.topApps.slice(0, 6);
   if (apps.length === 0) {
     doc
-      .fillColor(secondaryColor)
-      .fontSize(8)
       .fillColor(SECONDARY_COLOR)
       .fontSize(7.5)
       .font("Helvetica")
-      .text("No application activity recorded in this period.", 48, tableY + 6);
-    tableY += 20;
       .text("No application activity recorded in this period.", 48, tableY + 4);
     tableY += 16;
   } else {
     apps.forEach((app, idx) => {
-      const isEven = idx % 2 === 0;
-      if (isEven) doc.rect(40, tableY, 515, 16).fill("#fafafa");
-      doc.fillColor(primaryColor).fontSize(8).font("Helvetica");
-      doc.text(app.appName || "Unknown Application", 48, tableY + 4, {
       if (idx % 2 === 0) doc.rect(40, tableY, 515, 14).fill("#fafafa");
       doc.fillColor(PRIMARY_COLOR).fontSize(7.5).font("Helvetica");
       doc.text(app.appName || "Unknown Application", 48, tableY + 3, {
@@ -445,23 +345,16 @@ export function generateEmployeeReportPdf(data: EmployeeReportData): PDFKit.PDFD
       doc
         .fillColor(
           app.productivityTag === "Productive"
-            ? successColor
             ? SUCCESS_COLOR
             : app.productivityTag === "Blacklisted"
-              ? dangerColor
               ? DANGER_COLOR
               : app.productivityTag === "Unproductive"
-                ? warningColor
-                : neutralColor,
                 ? WARNING_COLOR
                 : NEUTRAL_COLOR,
         )
-        .text(app.productivityTag, 220, tableY + 4);
         .font("Helvetica-Bold")
         .text(app.productivityTag, 220, tableY + 3);
       doc
-        .fillColor(secondaryColor)
-        .text(formatDuration(app.productiveSeconds), 300, tableY + 4, {
         .fillColor(SECONDARY_COLOR)
         .font("Helvetica")
         .text(formatDuration(app.productiveSeconds), 300, tableY + 3, {
@@ -469,29 +362,21 @@ export function generateEmployeeReportPdf(data: EmployeeReportData): PDFKit.PDFD
           width: 65,
         });
       const badTime = app.unproductiveSeconds + app.blacklistedSeconds;
-      doc.text(badTime > 0 ? formatDuration(badTime) : "-", 380, tableY + 4, {
       doc.text(badTime > 0 ? formatDuration(badTime) : "-", 380, tableY + 3, {
         align: "right",
         width: 75,
       });
       doc
-        .fillColor(primaryColor)
         .fillColor(PRIMARY_COLOR)
         .font("Helvetica-Bold")
-        .text(formatDuration(app.seconds), 475, tableY + 4, { align: "right", width: 70 });
-      tableY += 16;
         .text(formatDuration(app.seconds), 475, tableY + 3, { align: "right", width: 70 });
       tableY += 14;
     });
   }
 
-  // --- Top Visited Websites Table ---
-  tableY += 15;
   // Top Visited Websites Table (Top 6)
   tableY += 12;
   doc
-    .fillColor(primaryColor)
-    .fontSize(11)
     .fillColor(PRIMARY_COLOR)
     .fontSize(10)
     .font("Helvetica-Bold")
@@ -507,57 +392,32 @@ export function generateEmployeeReportPdf(data: EmployeeReportData): PDFKit.PDFD
   doc.text("TOTAL TIME", 475, tableY + 4, { align: "right", width: 70 });
   tableY += 16;
 
-  doc.rect(40, tableY, 515, 18).fill(tableHeaderBg);
-  doc.fillColor(secondaryColor).fontSize(8).font("Helvetica-Bold");
-  doc.text("DOMAIN", 48, tableY + 5);
-  doc.text("TAG", 220, tableY + 5);
-  doc.text("PRODUCTIVE", 300, tableY + 5, { align: "right", width: 65 });
-  doc.text("UNPROD/BLACK", 380, tableY + 5, { align: "right", width: 75 });
-  doc.text("TOTAL TIME", 475, tableY + 5, { align: "right", width: 70 });
-  tableY += 18;
-
-  const domains = data.topDomains.slice(0, 8);
   const domains = data.topDomains.slice(0, 6);
   if (domains.length === 0) {
     doc
-      .fillColor(secondaryColor)
-      .fontSize(8)
       .fillColor(SECONDARY_COLOR)
       .fontSize(7.5)
       .font("Helvetica")
-      .text("No web browsing activity recorded in this period.", 48, tableY + 6);
-    tableY += 20;
       .text("No web browsing recorded in this period.", 48, tableY + 4);
     tableY += 16;
   } else {
     domains.forEach((site, idx) => {
-      const isEven = idx % 2 === 0;
-      if (isEven) doc.rect(40, tableY, 515, 16).fill("#fafafa");
-      doc.fillColor(primaryColor).fontSize(8).font("Helvetica");
-      doc.text(site.domain, 48, tableY + 4, { width: 165, lineBreak: false });
       if (idx % 2 === 0) doc.rect(40, tableY, 515, 14).fill("#fafafa");
       doc.fillColor(PRIMARY_COLOR).fontSize(7.5).font("Helvetica");
       doc.text(site.domain, 48, tableY + 3, { width: 165, lineBreak: false });
       doc
         .fillColor(
           site.productivityTag === "Productive"
-            ? successColor
             ? SUCCESS_COLOR
             : site.productivityTag === "Blacklisted"
-              ? dangerColor
               ? DANGER_COLOR
               : site.productivityTag === "Unproductive"
-                ? warningColor
-                : neutralColor,
                 ? WARNING_COLOR
                 : NEUTRAL_COLOR,
         )
-        .text(site.productivityTag, 220, tableY + 4);
         .font("Helvetica-Bold")
         .text(site.productivityTag, 220, tableY + 3);
       doc
-        .fillColor(secondaryColor)
-        .text(formatDuration(site.productiveSeconds), 300, tableY + 4, {
         .fillColor(SECONDARY_COLOR)
         .font("Helvetica")
         .text(formatDuration(site.productiveSeconds), 300, tableY + 3, {
@@ -565,25 +425,18 @@ export function generateEmployeeReportPdf(data: EmployeeReportData): PDFKit.PDFD
           width: 65,
         });
       const badTime = site.unproductiveSeconds + site.blacklistedSeconds;
-      doc.text(badTime > 0 ? formatDuration(badTime) : "-", 380, tableY + 4, {
       doc.text(badTime > 0 ? formatDuration(badTime) : "-", 380, tableY + 3, {
         align: "right",
         width: 75,
       });
       doc
-        .fillColor(primaryColor)
         .fillColor(PRIMARY_COLOR)
         .font("Helvetica-Bold")
-        .text(formatDuration(site.seconds), 475, tableY + 4, { align: "right", width: 70 });
-      tableY += 16;
         .text(formatDuration(site.seconds), 475, tableY + 3, { align: "right", width: 70 });
       tableY += 14;
     });
   }
 
-  // --- Attendance Log Summary ---
-  tableY += 15;
-  if (tableY > 680) {
   // Activity Metrics Summary Bar
   tableY += 12;
   doc.rect(40, tableY, 515, 32).fillAndStroke(CARD_BG, TABLE_BORDER);
@@ -717,13 +570,9 @@ export function generateDepartmentReportPdf(data: DepartmentReportData): PDFKit.
   // Header Banner
   doc.rect(40, 40, 515, 60).fill("#f1f5f9");
   doc
-    .fillColor(primaryColor)
-    .fontSize(11)
     .fillColor(PRIMARY_COLOR)
     .fontSize(16)
     .font("Helvetica-Bold")
-    .text("Attendance & Presence Summary", 40, tableY);
-  tableY += 16;
     .text("DEPARTMENT PERFORMANCE REPORT", 55, 52);
   doc
     .fillColor(SECONDARY_COLOR)
@@ -748,15 +597,6 @@ export function generateDepartmentReportPdf(data: DepartmentReportData): PDFKit.
       },
     );
 
-  doc.rect(40, tableY, 515, 18).fill(tableHeaderBg);
-  doc.fillColor(secondaryColor).fontSize(8).font("Helvetica-Bold");
-  doc.text("WORK DATE", 48, tableY + 5);
-  doc.text("STATUS", 150, tableY + 5);
-  doc.text("FIRST LOGIN", 230, tableY + 5);
-  doc.text("LAST LOGOUT", 320, tableY + 5);
-  doc.text("ACTIVE TIME", 410, tableY + 5, { align: "right", width: 65 });
-  doc.text("SESSION TIME", 480, tableY + 5, { align: "right", width: 65 });
-  tableY += 18;
   // Department Info Box
   const deptY = 110;
   doc.rect(40, deptY, 515, 50).strokeColor(TABLE_BORDER).lineWidth(1).stroke();
@@ -775,8 +615,6 @@ export function generateDepartmentReportPdf(data: DepartmentReportData): PDFKit.
     align: "right",
   });
 
-  const attendance = data.attendanceDays.slice(0, 12);
-  if (attendance.length === 0) {
   // Key KPI Cards
   const kpiY = 170;
   const cardW = 120;
@@ -810,8 +648,6 @@ export function generateDepartmentReportPdf(data: DepartmentReportData): PDFKit.
     const x = 40 + i * (cardW + gap);
     doc.rect(x, kpiY, cardW, cardH).fillAndStroke("#ffffff", TABLE_BORDER);
     doc
-      .fillColor(secondaryColor)
-      .fontSize(8)
       .fillColor(SECONDARY_COLOR)
       .fontSize(7.5)
       .font("Helvetica-Bold")
@@ -868,8 +704,6 @@ export function generateDepartmentReportPdf(data: DepartmentReportData): PDFKit.
       .fillColor(SECONDARY_COLOR)
       .fontSize(7.5)
       .font("Helvetica")
-      .text("No attendance records found for this period.", 48, tableY + 6);
-    tableY += 20;
       .text(leg.label, lx + 10, legY + 2);
   });
 
@@ -900,11 +734,6 @@ export function generateDepartmentReportPdf(data: DepartmentReportData): PDFKit.
       .text("No application activity recorded in this department.", 48, tableY + 4);
     tableY += 16;
   } else {
-    attendance.forEach((att, idx) => {
-      const isEven = idx % 2 === 0;
-      if (isEven) doc.rect(40, tableY, 515, 16).fill("#fafafa");
-      doc.fillColor(primaryColor).fontSize(8).font("Helvetica");
-      doc.text(att.workDate, 48, tableY + 4);
     apps.forEach((app, idx) => {
       if (idx % 2 === 0) doc.rect(40, tableY, 515, 14).fill("#fafafa");
       doc.fillColor(PRIMARY_COLOR).fontSize(7.5).font("Helvetica");
@@ -913,8 +742,6 @@ export function generateDepartmentReportPdf(data: DepartmentReportData): PDFKit.
         lineBreak: false,
       });
       doc
-        .fillColor(att.status === "present" ? successColor : secondaryColor)
-        .text(att.status.toUpperCase(), 150, tableY + 4);
         .fillColor(
           app.productivityTag === "Productive"
             ? SUCCESS_COLOR
@@ -927,9 +754,6 @@ export function generateDepartmentReportPdf(data: DepartmentReportData): PDFKit.
         .font("Helvetica-Bold")
         .text(app.productivityTag, 220, tableY + 3);
       doc
-        .fillColor(secondaryColor)
-        .text(att.firstLogin ? att.firstLogin.toTimeString().slice(0, 8) : "-", 230, tableY + 4);
-      doc.text(att.lastLogout ? att.lastLogout.toTimeString().slice(0, 8) : "-", 320, tableY + 4);
         .fillColor(SECONDARY_COLOR)
         .font("Helvetica")
         .text(formatDuration(app.productiveSeconds), 300, tableY + 3, {
@@ -942,8 +766,6 @@ export function generateDepartmentReportPdf(data: DepartmentReportData): PDFKit.
         width: 75,
       });
       doc
-        .fillColor(primaryColor)
-        .text(formatDuration(att.activeSeconds), 410, tableY + 4, { align: "right", width: 65 });
         .fillColor(PRIMARY_COLOR)
         .font("Helvetica-Bold")
         .text(formatDuration(app.seconds), 475, tableY + 3, { align: "right", width: 70 });
@@ -983,7 +805,6 @@ export function generateDepartmentReportPdf(data: DepartmentReportData): PDFKit.
       doc.fillColor(PRIMARY_COLOR).fontSize(7.5).font("Helvetica");
       doc.text(site.domain, 48, tableY + 3, { width: 165, lineBreak: false });
       doc
-        .fillColor(primaryColor)
         .fillColor(
           site.productivityTag === "Productive"
             ? SUCCESS_COLOR
@@ -994,8 +815,6 @@ export function generateDepartmentReportPdf(data: DepartmentReportData): PDFKit.
                 : NEUTRAL_COLOR,
         )
         .font("Helvetica-Bold")
-        .text(formatDuration(att.sessionSeconds), 480, tableY + 4, { align: "right", width: 65 });
-      tableY += 16;
         .text(site.productivityTag, 220, tableY + 3);
       doc
         .fillColor(SECONDARY_COLOR)
@@ -1017,15 +836,11 @@ export function generateDepartmentReportPdf(data: DepartmentReportData): PDFKit.
     });
   }
 
-  // --- Footer ---
   // Page 1 Footer
   doc
-    .fillColor(neutralColor)
-    .fontSize(8)
     .fillColor(NEUTRAL_COLOR)
     .fontSize(7.5)
     .font("Helvetica")
-    .text("Centrix Employee Activity & Productivity Monitoring System — Confidential", 40, 780, {
     .text("Centrix Employee Activity Monitoring — Confidential", 40, 785, {
       align: "center",
       width: 515,
@@ -1183,15 +998,6 @@ export async function generateDepartmentBatchZipBuffer(
 
 export const pdfReportService = {
   generateEmployeeReportPdf,
-  generateEmployeeReportPdfBuffer: async (data: EmployeeReportData): Promise<Buffer> => {
-    const doc = generateEmployeeReportPdf(data);
-    const chunks: Buffer[] = [];
-    return new Promise<Buffer>((resolve, reject) => {
-      doc.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
-      doc.on("end", () => resolve(Buffer.concat(chunks)));
-      doc.on("error", reject);
-    });
-  },
   generateEmployeeReportPdfBuffer,
   generateDepartmentReportPdf,
   generateDepartmentReportPdfBuffer,
