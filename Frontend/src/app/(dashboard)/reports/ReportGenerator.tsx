@@ -10,14 +10,21 @@ import {
   Building2,
   Download,
   Loader2,
+  FileText,
+  Archive,
 } from "lucide-react";
 import { Button, Card, Badge } from "@/components/ui";
 import type { RosterEmployee, DepartmentSummary } from "@/types/api";
+
+const SAVE_PRIMARY_CLASS =
+  "border border-brand-strong bg-brand-strong text-brand-contrast shadow-none hover:bg-brand hover:text-brand-contrast";
 
 interface ReportGeneratorProps {
   employees: RosterEmployee[];
   departments: DepartmentSummary[];
 }
+
+type ReportScope = "employee" | "department_pdf" | "department_zip";
 
 function getInitialDates() {
   const now = Date.now();
@@ -28,21 +35,27 @@ function getInitialDates() {
 }
 
 export function ReportGenerator({ employees, departments }: ReportGeneratorProps) {
+  // Mode selection
+  const [reportScope, setReportScope] = useState<ReportScope>("employee");
+
   // Selected parameters
+  const [selectedDeptId, setSelectedDeptId] = useState<string>(departments[0]?.id || "");
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>(employees[0]?.id || "");
   const [startDate, setStartDate] = useState<string>(() => getInitialDates().sevenDaysAgo);
   const [endDate, setEndDate] = useState<string>(() => getInitialDates().today);
-  const [selectedDepartment, setSelectedDepartment] = useState<string>("all");
+  const [selectedDepartmentFilter, setSelectedDepartmentFilter] = useState<string>("all");
 
   // Loading states
   const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [generatingDeptPdf, setGeneratingDeptPdf] = useState(false);
+  const [generatingZip, setGeneratingZip] = useState(false);
   const [exportingRoster, setExportingRoster] = useState(false);
   const [exportingDept, setExportingDept] = useState(false);
 
   // Filtered employees for PDF selection
   const filteredEmployees = employees.filter((e) => {
-    if (selectedDepartment === "all") return true;
-    return e.department?.toLowerCase() === selectedDepartment.toLowerCase();
+    if (selectedDepartmentFilter === "all") return true;
+    return e.department?.toLowerCase() === selectedDepartmentFilter.toLowerCase();
   });
 
   // Keep selected employee valid when department filter changes
@@ -51,6 +64,7 @@ export function ReportGenerator({ employees, departments }: ReportGeneratorProps
     : filteredEmployees[0]?.id || "";
 
   const selectedEmployee = employees.find((e) => e.id === activeEmployeeId);
+  const selectedDepartment = departments.find((d) => d.id === selectedDeptId) || departments[0];
 
   // Preset date ranges
   function applyPreset(days: number) {
@@ -62,8 +76,9 @@ export function ReportGenerator({ employees, departments }: ReportGeneratorProps
   }
 
   // 1. Download Employee PDF Report
-  async function downloadEmployeePdf() {
-    if (!activeEmployeeId || generatingPdf) return;
+  async function downloadEmployeePdf(targetEmpId?: string) {
+    const empId = targetEmpId || activeEmployeeId;
+    if (!empId || generatingPdf) return;
     setGeneratingPdf(true);
 
     try {
@@ -71,7 +86,7 @@ export function ReportGenerator({ employees, departments }: ReportGeneratorProps
       if (startDate) params.set("startDate", startDate);
       if (endDate) params.set("endDate", endDate);
 
-      const url = `/api/reports/employees/${encodeURIComponent(activeEmployeeId)}/pdf?${params.toString()}`;
+      const url = `/api/reports/employees/${encodeURIComponent(empId)}/pdf?${params.toString()}`;
       const response = await fetch(url);
 
       if (!response.ok) {
@@ -83,10 +98,9 @@ export function ReportGenerator({ employees, departments }: ReportGeneratorProps
       const link = document.createElement("a");
       link.href = downloadUrl;
 
+      const currentEmp = employees.find((e) => e.id === empId);
       const dateTag = new Date().toISOString().slice(0, 10);
-      const safeName = (selectedEmployee?.name || activeEmployeeId)
-        .replace(/[^a-z0-9_-]/gi, "_")
-        .toLowerCase();
+      const safeName = (currentEmp?.name || empId).replace(/[^a-z0-9_-]/gi, "_").toLowerCase();
       link.download = `employee_report_${safeName}_${startDate || dateTag}.pdf`;
 
       document.body.appendChild(link);
@@ -101,7 +115,101 @@ export function ReportGenerator({ employees, departments }: ReportGeneratorProps
     }
   }
 
-  // 2. Export Team Roster (CSV)
+  // 2. Download Department Performance PDF Report
+  async function downloadDepartmentPdf(targetDeptId?: string) {
+    const deptId = targetDeptId || selectedDepartment?.id;
+    if (!deptId || generatingDeptPdf) return;
+    setGeneratingDeptPdf(true);
+
+    try {
+      const params = new URLSearchParams();
+      if (startDate) params.set("startDate", startDate);
+      if (endDate) params.set("endDate", endDate);
+
+      const url = `/api/reports/departments/${encodeURIComponent(deptId)}/pdf?${params.toString()}`;
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`Failed to download department report (${response.status})`);
+      }
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+
+      const currentDept = departments.find((d) => d.id === deptId);
+      const safeDeptName = (currentDept?.name || deptId).replace(/[^a-z0-9_-]/gi, "_").toLowerCase();
+      link.download = `department_performance_${safeDeptName}_${startDate || "overview"}.pdf`;
+
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (err) {
+      console.error("Department PDF download error:", err);
+      alert("Could not generate the department PDF report. Please verify parameters and try again.");
+    } finally {
+      setGeneratingDeptPdf(false);
+    }
+  }
+
+  // 3. Download Department Batch ZIP Bundle
+  async function downloadDepartmentZip(targetDeptId?: string) {
+    const deptId = targetDeptId || selectedDepartment?.id;
+    if (!deptId || generatingZip) return;
+    setGeneratingZip(true);
+
+    try {
+      const params = new URLSearchParams();
+      if (startDate) params.set("startDate", startDate);
+      if (endDate) params.set("endDate", endDate);
+
+      const url = `/api/reports/departments/${encodeURIComponent(deptId)}/batch-zip?${params.toString()}`;
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`Failed to download department bundle (${response.status})`);
+      }
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+
+      const currentDept = departments.find((d) => d.id === deptId);
+      const safeDeptName = (currentDept?.name || deptId).replace(/[^a-z0-9_-]/gi, "_").toLowerCase();
+      link.download = `department_bundle_${safeDeptName}_${startDate || "all"}.zip`;
+
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (err) {
+      console.error("Department ZIP download error:", err);
+      alert("Could not generate the department ZIP bundle. Please verify parameters and try again.");
+    } finally {
+      setGeneratingZip(false);
+    }
+  }
+
+  // Primary Action Trigger based on Report Scope
+  function handleMainAction() {
+    if (reportScope === "employee") {
+      downloadEmployeePdf();
+    } else if (reportScope === "department_pdf") {
+      downloadDepartmentPdf();
+    } else {
+      downloadDepartmentZip();
+    }
+  }
+
+  const isMainLoading =
+    (reportScope === "employee" && generatingPdf) ||
+    (reportScope === "department_pdf" && generatingDeptPdf) ||
+    (reportScope === "department_zip" && generatingZip);
+
+  // 4. Export Team Roster (CSV)
   async function exportRosterCsv() {
     if (exportingRoster) return;
     setExportingRoster(true);
@@ -159,7 +267,7 @@ export function ReportGenerator({ employees, departments }: ReportGeneratorProps
     }
   }
 
-  // 3. Export Department Summary (CSV)
+  // 5. Export Department Summary (CSV)
   async function exportDepartmentCsv() {
     if (exportingDept) return;
     setExportingDept(true);
@@ -209,59 +317,137 @@ export function ReportGenerator({ employees, departments }: ReportGeneratorProps
   return (
     <div className="space-y-6">
       {/* Primary Interactive Report Builder Card */}
-      <Card title="Executive PDF Report Generator" className="border-brand/40 shadow-glass-md">
+      <Card title="Executive Report Generator" className="border-brand/40 shadow-glass-md">
         <div className="space-y-4">
           <p className="text-[13px] text-text-secondary leading-relaxed">
-            Generate and stream comprehensive executive reports in PDF format with attendance logs,
-            KPI breakdowns, application duration summaries, domain visits, and activity metrics.
+            Generate and stream comprehensive executive reports in PDF format or batch ZIP bundles.
+            Includes attendance logs, productivity breakdowns, application duration summaries,
+            visited domains, and activity metrics.
           </p>
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 items-end bg-surface-muted/50 p-4 rounded-lg border border-glass-border">
-            {/* Department Filter */}
-            <div>
-              <label className="block text-[12px] font-medium text-text-secondary mb-1">
-                Filter by Department
-              </label>
-              <select
-                value={selectedDepartment}
-                onChange={(e) => setSelectedDepartment(e.target.value)}
-                className={`${inputClass} w-full`}
-              >
-                <option value="all">All Departments ({employees.length} total)</option>
-                {departments.map((d) => (
-                  <option key={d.id} value={d.name}>
-                    {d.name} (
-                    {
-                      employees.filter((e) => e.department?.toLowerCase() === d.name.toLowerCase())
-                        .length
-                    }
-                    )
-                  </option>
-                ))}
-              </select>
-            </div>
+          {/* Scope Selector Tabs */}
+          <div className="flex flex-wrap gap-2 border-b border-glass-border pb-3">
+            <button
+              type="button"
+              onClick={() => setReportScope("employee")}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                reportScope === "employee"
+                  ? "bg-brand text-brand-contrast shadow-sm"
+                  : "bg-surface text-text-secondary hover:bg-surface-strong hover:text-text-primary border border-border"
+              }`}
+            >
+              <Users className="size-3.5" />
+              <span>Individual Employee PDF</span>
+            </button>
 
-            {/* Employee Selection */}
-            <div>
-              <label className="block text-[12px] font-medium text-text-secondary mb-1">
-                Select Employee <span className="text-brand">*</span>
-              </label>
-              <select
-                value={activeEmployeeId}
-                onChange={(e) => setSelectedEmployeeId(e.target.value)}
-                className={`${inputClass} w-full font-medium`}
-              >
-                {filteredEmployees.length === 0 ? (
-                  <option value="">No employees in department</option>
-                ) : (
-                  filteredEmployees.map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.name} {e.department ? `(${e.department})` : ""}
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
+            <button
+              type="button"
+              onClick={() => setReportScope("department_pdf")}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                reportScope === "department_pdf"
+                  ? "bg-brand text-brand-contrast shadow-sm"
+                  : "bg-surface text-text-secondary hover:bg-surface-strong hover:text-text-primary border border-border"
+              }`}
+            >
+              <Building2 className="size-3.5" />
+              <span>Whole Department Performance PDF</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setReportScope("department_zip")}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                reportScope === "department_zip"
+                  ? "bg-brand text-brand-contrast shadow-sm"
+                  : "bg-surface text-text-secondary hover:bg-surface-strong hover:text-text-primary border border-border"
+              }`}
+            >
+              <Archive className="size-3.5" />
+              <span>Department Bundle ZIP (Summary + Members)</span>
+            </button>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 items-end bg-surface-muted/50 p-4 rounded-lg border border-glass-border">
+            {reportScope === "employee" ? (
+              <>
+                {/* Department Filter for Employee dropdown */}
+                <div>
+                  <label className="block text-[12px] font-medium text-text-secondary mb-1">
+                    Filter by Department
+                  </label>
+                  <select
+                    value={selectedDepartmentFilter}
+                    onChange={(e) => setSelectedDepartmentFilter(e.target.value)}
+                    className={`${inputClass} w-full`}
+                  >
+                    <option value="all">All Departments ({employees.length} total)</option>
+                    {departments.map((d) => (
+                      <option key={d.id} value={d.name}>
+                        {d.name} (
+                        {
+                          employees.filter(
+                            (e) => e.department?.toLowerCase() === d.name.toLowerCase(),
+                          ).length
+                        }
+                        )
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Employee Selection */}
+                <div>
+                  <label className="block text-[12px] font-medium text-text-secondary mb-1">
+                    Select Employee <span className="text-brand">*</span>
+                  </label>
+                  <select
+                    value={activeEmployeeId}
+                    onChange={(e) => setSelectedEmployeeId(e.target.value)}
+                    className={`${inputClass} w-full font-medium`}
+                  >
+                    {filteredEmployees.length === 0 ? (
+                      <option value="">No employees in department</option>
+                    ) : (
+                      filteredEmployees.map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {e.name} {e.department ? `(${e.department})` : ""}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Department Selection for Department PDF or ZIP */}
+                <div className="sm:col-span-2">
+                  <label className="block text-[12px] font-medium text-text-secondary mb-1">
+                    Select Department <span className="text-brand">*</span>
+                  </label>
+                  <select
+                    value={selectedDeptId}
+                    onChange={(e) => setSelectedDeptId(e.target.value)}
+                    className={`${inputClass} w-full font-medium`}
+                  >
+                    {departments.length === 0 ? (
+                      <option value="">No departments available</option>
+                    ) : (
+                      departments.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name} (
+                          {
+                            employees.filter(
+                              (e) => e.department?.toLowerCase() === d.name.toLowerCase(),
+                            ).length
+                          }{" "}
+                          members)
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+              </>
+            )}
 
             {/* Date Range Start */}
             <div>
@@ -319,18 +505,32 @@ export function ReportGenerator({ employees, departments }: ReportGeneratorProps
 
             <Button
               type="button"
-              variant="primary"
+              variant="ghost"
               size="md"
-              onClick={downloadEmployeePdf}
-              disabled={!activeEmployeeId || generatingPdf}
-              className="inline-flex items-center gap-2"
+              onClick={handleMainAction}
+              disabled={
+                isMainLoading ||
+                (reportScope === "employee" && !activeEmployeeId) ||
+                (reportScope !== "employee" && departments.length === 0)
+              }
+              className={`inline-flex items-center gap-2 ${SAVE_PRIMARY_CLASS}`}
             >
-              {generatingPdf ? (
+              {isMainLoading ? (
                 <Loader2 className="size-4 animate-spin" aria-hidden />
+              ) : reportScope === "department_zip" ? (
+                <Archive className="size-4" aria-hidden />
               ) : (
                 <Download className="size-4" aria-hidden />
               )}
-              <span>{generatingPdf ? "Compiling PDF Report..." : "Generate & Download PDF"}</span>
+              <span>
+                {isMainLoading
+                  ? "Compiling Report..."
+                  : reportScope === "employee"
+                    ? `Generate PDF (${selectedEmployee?.name || "Employee"})`
+                    : reportScope === "department_pdf"
+                      ? `Generate Department PDF (${selectedDepartment?.name || "Dept"})`
+                      : `Download Bundle ZIP (${selectedDepartment?.name || "Dept"})`}
+              </span>
             </Button>
           </div>
         </div>
@@ -363,10 +563,10 @@ export function ReportGenerator({ employees, departments }: ReportGeneratorProps
             <Button
               type="button"
               size="sm"
-              variant="primary"
-              onClick={downloadEmployeePdf}
+              variant="ghost"
+              onClick={() => downloadEmployeePdf()}
               disabled={!activeEmployeeId || generatingPdf}
-              className="self-start inline-flex items-center gap-1.5"
+              className={`self-start inline-flex items-center gap-1.5 ${SAVE_PRIMARY_CLASS}`}
             >
               {generatingPdf ? (
                 <Loader2 className="size-3.5 animate-spin" />
@@ -377,7 +577,73 @@ export function ReportGenerator({ employees, departments }: ReportGeneratorProps
             </Button>
           </div>
 
-          {/* 2. Employee Roster Summary */}
+          {/* 2. Department Performance PDF */}
+          <div className="flex flex-col rounded-lg border border-brand/40 bg-surface p-5 shadow-glass-sm transition-[transform,border-color] duration-200 ease-out hover:-translate-y-0.5">
+            <div className="flex items-start justify-between gap-2 mb-3">
+              <span className="grid size-[38px] place-items-center rounded-md bg-brand-soft text-brand">
+                <Building2 className="size-[18px]" strokeWidth={1.75} />
+              </span>
+              <Badge tone="brand">Ready (PDF)</Badge>
+            </div>
+
+            <p className="text-sm font-semibold text-text-primary">
+              Department Performance Overview
+            </p>
+            <p className="mt-1.5 mb-4 flex-1 text-[12.5px] leading-relaxed text-text-secondary">
+              Aggregated department KPIs, team productivity scores, member breakdown roster, top
+              team applications, and visited web domains.
+            </p>
+
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => downloadDepartmentPdf()}
+              disabled={generatingDeptPdf || departments.length === 0}
+              className={`self-start inline-flex items-center gap-1.5 ${SAVE_PRIMARY_CLASS}`}
+            >
+              {generatingDeptPdf ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <FileText className="size-3.5" />
+              )}
+              <span>Download PDF ({selectedDepartment?.name || "Department"})</span>
+            </Button>
+          </div>
+
+          {/* 3. Department Batch ZIP Bundle */}
+          <div className="flex flex-col rounded-lg border border-brand/40 bg-surface p-5 shadow-glass-sm transition-[transform,border-color] duration-200 ease-out hover:-translate-y-0.5">
+            <div className="flex items-start justify-between gap-2 mb-3">
+              <span className="grid size-[38px] place-items-center rounded-md bg-brand-soft text-brand">
+                <Archive className="size-[18px]" strokeWidth={1.75} />
+              </span>
+              <Badge tone="brand">Ready (ZIP)</Badge>
+            </div>
+
+            <p className="text-sm font-semibold text-text-primary">Department Batch ZIP Bundle</p>
+            <p className="mt-1.5 mb-4 flex-1 text-[12.5px] leading-relaxed text-text-secondary">
+              Complete archive containing the department performance overview PDF plus individual
+              PDF activity reports for every member in the department.
+            </p>
+
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => downloadDepartmentZip()}
+              disabled={generatingZip || departments.length === 0}
+              className={`self-start inline-flex items-center gap-1.5 ${SAVE_PRIMARY_CLASS}`}
+            >
+              {generatingZip ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Archive className="size-3.5" />
+              )}
+              <span>Download Bundle ZIP ({selectedDepartment?.name || "Department"})</span>
+            </Button>
+          </div>
+
+          {/* 4. Employee Roster Summary */}
           <div className="flex flex-col rounded-lg border border-glass-border bg-surface p-5 shadow-glass-sm transition-[transform,border-color] duration-200 ease-out hover:-translate-y-0.5 hover:border-border-strong">
             <div className="flex items-start justify-between gap-2 mb-3">
               <span className="grid size-[38px] place-items-center rounded-md bg-success/15 text-success">
@@ -411,7 +677,7 @@ export function ReportGenerator({ employees, departments }: ReportGeneratorProps
             </Button>
           </div>
 
-          {/* 3. Department Summary */}
+          {/* 5. Department Summary */}
           <div className="flex flex-col rounded-lg border border-glass-border bg-surface p-5 shadow-glass-sm transition-[transform,border-color] duration-200 ease-out hover:-translate-y-0.5 hover:border-border-strong">
             <div className="flex items-start justify-between gap-2 mb-3">
               <span className="grid size-[38px] place-items-center rounded-md bg-brand-soft text-brand">
@@ -443,7 +709,7 @@ export function ReportGenerator({ employees, departments }: ReportGeneratorProps
             </Button>
           </div>
 
-          {/* 4. Device Inventory */}
+          {/* 6. Device Inventory */}
           <div className="flex flex-col rounded-lg border border-glass-border bg-surface p-5 shadow-glass-sm opacity-80">
             <div className="flex items-start justify-between gap-2 mb-3">
               <span className="grid size-[38px] place-items-center rounded-md bg-surface-muted text-text-secondary">
@@ -466,7 +732,7 @@ export function ReportGenerator({ employees, departments }: ReportGeneratorProps
             </a>
           </div>
 
-          {/* 5. Alerts & USB Security */}
+          {/* 7. Alerts & USB Security */}
           <div className="flex flex-col rounded-lg border border-glass-border bg-surface p-5 shadow-glass-sm opacity-80">
             <div className="flex items-start justify-between gap-2 mb-3">
               <span className="grid size-[38px] place-items-center rounded-md bg-surface-muted text-text-secondary">
@@ -489,7 +755,7 @@ export function ReportGenerator({ employees, departments }: ReportGeneratorProps
             </a>
           </div>
 
-          {/* 6. Organization Overview */}
+          {/* 8. Organization Overview */}
           <div className="flex flex-col rounded-lg border border-glass-border bg-surface p-5 shadow-glass-sm opacity-80">
             <div className="flex items-start justify-between gap-2 mb-3">
               <span className="grid size-[38px] place-items-center rounded-md bg-surface-muted text-text-secondary">

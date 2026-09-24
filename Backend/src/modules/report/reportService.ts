@@ -1,6 +1,7 @@
 import { ActivityType, LogoutSource, ProductivityTag } from "@prisma/client";
 import { prisma } from "../../config/db";
 import { currentOrganizationId } from "../../config/tenant";
+import { categoryService } from "./categoryService";
 import {
   decodeCursor,
   newestFirst,
@@ -291,7 +292,7 @@ interface AttendanceDay {
 
 export class ReportService {
   private async getApplicationGroups(
-    employeeId: string,
+    employeeId: string | string[] | null,
     deviceIds: string[],
     start: Date,
     end: Date,
@@ -304,11 +305,17 @@ export class ReportService {
     const summaryEnd = new Date(Math.min(endDay.getTime(), today.getTime() - DAY_MS));
     const hasSummaryRange = !singleDay && startDay <= summaryEnd;
 
+    const empFilter = Array.isArray(employeeId)
+      ? { employeeId: { in: employeeId } }
+      : employeeId
+        ? { employeeId }
+        : {};
+
     const summaryDates = new Set<string>();
     const summaryGroups = hasSummaryRange
       ? await prisma.activitySessionDailySummary.groupBy({
           by: ["workDate", "appName"],
-          where: { employeeId, workDate: { gte: startDay, lte: summaryEnd } },
+          where: { ...empFilter, workDate: { gte: startDay, lte: summaryEnd } },
           _sum: {
             durationSeconds: true,
             productiveSeconds: true,
@@ -435,7 +442,7 @@ export class ReportService {
   }
 
   private async getBrowserDomainGroups(
-    employeeId: string,
+    employeeId: string | string[] | null,
     deviceIds: string[],
     start: Date,
     end: Date,
@@ -448,12 +455,18 @@ export class ReportService {
     const summaryEnd = new Date(Math.min(endDay.getTime(), today.getTime() - DAY_MS));
     const hasSummaryRange = !singleDay && startDay <= summaryEnd;
 
+    const empFilter = Array.isArray(employeeId)
+      ? { employeeId: { in: employeeId } }
+      : employeeId
+        ? { employeeId }
+        : {};
+
     const summaryDates = new Set<string>();
     const summaryGroups = hasSummaryRange
       ? await prisma.browserDailySummary.groupBy({
           by: ["workDate", "domain"],
           where: {
-            employeeId,
+            ...empFilter,
             workDate: { gte: startDay, lte: summaryEnd },
           },
           _sum: {
@@ -927,7 +940,7 @@ export class ReportService {
   }
 
   private async getActivityMetrics(
-    employeeId: string,
+    employeeId: string | string[] | null,
     deviceIds: string[],
     start: Date,
     end: Date,
@@ -939,11 +952,17 @@ export class ReportService {
     const summaryEnd = new Date(Math.min(endDay.getTime(), today.getTime() - DAY_MS));
     const hasSummaryRange = !singleDay && startDay <= summaryEnd;
 
+    const empFilter = Array.isArray(employeeId)
+      ? { employeeId: { in: employeeId } }
+      : employeeId
+        ? { employeeId }
+        : {};
+
     const summaryDates = new Set<string>();
     const summaryGroups = hasSummaryRange
       ? await prisma.activityMetricDailySummary.groupBy({
           by: ["workDate"],
-          where: { employeeId, workDate: { gte: startDay, lte: summaryEnd } },
+          where: { ...empFilter, workDate: { gte: startDay, lte: summaryEnd } },
           _sum: {
             keyCount: true,
             mouseCount: true,
@@ -1030,10 +1049,25 @@ export class ReportService {
         name: true,
         email: true,
         department: true,
+        departmentId: true,
+        organizationId: true,
         devices: { select: { id: true, deviceName: true, lastSeen: true, agentVersion: true } },
       },
     });
     if (!employee) throw { statusCode: 404, message: "Employee not found" };
+
+    // Resolve departmentId if not explicitly linked on employee row
+    let resolvedDepartmentId = employee.departmentId;
+    if (!resolvedDepartmentId && employee.department) {
+      const dept = await prisma.department.findFirst({
+        where: {
+          organizationId: employee.organizationId,
+          name: { equals: employee.department.trim(), mode: "insensitive" },
+        },
+        select: { id: true },
+      });
+      if (dept) resolvedDepartmentId = dept.id;
+    }
 
     const { start, end } = resolveRange(startDate, endDate);
 
@@ -1142,29 +1176,55 @@ export class ReportService {
     const totals = totalsByEmployee.get(employeeId) ?? emptyTotals();
     const lastSeenByDevice = new Map(employee.devices.map((d) => [d.id, d.lastSeen]));
 
+    // Resolve top application tags against this employee's department rules (with fallback to dominant historical tag)
+    const topApps = await Promise.all(
+      appGroups.map(async (g) => {
+        const ruleMatch = await categoryService.categorizeApp(
+          employee.organizationId,
+          g.appName,
+          null,
+          null,
+          resolvedDepartmentId,
+        );
+        return {
+          appName: g.appName,
+          productivityTag: ruleMatch?.tag ?? dominantProductivityTag(g),
+          seconds: g.durationSeconds,
+          productiveSeconds: g.productiveSeconds,
+          unproductiveSeconds: g.unproductiveSeconds,
+          neutralSeconds: g.neutralSeconds,
+          blacklistedSeconds: g.blacklistedSeconds,
+        };
+      }),
+    );
+
+    // Resolve top domain tags against this employee's department rules (with fallback to dominant historical tag)
+    const topDomains = await Promise.all(
+      domainGroups.map(async (g) => {
+        const ruleMatch = await categoryService.categorizeDomain(
+          employee.organizationId,
+          g.domain,
+          resolvedDepartmentId,
+        );
+        return {
+          domain: g.domain,
+          productivityTag: ruleMatch?.tag ?? dominantProductivityTag(g),
+          seconds: g.durationSeconds,
+          productiveSeconds: g.productiveSeconds,
+          unproductiveSeconds: g.unproductiveSeconds,
+          neutralSeconds: g.neutralSeconds,
+          blacklistedSeconds: g.blacklistedSeconds,
+        };
+      }),
+    );
+
     return {
       employee,
       period: { start, end },
       totals: { ...totals, productivityPercent: productivityPercent(totals) },
       timeline,
-      topApps: appGroups.map((g) => ({
-        appName: g.appName,
-        productivityTag: dominantProductivityTag(g),
-        seconds: g.durationSeconds,
-        productiveSeconds: g.productiveSeconds,
-        unproductiveSeconds: g.unproductiveSeconds,
-        neutralSeconds: g.neutralSeconds,
-        blacklistedSeconds: g.blacklistedSeconds,
-      })),
-      topDomains: domainGroups.map((g) => ({
-        domain: g.domain,
-        productivityTag: dominantProductivityTag(g),
-        seconds: g.durationSeconds,
-        productiveSeconds: g.productiveSeconds,
-        unproductiveSeconds: g.unproductiveSeconds,
-        neutralSeconds: g.neutralSeconds,
-        blacklistedSeconds: g.blacklistedSeconds,
-      })),
+      topApps,
+      topDomains,
       activityMetrics,
       attendance: attendanceSessions,
       attendanceDays: this.summarizeAttendance(
@@ -1179,6 +1239,160 @@ export class ReportService {
         lastSeenByDevice,
         Date.now(),
       ),
+    };
+  }
+
+  /**
+   * Department performance aggregate: summary metrics, productivity mix, top apps/domains,
+   * and member breakdown across all employees in a department.
+   */
+  async getDepartmentDetail(departmentId: string, startDate?: string, endDate?: string) {
+    const dept = await prisma.department.findUnique({
+      where: { id: departmentId },
+      include: {
+        organization: { select: { id: true, name: true } },
+        employees: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            status: true,
+            department: true,
+            devices: { select: { id: true, deviceName: true, lastSeen: true, agentVersion: true } },
+          },
+          orderBy: { name: "asc" },
+        },
+      },
+    });
+
+    if (!dept) throw { statusCode: 404, message: "Department not found" };
+
+    const { start, end } = resolveRange(startDate, endDate);
+    const allDeviceIds = dept.employees.flatMap((e) => e.devices.map((d) => d.id));
+    const employeeIds = dept.employees.map((e) => e.id);
+
+    if (allDeviceIds.length === 0 || employeeIds.length === 0) {
+      return {
+        department: { id: dept.id, name: dept.name, description: dept.description },
+        organization: dept.organization,
+        period: { start, end },
+        headcount: dept.employees.length,
+        totals: { ...emptyTotals(), productivityPercent: 0 },
+        topApps: [],
+        topDomains: [],
+        activityMetrics: {
+          keyCount: 0,
+          mouseCount: 0,
+          mouseLeftKeyCount: 0,
+          mouseRightKeyCount: 0,
+          mouseMiddleKeyCount: 0,
+          mouseOtherKeyCount: 0,
+        },
+        members: dept.employees.map((e) => ({
+          employee: e,
+          deviceCount: e.devices.length,
+          totals: { ...emptyTotals(), productivityPercent: 0 },
+        })),
+      };
+    }
+
+    const [totalsByEmployee, appGroups, domainGroups, activityMetrics] = await Promise.all([
+      this.totalsByEmployee(start, end, employeeIds),
+      this.getApplicationGroups(employeeIds, allDeviceIds, start, end),
+      this.getBrowserDomainGroups(employeeIds, allDeviceIds, start, end),
+      this.getActivityMetrics(employeeIds, allDeviceIds, start, end),
+    ]);
+
+    let totalActive = 0;
+    let totalIdle = 0;
+    let totalProd = 0;
+    let totalUnprod = 0;
+    let totalNeut = 0;
+    let totalBlack = 0;
+
+    const members = dept.employees.map((e) => {
+      const empTotals = totalsByEmployee.get(e.id) ?? emptyTotals();
+      totalActive += empTotals.activeSeconds;
+      totalIdle += empTotals.idleSeconds;
+      totalProd += empTotals.productiveSeconds;
+      totalUnprod += empTotals.unproductiveSeconds;
+      totalNeut += empTotals.neutralSeconds;
+      totalBlack += empTotals.blacklistedSeconds;
+
+      return {
+        employee: e,
+        deviceCount: e.devices.length,
+        totals: { ...empTotals, productivityPercent: productivityPercent(empTotals) },
+      };
+    });
+
+    const deptTotals = {
+      activeSeconds: totalActive,
+      idleSeconds: totalIdle,
+      productiveSeconds: totalProd,
+      unproductiveSeconds: totalUnprod,
+      neutralSeconds: totalNeut,
+      blacklistedSeconds: totalBlack,
+      productivityPercent: productivityPercent({
+        activeSeconds: totalActive,
+        idleSeconds: totalIdle,
+        productiveSeconds: totalProd,
+        unproductiveSeconds: totalUnprod,
+        neutralSeconds: totalNeut,
+        blacklistedSeconds: totalBlack,
+      }),
+    };
+
+    const topApps = await Promise.all(
+      appGroups.slice(0, 10).map(async (g) => {
+        const ruleMatch = await categoryService.categorizeApp(
+          dept.organizationId,
+          g.appName,
+          null,
+          null,
+          dept.id,
+        );
+        return {
+          appName: g.appName,
+          productivityTag: ruleMatch?.tag ?? dominantProductivityTag(g),
+          seconds: g.durationSeconds,
+          productiveSeconds: g.productiveSeconds,
+          unproductiveSeconds: g.unproductiveSeconds,
+          neutralSeconds: g.neutralSeconds,
+          blacklistedSeconds: g.blacklistedSeconds,
+        };
+      }),
+    );
+
+    const topDomains = await Promise.all(
+      domainGroups.slice(0, 10).map(async (g) => {
+        const ruleMatch = await categoryService.categorizeDomain(
+          dept.organizationId,
+          g.domain,
+          dept.id,
+        );
+        return {
+          domain: g.domain,
+          productivityTag: ruleMatch?.tag ?? dominantProductivityTag(g),
+          seconds: g.durationSeconds,
+          productiveSeconds: g.productiveSeconds,
+          unproductiveSeconds: g.unproductiveSeconds,
+          neutralSeconds: g.neutralSeconds,
+          blacklistedSeconds: g.blacklistedSeconds,
+        };
+      }),
+    );
+
+    return {
+      department: { id: dept.id, name: dept.name, description: dept.description },
+      organization: dept.organization,
+      period: { start, end },
+      headcount: dept.employees.length,
+      totals: deptTotals,
+      topApps,
+      topDomains,
+      activityMetrics,
+      members,
     };
   }
 

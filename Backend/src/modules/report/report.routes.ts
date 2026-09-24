@@ -36,6 +36,27 @@ router.get(
   reportController.getEmployeePdfReport,
 );
 
+router.get(
+  "/departments/:departmentId",
+  requireRole("super_admin", "manager", "auditor"),
+  auditLogger("VIEW_DEPARTMENT_DETAIL_REPORT", (req) => `Department:${req.params.departmentId}`),
+  reportController.getDepartmentDetail,
+);
+
+router.get(
+  "/departments/:departmentId/pdf",
+  requireRole("super_admin", "manager", "auditor"),
+  auditLogger("EXPORT_DEPARTMENT_PDF_REPORT", (req) => `Department:${req.params.departmentId}`),
+  reportController.getDepartmentPdfReport,
+);
+
+router.get(
+  "/departments/:departmentId/batch-zip",
+  requireRole("super_admin", "manager", "auditor"),
+  auditLogger("EXPORT_DEPARTMENT_BATCH_ZIP", (req) => `Department:${req.params.departmentId}`),
+  reportController.getDepartmentBatchZipReport,
+);
+
 // Paged timeline behind the detail screen's scroll window. Separate from the detail endpoint so
 // scrolling fetches rows only, not the totals and leaderboards that never change between pages.
 router.get(

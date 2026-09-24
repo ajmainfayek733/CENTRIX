@@ -403,6 +403,11 @@ export default async function EmployeeDetailPage({
                           )}
                         </div>
                       </div>
+                      <div className="shrink-0 text-right">
+                        <span className="tnum block text-[13.5px] font-semibold text-text-primary">
+                          {formatDuration(site.seconds)}
+                        </span>
+                      </div>
                     </li>
                   ))}
                 </ul>

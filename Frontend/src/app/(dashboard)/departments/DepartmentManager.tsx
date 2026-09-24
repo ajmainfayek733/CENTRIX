@@ -1,8 +1,28 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Plus, Trash2, UserPlus, UserMinus, Layers, X, Loader2, Info, AlertCircle } from "lucide-react";
-import { Card, Button, Badge, TableWrap, TABLE_CLASS, Th, Td, EmptyState, TagBadge } from "@/components/ui";
+import {
+  Plus,
+  Trash2,
+  UserPlus,
+  UserMinus,
+  Layers,
+  X,
+  Loader2,
+  Info,
+  AlertCircle,
+} from "lucide-react";
+import {
+  Card,
+  Button,
+  Badge,
+  TableWrap,
+  TABLE_CLASS,
+  Th,
+  Td,
+  EmptyState,
+  TagBadge,
+} from "@/components/ui";
 import type {
   DepartmentSummary,
   RosterEmployee,
@@ -17,6 +37,9 @@ import {
   upsertDepartmentCategory,
   deleteDepartmentCategory,
 } from "./actions";
+
+const SAVE_PRIMARY_CLASS =
+  "border border-brand-strong bg-brand-strong text-brand-contrast shadow-none hover:bg-brand hover:text-brand-contrast";
 
 const TAGS: ProductivityTag[] = ["Productive", "Neutral", "Unproductive", "Blacklisted"];
 
@@ -88,7 +111,12 @@ export function DepartmentManager({
         let friendly = "Could not create the department. Please verify the name and try again.";
         if (raw.includes("already exists")) {
           friendly = `A department named "${trimmedName}" already exists in your organization. Please use a distinct name.`;
-        } else if (raw && !raw.includes("Cannot") && !raw.includes("<") && !raw.includes("Endpoint")) {
+        } else if (
+          raw &&
+          !raw.includes("Cannot") &&
+          !raw.includes("<") &&
+          !raw.includes("Endpoint")
+        ) {
           friendly = raw;
         }
         setStatusMessage({
@@ -120,7 +148,12 @@ export function DepartmentManager({
         let friendly = "Could not delete this department. Please refresh the page and try again.";
         if (raw.includes("not found")) {
           friendly = "This department was already removed or does not exist.";
-        } else if (raw && !raw.includes("Cannot") && !raw.includes("<") && !raw.includes("Endpoint")) {
+        } else if (
+          raw &&
+          !raw.includes("Cannot") &&
+          !raw.includes("<") &&
+          !raw.includes("Endpoint")
+        ) {
           friendly = raw;
         }
         setStatusMessage({
@@ -146,10 +179,17 @@ export function DepartmentManager({
         });
       } catch (err: unknown) {
         const raw = err instanceof Error ? err.message : "";
-        let friendly = "Could not assign employees to this department. Please refresh and try again.";
+        let friendly =
+          "Could not assign employees to this department. Please refresh and try again.";
         if (raw.includes("No matching employees")) {
-          friendly = "The selected employees were not found in this organization. Please refresh the page.";
-        } else if (raw && !raw.includes("Cannot") && !raw.includes("<") && !raw.includes("Endpoint")) {
+          friendly =
+            "The selected employees were not found in this organization. Please refresh the page.";
+        } else if (
+          raw &&
+          !raw.includes("Cannot") &&
+          !raw.includes("<") &&
+          !raw.includes("Endpoint")
+        ) {
           friendly = raw;
         }
         setStatusMessage({
@@ -211,9 +251,18 @@ export function DepartmentManager({
         let friendly = `Unable to save rule for "${trimmedPattern}". Please check the domain/app format and try again.`;
         if (raw.includes("Department not found")) {
           friendly = "The department was not found. Please refresh the page.";
-        } else if (raw.includes("permission") || raw.includes("Unauthorized") || raw.includes("Forbidden")) {
+        } else if (
+          raw.includes("permission") ||
+          raw.includes("Unauthorized") ||
+          raw.includes("Forbidden")
+        ) {
           friendly = "You need administrator permissions to update department productivity rules.";
-        } else if (raw && !raw.includes("Cannot") && !raw.includes("<") && !raw.includes("Endpoint")) {
+        } else if (
+          raw &&
+          !raw.includes("Cannot") &&
+          !raw.includes("<") &&
+          !raw.includes("Endpoint")
+        ) {
           friendly = raw;
         }
         setStatusMessage({
@@ -281,7 +330,9 @@ export function DepartmentManager({
             ) : null}
             <div>
               <p className="font-medium text-[13px]">
-                {statusMessage.type === "success" ? "Action Completed" : "Notice for Organization Administrator"}
+                {statusMessage.type === "success"
+                  ? "Action Completed"
+                  : "Notice for Organization Administrator"}
               </p>
               <p className="text-xs mt-0.5 opacity-90 leading-relaxed">{statusMessage.text}</p>
             </div>
@@ -309,10 +360,14 @@ export function DepartmentManager({
         {isAdmin && (
           <Button
             type="button"
-            variant={showCreateForm ? "secondary" : "primary"}
+            variant="ghost"
             size="sm"
             onClick={() => setShowCreateForm(!showCreateForm)}
-            className="inline-flex items-center gap-1.5"
+            className={`inline-flex items-center gap-1.5 ${
+              showCreateForm
+                ? "border border-border bg-surface text-text-primary hover:bg-surface-strong"
+                : SAVE_PRIMARY_CLASS
+            }`}
           >
             {showCreateForm ? <X className="size-3.5" /> : <Plus className="size-3.5" />}
             <span>{showCreateForm ? "Cancel" : "New Department"}</span>
@@ -365,9 +420,10 @@ export function DepartmentManager({
               </Button>
               <Button
                 type="submit"
-                variant="primary"
+                variant="ghost"
                 size="sm"
                 disabled={pending || !newDeptName.trim()}
+                className={SAVE_PRIMARY_CLASS}
               >
                 {pending ? <Loader2 className="size-3.5 animate-spin" /> : "Save Department"}
               </Button>
@@ -483,11 +539,11 @@ export function DepartmentManager({
 
                     <Button
                       type="button"
-                      variant="primary"
+                      variant="ghost"
                       size="sm"
                       onClick={() => handleAddMembers(selectedDept.id)}
                       disabled={pending || selectedEmpIds.length === 0}
-                      className="text-xs"
+                      className={`text-xs ${SAVE_PRIMARY_CLASS}`}
                     >
                       {pending ? <Loader2 className="size-3.5 animate-spin" /> : "Assign Selected"}
                     </Button>
@@ -585,9 +641,19 @@ export function DepartmentManager({
               <div className="rounded-md border border-brand/20 bg-brand-soft/30 p-3 text-[12px] text-text-secondary flex gap-2.5">
                 <Info className="size-4 text-brand shrink-0 mt-0.5" />
                 <div className="space-y-1">
-                  <p className="font-medium text-text-primary">Department Rules Override Org-Wide Rules</p>
+                  <p className="font-medium text-text-primary">
+                    Department Rules Override Org-Wide Rules
+                  </p>
                   <p className="text-[11.5px] leading-relaxed">
-                    Rules configured here take precedence over organization-wide settings for all members of <strong>{selectedDept.name}</strong>. For example, if <code className="bg-surface-strong px-1 py-0.5 rounded text-[11px]">facebook.com</code> is marked <em>Unproductive</em> or <em>Blacklisted</em> org-wide, adding it as <em>Productive</em> here allows this department&apos;s team members to browse Facebook productively while preserving the default classification for everyone else in the organization.
+                    Rules configured here take precedence over organization-wide settings for all
+                    members of <strong>{selectedDept.name}</strong>. For example, if{" "}
+                    <code className="bg-surface-strong px-1 py-0.5 rounded text-[11px]">
+                      facebook.com
+                    </code>{" "}
+                    is marked <em>Unproductive</em> or <em>Blacklisted</em> org-wide, adding it as{" "}
+                    <em>Productive</em> here allows this department&apos;s team members to browse
+                    Facebook productively while preserving the default classification for everyone
+                    else in the organization.
                   </p>
                 </div>
               </div>
@@ -630,11 +696,11 @@ export function DepartmentManager({
 
                     <Button
                       type="button"
-                      variant="primary"
+                      variant="ghost"
                       size="sm"
                       onClick={() => handleAddRule(selectedDept.id)}
                       disabled={pending || !rulePattern.trim()}
-                      className="text-xs"
+                      className={`text-xs ${SAVE_PRIMARY_CLASS}`}
                     >
                       {pending ? <Loader2 className="size-3.5 animate-spin" /> : "Add Rule"}
                     </Button>

@@ -81,6 +81,75 @@ export class ReportController {
   }
 
   /**
+   * GET /v1/dashboard/reports/departments/:departmentId
+   */
+  async getDepartmentDetail(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate } = req.query;
+      const data = await reportService.getDepartmentDetail(
+        req.params.departmentId as string,
+        startDate as string | undefined,
+        endDate as string | undefined,
+      );
+      return res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /v1/dashboard/reports/departments/:departmentId/pdf
+   */
+  async getDepartmentPdfReport(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate } = req.query;
+      const data = await reportService.getDepartmentDetail(
+        req.params.departmentId as string,
+        startDate as string | undefined,
+        endDate as string | undefined,
+      );
+
+      const sanitizedName = data.department.name.replace(/[^a-z0-9_-]/gi, "_").toLowerCase();
+      const dateTag = (startDate as string) || new Date().toISOString().slice(0, 10);
+      const filename = `department_performance_${sanitizedName}_${dateTag}.pdf`;
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+
+      const { generateDepartmentReportPdf } = await import("./pdfReportService");
+      const pdfStream = generateDepartmentReportPdf(data as any);
+      pdfStream.pipe(res);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /v1/dashboard/reports/departments/:departmentId/batch-zip
+   */
+  async getDepartmentBatchZipReport(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate } = req.query;
+      const { generateDepartmentBatchZipBuffer } = await import("./pdfReportService");
+      const zipBuffer = await generateDepartmentBatchZipBuffer(
+        req.params.departmentId as string,
+        startDate as string | undefined,
+        endDate as string | undefined,
+      );
+
+      const dateTag = (startDate as string) || new Date().toISOString().slice(0, 10);
+      const filename = `department_bundle_${req.params.departmentId.slice(0, 8)}_${dateTag}.zip`;
+
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.setHeader("Content-Length", zipBuffer.length.toString());
+      res.send(zipBuffer);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * GET /v1/dashboard/reports/employees/:employeeId/activity
    *
    * The paging endpoint behind the timeline's scroll window. `cursor` is opaque to the client -

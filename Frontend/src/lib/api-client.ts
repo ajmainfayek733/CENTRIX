@@ -1,4 +1,4 @@
-import { cookies } from 'next/headers';
+import { cookies } from "next/headers";
 
 /**
  * Server-side client for the Express monitoring API.
@@ -9,14 +9,14 @@ import { cookies } from 'next/headers';
  * XSS exposure the httpOnly cookie exists to close (Docs/frontend/session-and-auth.md).
  */
 
-export const SESSION_COOKIE = 'session';
+export const SESSION_COOKIE = "session";
 
 const API_URL = process.env.MONITORING_API_URL;
 
 export class ApiError extends Error {
   constructor(
     message: string,
-    public status: number
+    public status: number,
   ) {
     super(message);
   }
@@ -37,10 +37,10 @@ export class ApiUnavailableError extends Error {
   constructor(
     message: string,
     /** Underlying failure, kept for the server log. Never shown to the user. */
-    public readonly reason?: unknown
+    public readonly reason?: unknown,
   ) {
     super(message);
-    this.name = 'ApiUnavailableError';
+    this.name = "ApiUnavailableError";
   }
 }
 
@@ -61,7 +61,7 @@ export async function serverFetch(path: string, init?: RequestInit): Promise<Res
       },
       // Not optional. Next caches fetch aggressively by default, and a cached read would show a
       // manager yesterday's "who is online now" - the one thing this dashboard exists to answer.
-      cache: 'no-store',
+      cache: "no-store",
     });
   } catch (error) {
     // fetch rejects only for transport-level failures - the API being down, unresolvable or
@@ -79,10 +79,13 @@ export async function serverFetch(path: string, init?: RequestInit): Promise<Res
  */
 function parseErrorMessage(text: string, status: number, statusText: string): string {
   if (!text) {
-    if (status === 404) return "The requested item or page could not be found. Please refresh and try again.";
+    if (status === 404)
+      return "The requested item or page could not be found. Please refresh and try again.";
     if (status === 401) return "Your session has expired. Please log in again to continue.";
-    if (status === 403) return "You do not have permission to perform this action. Administrator rights required.";
-    if (status >= 500) return "The server encountered an issue processing your request. Please try again in a moment.";
+    if (status === 403)
+      return "You do not have permission to perform this action. Administrator rights required.";
+    if (status >= 500)
+      return "The server encountered an issue processing your request. Please try again in a moment.";
     return `The request could not be completed (${statusText || `code ${status}`}).`;
   }
 
@@ -124,7 +127,11 @@ function humanizeMessage(msg: string): string {
   if (!msg) return "An unexpected error occurred. Please try again.";
 
   // Clean out technical jargon so non-technical org admins get actionable messages
-  if (msg.includes("Cannot POST") || msg.includes("Cannot GET") || msg.includes("Endpoint not found")) {
+  if (
+    msg.includes("Cannot POST") ||
+    msg.includes("Cannot GET") ||
+    msg.includes("Endpoint not found")
+  ) {
     return "The requested action or server endpoint could not be found. Please refresh the page and try again.";
   }
   if (msg.includes("Unauthorized") || msg.includes("Session missing") || msg.includes("expired")) {
@@ -133,7 +140,11 @@ function humanizeMessage(msg: string): string {
   if (msg.includes("Forbidden") || msg.includes("permission") || msg.includes("requireRole")) {
     return "You do not have administrative permission to modify these settings.";
   }
-  if (msg.includes("PrismaClient") || msg.includes("database") || msg.includes("Unique constraint")) {
+  if (
+    msg.includes("PrismaClient") ||
+    msg.includes("database") ||
+    msg.includes("Unique constraint")
+  ) {
     return "A record with this information already exists, or a database conflict occurred. Please check your inputs.";
   }
   if (msg.includes("JSON at position") || msg.includes("Expected property name")) {
@@ -152,11 +163,14 @@ export async function apiGet<T>(path: string): Promise<T> {
     if (isUnavailableStatus(response.status)) {
       throw new ApiUnavailableError(
         `The monitoring service returned ${response.status} for ${path}`,
-        body
+        body,
       );
     }
 
-    throw new ApiError(parseErrorMessage(body, response.status, response.statusText), response.status);
+    throw new ApiError(
+      parseErrorMessage(body, response.status, response.statusText),
+      response.status,
+    );
   }
 
   const json = (await response.json()) as { data: T };
@@ -166,7 +180,7 @@ export async function apiGet<T>(path: string): Promise<T> {
 export async function apiSend<T>(path: string, method: string, body?: unknown): Promise<T> {
   const response = await serverFetch(path, {
     method,
-    headers: { 'content-type': 'application/json' },
+    headers: { "content-type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 
@@ -176,11 +190,14 @@ export async function apiSend<T>(path: string, method: string, body?: unknown): 
     if (isUnavailableStatus(response.status)) {
       throw new ApiUnavailableError(
         `The monitoring service returned ${response.status} for ${path}`,
-        text
+        text,
       );
     }
 
-    throw new ApiError(parseErrorMessage(text, response.status, response.statusText), response.status);
+    throw new ApiError(
+      parseErrorMessage(text, response.status, response.statusText),
+      response.status,
+    );
   }
 
   const json = (await response.json()) as { data: T };
