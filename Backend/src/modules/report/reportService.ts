@@ -16,14 +16,16 @@ import {
  *
  * TWO KINDS OF QUERY, AND THEY MUST NOT BE CONFUSED:
  *
- *   Aggregates (overview, roster, employee totals) read daily_activity_rollups - one row per
- *   employee per day, maintained at ingest time. They never touch the log tables. This is the
- *   change that lets the system go from 30 devices to 100+: summing a month of ten-second app
- *   switches on every dashboard load is millions of rows re-scanned per viewer, and it degrades
- *   with history rather than with headcount, so it gets worse forever.
+ *   Aggregates (overview, roster, team attendance weekly series, employee totals) read
+ *   daily_activity_rollups - one row per employee per day, maintained at ingest time. They never
+ *   touch the log tables. This is the change that lets the system go from 30 devices to 100+:
+ *   summing a month of ten-second app switches on every dashboard load is millions of rows
+ *   re-scanned per viewer, and it degrades with history rather than with headcount, so it gets
+ *   worse forever.
  *
  *   Logs (timeline, alerts, USB) read the raw tables, but only ever one bounded page at a time
- *   through a keyset cursor. No endpoint here returns "everything in the range".
+ *   through a keyset cursor. No endpoint here returns "everything in the range". Team attendance
+ *   reads today-only attendance_sessions - bounded by headcount, not by history.
  */
 
 /**
@@ -165,6 +167,11 @@ export function isBrowserApplication(appName: string | null | undefined): boolea
 
 /** How many apps/domains the "top" lists show. Not a page - a fixed leaderboard. */
 const TOP_LIST_SIZE = 15;
+
+/** Rolling window for the team attendance weekly active-time chart. */
+const TEAM_ATTENDANCE_WEEK_DAYS = 7;
+
+const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
 function startOfUtcDay(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
@@ -983,6 +990,161 @@ export class ReportService {
         ).size,
       },
       totals: { ...team, productivityPercent: productivityPercent(team) },
+    };
+  }
+
+  /**
+   * Team attendance screen: today's check-in log plus the last seven days of active time.
+   *
+   * The weekly series reads `daily_activity_rollups` (one row per employee per day). Today's log
+   * folds that day's attendance sessions the same way employee detail does, keyed by employee
+   * through their devices - not by Windows SID, so one person on two machines is one row.
+   */
+  async getTeamAttendance() {
+    const now = Date.now();
+    const today = startOfUtcDay(new Date());
+    const todayKey = workDateKey(today);
+    const weekStart = new Date(today.getTime() - (TEAM_ATTENDANCE_WEEK_DAYS - 1) * DAY_MS);
+
+    const [employees, weekRollups, todayRollups, todaysSessions] = await Promise.all([
+      prisma.employee.findMany({
+        where: { status: { not: "placeholder" } },
+        orderBy: { name: "asc" },
+        select: {
+          id: true,
+          name: true,
+          department: true,
+          devices: { select: { id: true, lastSeen: true } },
+        },
+      }),
+      prisma.dailyActivityRollup.groupBy({
+        by: ["workDate"],
+        where: { workDate: { gte: weekStart, lte: today } },
+        _sum: { activeSeconds: true },
+      }),
+      prisma.dailyActivityRollup.groupBy({
+        by: ["employeeId"],
+        where: { workDate: today },
+        _sum: { activeSeconds: true, idleSeconds: true },
+        _max: { lastActivityAt: true },
+      }),
+      prisma.attendanceSession.findMany({
+        where: { workDate: today },
+        select: {
+          loginTime: true,
+          logoutTime: true,
+          logoutSource: true,
+          workDate: true,
+          deviceId: true,
+        },
+      }),
+    ]);
+
+    const employeeByDevice = new Map<string, string>();
+    for (const employee of employees) {
+      for (const device of employee.devices) {
+        employeeByDevice.set(device.id, employee.id);
+      }
+    }
+
+    const sessionsByEmployee = new Map<string, typeof todaysSessions>();
+    for (const session of todaysSessions) {
+      const employeeId = employeeByDevice.get(session.deviceId);
+      if (!employeeId) continue;
+      const rows = sessionsByEmployee.get(employeeId) ?? [];
+      rows.push(session);
+      sessionsByEmployee.set(employeeId, rows);
+    }
+
+    const todayTotalsByEmployee = new Map(
+      todayRollups.map((row) => [
+        row.employeeId,
+        {
+          activeSeconds: row._sum.activeSeconds ?? 0,
+          idleSeconds: row._sum.idleSeconds ?? 0,
+          lastActivityAt: row._max.lastActivityAt ?? null,
+        },
+      ]),
+    );
+
+    const log = employees.map((employee) => {
+      const sessions = sessionsByEmployee.get(employee.id) ?? [];
+      const dayTotals = todayTotalsByEmployee.get(employee.id);
+      const dailyTotals = new Map(
+        dayTotals ? [[todayKey, dayTotals]] : [],
+      );
+      const deviceLastSeen = new Map(
+        employee.devices.map((device) => [device.id, device.lastSeen]),
+      );
+      const summarized = this.summarizeAttendance(sessions, dailyTotals, deviceLastSeen, now)[0];
+      const isOnline = employee.devices.some((device) => isLive(device.lastSeen, now));
+
+      if (!summarized) {
+        return {
+          employeeId: employee.id,
+          name: employee.name,
+          department: employee.department,
+          isOnline,
+          firstLogin: null,
+          lastLogout: null,
+          status: "absent" as const,
+          logoutEstimated: false,
+          sessionSeconds: 0,
+          activeSeconds: 0,
+          idleSeconds: 0,
+        };
+      }
+
+      return {
+        employeeId: employee.id,
+        name: employee.name,
+        department: employee.department,
+        isOnline,
+        firstLogin: summarized.firstLogin,
+        lastLogout: summarized.lastLogout,
+        status: summarized.status,
+        logoutEstimated: summarized.logoutEstimated,
+        sessionSeconds: summarized.sessionSeconds,
+        activeSeconds: summarized.activeSeconds,
+        idleSeconds: summarized.idleSeconds,
+      };
+    });
+
+    const present = log.filter((row) => row.status === "present").length;
+    const absent = log.filter((row) => row.status === "absent").length;
+    const checkedIn = log.filter((row) => row.status !== "absent").length;
+    const teamActiveSeconds = todayRollups.reduce(
+      (sum, row) => sum + (row._sum.activeSeconds ?? 0),
+      0,
+    );
+    const teamIdleSeconds = todayRollups.reduce((sum, row) => sum + (row._sum.idleSeconds ?? 0), 0);
+    const activeHeadcount = log.filter((row) => row.activeSeconds + row.idleSeconds > 0).length;
+
+    const activeByDate = new Map(
+      weekRollups.map((row) => [workDateKey(row.workDate), row._sum.activeSeconds ?? 0]),
+    );
+    const weeklyActive: Array<{ workDate: string; label: string; activeSeconds: number }> = [];
+    for (let offset = 0; offset < TEAM_ATTENDANCE_WEEK_DAYS; offset += 1) {
+      const day = new Date(weekStart.getTime() + offset * DAY_MS);
+      const workDate = workDateKey(day);
+      weeklyActive.push({
+        workDate,
+        label: WEEKDAY_LABELS[day.getUTCDay()],
+        activeSeconds: activeByDate.get(workDate) ?? 0,
+      });
+    }
+
+    return {
+      workDate: todayKey,
+      headcount: employees.length,
+      present,
+      absent,
+      checkedIn,
+      teamActiveSeconds,
+      teamIdleSeconds,
+      avgIdleSeconds: activeHeadcount > 0 ? Math.round(teamIdleSeconds / activeHeadcount) : 0,
+      weeklyActive,
+      log,
     };
   }
 

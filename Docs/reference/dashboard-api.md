@@ -86,7 +86,12 @@ around it. It also emits `device:deactivated` so the agent stops pushing without
 |---|---|---|---|---|
 | GET | `/overview` | A M U | Rollup | `VIEW_OVERVIEW` |
 | GET | `/roster` | A M U | Rollup | `VIEW_EMPLOYEE_ROSTER` |
+| GET | `/attendance` | A M U | Rollup + today | `VIEW_TEAM_ATTENDANCE` |
 | GET | `/employees/:employeeId` | A M U | Rollup + page | `VIEW_EMPLOYEE_DETAIL_REPORT` |
+| GET | `/employees/:employeeId/pdf` | A M U | Same as detail | `EXPORT_EMPLOYEE_PDF_REPORT` |
+| GET | `/departments/:departmentId` | A M U | Rollup + sessions | `VIEW_DEPARTMENT_DETAIL_REPORT` |
+| GET | `/departments/:departmentId/pdf` | A M U | Same as detail | `EXPORT_DEPARTMENT_PDF_REPORT` |
+| GET | `/departments/:departmentId/batch-zip` | A M U | Detail + member PDFs | `EXPORT_DEPARTMENT_BATCH_ZIP` |
 | GET | `/employees/:employeeId/activity` | A M U | Keyset | `VIEW_EMPLOYEE_ACTIVITY_LOG` |
 | GET | `/alerts` | A M U | Keyset | `VIEW_ALERTS` |
 | GET | `/usb-events` | A M U | Keyset | `VIEW_USB_EVENTS` |
@@ -131,6 +136,9 @@ Not part of this API - same-origin Next.js handlers that attach the session serv
 | `GET /api/logs/[feed]` | `activity`, `alerts`, `usb`, `screenshots` - **allowlisted**, 404 otherwise |
 | `POST /api/realtime/ticket` | `/v1/dashboard/auth/realtime-ticket` |
 | `GET /api/screenshots/[deviceId]/[file]` | The image bytes |
+| `GET /api/reports/employees/[employeeId]/pdf` | Employee PDF stream |
+| `GET /api/reports/departments/[departmentId]/pdf` | Department performance PDF |
+| `GET /api/reports/departments/[departmentId]/batch-zip` | Department PDF bundle |
 
 `/api/logs/[feed]` forwards only `cursor`, `limit`, `startDate`, `endDate`, `includeResolved`;
 anything else is dropped. It answers **503** when the monitoring service is unreachable and 502 for

@@ -124,7 +124,7 @@ Reads are audited, not just writes - who looked at whom is the point of the trai
 views are audited **individually**, which is why the image has its own route rather than being
 served from the index.
 
-Actions in use: `VIEW_OVERVIEW`, `VIEW_EMPLOYEE_ROSTER`, `VIEW_EMPLOYEE_DETAIL_REPORT`,
+Actions in use: `VIEW_OVERVIEW`, `VIEW_EMPLOYEE_ROSTER`, `VIEW_TEAM_ATTENDANCE`, `VIEW_EMPLOYEE_DETAIL_REPORT`,
 `VIEW_EMPLOYEE_ACTIVITY_LOG`, `VIEW_ALERTS`, `VIEW_USB_EVENTS`, `VIEW_SCREENSHOT_INDEX`,
 `VIEW_SCREENSHOT`, `VIEW_DEVICE_INVENTORY`, `ASSIGN_DEVICE`, `SET_DEVICE_STATUS`,
 `VIEW_ALL_EMPLOYEES`, `VIEW_EMPLOYEE_DETAIL`, `CREATE_EMPLOYEE`, `BULK_CREATE_EMPLOYEES`,

@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { isoDate } from "@/lib/format";
 
 const DAY_MS = 86_400_000;
@@ -35,18 +35,22 @@ export function OverviewRangeSelect({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   function onChange(value: string) {
     const range = RANGES.find((item) => item.value === value) ?? RANGES[0];
     const dates = rangeDates(range.days);
-    router.push(`${pathname}?startDate=${dates.startDate}&endDate=${dates.endDate}`);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("startDate", dates.startDate);
+    params.set("endDate", dates.endDate);
+    router.push(`${pathname}?${params}`);
   }
 
   return (
     <label className="flex items-center gap-2 text-[12.5px] text-text-secondary">
-      <span className="sr-only">Overview date range</span>
+      <span className="sr-only">Date range</span>
       <select
-        aria-label="Overview date range"
+        aria-label="Date range"
         value={selectedRange(startDate, endDate)}
         onChange={(event) => onChange(event.target.value)}
         className="glass-control rounded-md px-2.5 py-1.5 text-[12.5px] text-text-primary outline-none transition-colors focus:border-brand"

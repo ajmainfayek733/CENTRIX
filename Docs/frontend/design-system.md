@@ -168,32 +168,23 @@ keep - and it would be wrong the moment two people looked at the same alert. Whe
 down the panel says so rather than showing a zero, which would read as "nothing is happening" at
 exactly the moment it cannot know.
 
-### Navigation is nine items, four of them templates
+### Navigation is nine items; Attendance is live
 
 The rail follows the blueprint: Overview, Employees, Departments, Attendance, Performance,
 Devices, Alerts, Reports, Settings.
 
-Four of those have no endpoint behind them. `Backend/src/modules/report/` exposes `overview`,
-`roster`, `employees/:id`, `employees/:id/activity`, `alerts`, `usb-events` and `screenshots`,
-and nothing else. Departments, Attendance, Performance and Reports are therefore **laid out but
-not connected**, and they are marked as such in two places:
+Attendance is live. It reads `GET /attendance` through `apiGet`: today's check-in log (first
+login and present / signed-out / unknown / absent, using the same session-folding rules as
+employee detail) and the last seven days of team active hours from the daily rollup.
 
-- a `WIP` chip beside the label in the rail, so the state is visible before the click;
-- a `TemplateNotice` banner at the top of the screen, above the content.
+Performance is live. It reads `GET /overview` and `GET /roster` through `apiGet` - the same
+rollups Overview and Employees use - so team productive percent, idle time, and per-person
+ranking cannot disagree with those screens. Score is productive share of active time, not a
+star rating: no endpoint produces a judgement score.
 
-Every placeholder on those screens names `Department A` / `Employee A`, never a real person or
-team. These screens carry attendance and productivity readings, and a screenshot of one is
-exactly the kind of artefact that ends up in a conversation about a real employee - so no
-invented reading is ever attached to a real name. Status cells read `No data` rather than
-`Present` or `Absent`, because asserting either with nothing behind it would be inventing an
-attendance record.
-
-The Reports screen's download buttons are genuinely `disabled` with a title explaining why. A
-button that looks live and silently does nothing is worse here than elsewhere: someone will
-click it, assume a file is coming, and act on its absence.
-
-When an endpoint lands, the screen becomes an async server component reading through `apiGet`,
-and its `PLACEHOLDER_*` constant and `TemplateNotice` are deleted in the same commit.
+When an endpoint lands for a remaining template, the screen becomes an async server component
+reading through `apiGet`, and its `PLACEHOLDER_*` constant and `TemplateNotice` are deleted in
+the same commit.
 
 ---
 

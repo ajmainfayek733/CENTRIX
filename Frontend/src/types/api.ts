@@ -141,6 +141,40 @@ export interface AttendanceDay {
   logoutEstimated: boolean;
 }
 
+/**
+ * One person on the team attendance log for a single work date.
+ *
+ * `absent` is a team-screen status only: no attendance session and no rollup activity that day.
+ * Per-employee reports never emit it, because those screens only list days that had a record.
+ */
+export interface TeamAttendanceLogRow {
+  employeeId: string;
+  name: string;
+  department: string | null;
+  isOnline: boolean;
+  firstLogin: string | null;
+  lastLogout: string | null;
+  status: AttendanceDay["status"] | "absent";
+  logoutEstimated: boolean;
+  sessionSeconds: number;
+  activeSeconds: number;
+  idleSeconds: number;
+}
+
+/** GET /v1/dashboard/reports/attendance */
+export interface TeamAttendance {
+  workDate: string;
+  headcount: number;
+  present: number;
+  absent: number;
+  checkedIn: number;
+  teamActiveSeconds: number;
+  teamIdleSeconds: number;
+  avgIdleSeconds: number;
+  weeklyActive: Array<{ workDate: string; label: string; activeSeconds: number }>;
+  log: TeamAttendanceLogRow[];
+}
+
 export interface EmployeeDetail {
   employee: {
     id: string;
@@ -161,32 +195,10 @@ export interface EmployeeDetail {
    * the percentages describe the whole period rather than whatever rows happen to be loaded.
    */
   timeline: LogPageOf<TimelineRow>;
-  topApps: Array<{
-    appName: string | null;
-    productivityTag: ProductivityTag;
-    seconds: number;
-    productiveSeconds: number;
-    unproductiveSeconds: number;
-    neutralSeconds: number;
-    blacklistedSeconds: number;
-  }>;
-  topDomains: Array<{
-    domain: string;
-    productivityTag: ProductivityTag;
-    seconds: number;
-    productiveSeconds: number;
-    unproductiveSeconds: number;
-    neutralSeconds: number;
-    blacklistedSeconds: number;
-  }>;
-  activityMetrics: {
-    keyCount: number;
-    mouseCount: number;
-    mouseLeftKeyCount: number;
-    mouseRightKeyCount: number;
-    mouseMiddleKeyCount: number;
-    mouseOtherKeyCount: number;
-  };
+  topApps: TopAppRow[];
+  topDomains: TopDomainRow[];
+  activityMetrics: ActivityMetrics;
+  workplaceIntelligence?: WorkplaceIntelligence;
   attendance: AttendanceRow[];
   attendanceDays: AttendanceDay[];
   weeklyAttendanceDays?: AttendanceDay[];
@@ -282,6 +294,89 @@ export interface CategoryRow {
   target: CategoryTarget;
   tag: ProductivityTag;
   isBlacklisted: boolean;
+}
+
+export interface ActivityMetrics {
+  keyCount: number;
+  mouseCount: number;
+  mouseLeftKeyCount: number;
+  mouseRightKeyCount: number;
+  mouseMiddleKeyCount: number;
+  mouseOtherKeyCount: number;
+}
+
+export interface UsageTotals {
+  productivityTag: ProductivityTag;
+  seconds: number;
+  productiveSeconds: number;
+  unproductiveSeconds: number;
+  neutralSeconds: number;
+  blacklistedSeconds: number;
+}
+
+export interface TopAppRow extends UsageTotals {
+  appName: string | null;
+}
+
+export interface TopDomainRow extends UsageTotals {
+  domain: string;
+}
+
+export interface WorkplaceIntelligence {
+  deepWork: {
+    totalSeconds: number;
+    sessionCount: number;
+    scorePercent: number;
+    averageSessionMinutes: number;
+  };
+  contextSwitching: {
+    totalSwitches: number;
+    switchesPerHour: number;
+    state: "Low Friction" | "Moderate Switching" | "High Fragmentation";
+    description: string;
+  };
+  collaborationVsMaker: {
+    collaborationSeconds: number;
+    makerSeconds: number;
+    collaborationPercent: number;
+    makerPercent: number;
+    ratio: string;
+  };
+  burnoutRisk: {
+    score: number;
+    level: "Low Risk" | "Moderate Risk" | "High Risk";
+    overtimeDays: number;
+    lateNightSessionsCount: number;
+    consecutiveOvertimeStreak: number;
+    narrative: string;
+  };
+  executiveInsights: string[];
+}
+
+export interface DepartmentReportMember {
+  employee: {
+    id: string;
+    name: string;
+    email: string;
+    status: string;
+    department: string | null;
+  };
+  deviceCount: number;
+  totals: Totals;
+}
+
+/** GET /v1/dashboard/reports/departments/:departmentId */
+export interface DepartmentReport {
+  department: { id: string; name: string; description: string | null };
+  organization: { id: string; name: string };
+  period: { start: string; end: string };
+  headcount: number;
+  totals: Totals;
+  topApps: TopAppRow[];
+  topDomains: TopDomainRow[];
+  activityMetrics: ActivityMetrics;
+  workplaceIntelligence: WorkplaceIntelligence;
+  members: DepartmentReportMember[];
 }
 
 export interface DepartmentSummary {

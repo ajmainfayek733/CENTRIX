@@ -128,9 +128,11 @@ disagreeing about what "a page" means.
 
 | Endpoint                           | Reads             | Notes                                                                                                  |
 | ---------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------ |
-| `GET /overview`                    | Rollup            | Team totals, productivity, who is online, attendance                                                   |
-| `GET /roster`                      | Rollup            | All staff with active/idle/productivity at a glance                                                    |
+| `GET /overview`                    | Rollup            | Team totals, productivity, who is online, attendance. Also feeds org-wide Performance.                 |
+| `GET /roster`                      | Rollup            | All staff with active/idle/productivity at a glance. Also ranks Performance.                           |
+| `GET /attendance`                  | Rollup + today    | Team check-in log for today and seven days of active hours. Feeds the Attendance screen.               |
 | `GET /employees/:id`               | Rollup + one page | Totals, active/idle split, top apps and domains, first timeline page, attendance by day and by session |
+| `GET /departments/:id`             | Rollup + sessions | Department totals, member breakdown, top apps/domains, activity metrics, workplace intelligence        |
 | `GET /employees/:id/activity`      | Raw, keyset       | Timeline pages behind the scroll window                                                                |
 | `GET /alerts`                      | Raw, keyset       | `includeResolved` filter                                                                               |
 | `GET /usb-events`                  | Raw, keyset       | Audit trail, org-wide                                                                                  |
@@ -189,6 +191,21 @@ logout is one - assigned from whichever session supplies it, not OR-ed across th
 estimate at lunchtime says nothing about the time the day ended on. The UI marks both. These
 numbers reach payroll, and an approximate figure presented as a recorded clock-out is worse than
 one labelled approximate.
+
+## 3.2 Team attendance
+
+`GET /attendance` is the team-wide counterpart of `attendanceDays`, one row per employee for
+**today**, plus a seven-day active-time series.
+
+| Field | Source |
+| ----- | ------ |
+| `weeklyActive` | `daily_activity_rollups` grouped by `workDate` over the last seven UTC days |
+| `log[].firstLogin` / `lastLogout` / `status` | Today's `attendance_sessions`, folded with the same `summarizeAttendance` rules as employee detail |
+| `log[].activeSeconds` / `idleSeconds` | Today's rollup row for that employee |
+| `absent` | No session and no rollup activity today - a team-screen status only |
+
+People are keyed through their devices, not Windows SID, so one employee on two machines is one
+row. The weekly series never reads the session table.
 
 ## 4. "Online now"
 

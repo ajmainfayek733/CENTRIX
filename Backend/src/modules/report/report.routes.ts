@@ -23,6 +23,13 @@ router.get(
 );
 
 router.get(
+  "/attendance",
+  requireRole("super_admin", "manager", "auditor"),
+  auditLogger("VIEW_TEAM_ATTENDANCE"),
+  reportController.getTeamAttendance,
+);
+
+router.get(
   "/employees/:employeeId",
   requireRole("super_admin", "manager", "auditor"),
   auditLogger("VIEW_EMPLOYEE_DETAIL_REPORT", (req) => `Employee:${req.params.employeeId}`),

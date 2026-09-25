@@ -37,6 +37,15 @@ export class ReportController {
     }
   }
 
+  async getTeamAttendance(_req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await reportService.getTeamAttendance();
+      return res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async getEmployeeDetail(req: Request, res: Response, next: NextFunction) {
     try {
       const { startDate, endDate } = req.query;

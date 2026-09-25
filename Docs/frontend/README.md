@@ -21,6 +21,8 @@ Frontend/src/
       error.tsx                    dashboard error boundary
       overview/                    team-wide screen
       employees/                   roster, import, [employeeId] detail
+      attendance/                  team check-in log and weekly active hours
+      performance/                 team and department productivity
       devices/                     inventory, assignment, activation
       alerts/                      alerts + USB feeds
       settings/                    policy and category editors (super_admin)
