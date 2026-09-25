@@ -554,10 +554,11 @@ export function DepartmentManager({
             action={
               <Badge tone="brand">{selectedDept._count?.categories ?? 0} active rule(s)</Badge>
             }
+            className="space-y-4"
           >
             <div className="space-y-4">
               {/* Meaningful Admin Note */}
-              <div className="rounded-md border border-brand/20 bg-brand-soft/30 p-3 text-[12px] text-text-secondary flex gap-2.5">
+              <div className="rounded-md border border-brand/20 bg-brand-soft/30 p-3 text-[12px] text-text-secondary flex flex-col gap-2.5">
                 <Info className="size-4 text-brand shrink-0 mt-0.5" />
                 <div className="space-y-1">
                   <p className="font-medium text-text-primary">
@@ -574,6 +575,13 @@ export function DepartmentManager({
                     Facebook productively while preserving the default classification for everyone
                     else in the organization.
                   </p>
+                </div>
+                <div className="text-[11.5px] text-text-tertiary flex items-center gap-2">
+                  <Layers className="size-3.5 text-brand" />
+                  <span>
+                    Resolution Hierarchy: Department Blacklist &rarr; Org Blacklist &rarr;
+                    Department Rule &rarr; Org Rule &rarr; Default
+                  </span>
                 </div>
               </div>
 
@@ -686,14 +694,6 @@ export function DepartmentManager({
                   </table>
                 </TableWrap>
               )}
-
-              <div className="text-[11.5px] text-text-tertiary flex items-center gap-2">
-                <Layers className="size-3.5 text-brand" />
-                <span>
-                  Resolution Hierarchy: Department Blacklist &rarr; Org Blacklist &rarr; Department
-                  Rule &rarr; Org Rule &rarr; Default
-                </span>
-              </div>
             </div>
           </Card>
         </div>
