@@ -223,6 +223,99 @@ interface Totals {
   blacklistedSeconds: number;
 }
 
+export interface WorkplaceIntelligence {
+  deepWork: {
+    totalSeconds: number;
+    sessionCount: number;
+    scorePercent: number;
+    averageSessionMinutes: number;
+  };
+  contextSwitching: {
+    totalSwitches: number;
+    switchesPerHour: number;
+    state: "Low Friction" | "Moderate Switching" | "High Fragmentation";
+    description: string;
+  };
+  collaborationVsMaker: {
+    collaborationSeconds: number;
+    makerSeconds: number;
+    collaborationPercent: number;
+    makerPercent: number;
+    ratio: string;
+  };
+  burnoutRisk: {
+    score: number;
+    level: "Low Risk" | "Moderate Risk" | "High Risk";
+    overtimeDays: number;
+    lateNightSessionsCount: number;
+    consecutiveOvertimeStreak: number;
+    narrative: string;
+  };
+  executiveInsights: string[];
+}
+
+const COMM_KEYWORDS = [
+  "teams",
+  "slack",
+  "zoom",
+  "meet",
+  "webex",
+  "discord",
+  "skype",
+  "outlook",
+  "thunderbird",
+  "gmail",
+  "mail",
+  "telegram",
+  "whatsapp",
+  "dialpad",
+  "ringcentral",
+  "chime",
+];
+
+const MAKER_KEYWORDS = [
+  "code",
+  "visual studio",
+  "cursor",
+  "pycharm",
+  "intellij",
+  "webstorm",
+  "clion",
+  "sublime",
+  "github",
+  "gitlab",
+  "jira",
+  "confluence",
+  "notion",
+  "figma",
+  "photoshop",
+  "illustrator",
+  "blender",
+  "autocad",
+  "excel",
+  "sheets",
+  "word",
+  "docs",
+  "powerpoint",
+  "slides",
+  "terminal",
+  "powershell",
+  "cmd",
+  "bash",
+  "postman",
+  "dbeaver",
+  "datagrip",
+  "eclipse",
+  "android studio",
+  "xcode",
+  "linear",
+  "asana",
+  "trello",
+  "canva",
+  "tableau",
+  "powerbi",
+];
+
 const emptyTotals = (): Totals => ({
   activeSeconds: 0,
   idleSeconds: 0,
@@ -1032,6 +1125,257 @@ export class ReportService {
     };
   }
 
+  private async calculateWorkplaceIntelligence(
+    deviceIds: string[],
+    employeeIds: string[],
+    start: Date,
+    end: Date,
+    totals: Totals,
+    appGroups: ApplicationTotals[],
+    domainGroups: BrowserDomainTotals[] = [],
+  ): Promise<WorkplaceIntelligence> {
+    const startDay = startOfUtcDay(start);
+    const endDay = startOfUtcDay(end);
+
+    const [dailyRollups, rawSessions] = await Promise.all([
+      prisma.dailyActivityRollup.findMany({
+        where: {
+          employeeId: { in: employeeIds },
+          workDate: { gte: startDay, lte: endDay },
+        },
+        select: {
+          workDate: true,
+          employeeId: true,
+          activeSeconds: true,
+          lastActivityAt: true,
+        },
+      }),
+      deviceIds.length > 0 && start <= end
+        ? prisma.activitySession.findMany({
+            where: {
+              deviceId: { in: deviceIds },
+              startTime: { gte: start, lte: end },
+            },
+            select: {
+              appName: true,
+              type: true,
+              productivityTag: true,
+              durationSeconds: true,
+              startTime: true,
+            },
+            orderBy: { startTime: "asc" },
+          })
+        : [],
+    ]);
+
+    // 1. Deep Work / Focus Blocks (continuous sessions >= 45 min = 2700 sec in productive applications)
+    let deepWorkSeconds = 0;
+    let deepWorkSessionCount = 0;
+    const FOCUS_BLOCK_MIN_SECONDS = 45 * 60; // 45 minutes
+
+    for (const session of rawSessions) {
+      if (
+        session.type === ActivityType.Application &&
+        session.productivityTag === ProductivityTag.Productive &&
+        session.durationSeconds >= FOCUS_BLOCK_MIN_SECONDS
+      ) {
+        deepWorkSeconds += session.durationSeconds;
+        deepWorkSessionCount += 1;
+      }
+    }
+
+    // Deep work score: share of productive time spent in deep work blocks
+    const deepWorkScore =
+      totals.productiveSeconds > 0
+        ? Math.min(100, Math.round((deepWorkSeconds / totals.productiveSeconds) * 1000) / 10)
+        : totals.activeSeconds > 0 && deepWorkSeconds > 0
+          ? Math.min(100, Math.round((deepWorkSeconds / totals.activeSeconds) * 1000) / 10)
+          : 0;
+
+    const avgFocusMinutes =
+      deepWorkSessionCount > 0 ? Math.round(deepWorkSeconds / deepWorkSessionCount / 60) : 0;
+
+    // 2. Context Switching Rate
+    const totalSwitches = rawSessions.filter((s) => s.type === ActivityType.Application).length;
+    const activeHours = Math.max(0.1, totals.activeSeconds / 3600);
+    const switchesPerHour = Math.round((totalSwitches / activeHours) * 10) / 10;
+
+    let switchState: "Low Friction" | "Moderate Switching" | "High Fragmentation" = "Low Friction";
+    let switchDescription = "Low cognitive thrashing with strong flow state sustained.";
+    if (switchesPerHour > 25) {
+      switchState = "High Fragmentation";
+      switchDescription = "Elevated multitasking and frequent context shifts impacting deep focus.";
+    } else if (switchesPerHour >= 12) {
+      switchState = "Moderate Switching";
+      switchDescription = "Balanced multidisciplinary workflow with standard task transitions.";
+    }
+
+    // 3. Meeting / Collaboration vs Maker Ratio
+    let collaborationSeconds = 0;
+    let makerSeconds = 0;
+
+    for (const app of appGroups) {
+      const name = (app.appName || "").toLowerCase();
+      if (COMM_KEYWORDS.some((kw) => name.includes(kw))) {
+        collaborationSeconds += app.durationSeconds;
+      } else if (MAKER_KEYWORDS.some((kw) => name.includes(kw))) {
+        makerSeconds += app.durationSeconds;
+      }
+    }
+
+    for (const dom of domainGroups) {
+      const name = dom.domain.toLowerCase();
+      if (COMM_KEYWORDS.some((kw) => name.includes(kw))) {
+        collaborationSeconds += dom.durationSeconds;
+      } else if (MAKER_KEYWORDS.some((kw) => name.includes(kw))) {
+        makerSeconds += dom.durationSeconds;
+      }
+    }
+
+    const identifiedSecs = collaborationSeconds + makerSeconds;
+    const collaborationPercent =
+      identifiedSecs > 0 ? Math.round((collaborationSeconds / identifiedSecs) * 100) : 0;
+    const makerPercent =
+      identifiedSecs > 0 ? Math.round((makerSeconds / identifiedSecs) * 100) : 0;
+
+    const makerRatioStr =
+      collaborationSeconds > 0
+        ? `1 : ${(makerSeconds / collaborationSeconds).toFixed(1)} Maker`
+        : makerSeconds > 0
+          ? "100% Execution"
+          : "Balanced";
+
+    // 4. Work-Life Balance & Burnout Risk
+    let overtimeDays = 0;
+    let lateNightSessionsCount = 0;
+    const dailyActiveByEmployeeDate = new Map<string, number>();
+
+    for (const rollup of dailyRollups) {
+      const key = `${rollup.employeeId}_${workDateKey(rollup.workDate)}`;
+      const cur = dailyActiveByEmployeeDate.get(key) ?? 0;
+      dailyActiveByEmployeeDate.set(key, cur + rollup.activeSeconds);
+
+      if (rollup.lastActivityAt) {
+        const utcHour = rollup.lastActivityAt.getUTCHours();
+        if (utcHour >= 20 || utcHour < 5) {
+          lateNightSessionsCount += 1;
+        }
+      }
+    }
+
+    for (const activeSecs of dailyActiveByEmployeeDate.values()) {
+      if (activeSecs >= 36000) {
+        overtimeDays += 1;
+      }
+    }
+
+    for (const s of rawSessions) {
+      const h = s.startTime.getUTCHours();
+      if (h >= 20 || h < 5) {
+        lateNightSessionsCount += 1;
+      }
+    }
+
+    // Consecutive overtime calculation
+    let maxOvertimeStreak = 0;
+    let currentStreak = 0;
+    const sortedDates = [...new Set(dailyRollups.map((r) => workDateKey(r.workDate)))].sort();
+    for (const d of sortedDates) {
+      let isDayOvertime = false;
+      for (const empId of employeeIds) {
+        if ((dailyActiveByEmployeeDate.get(`${empId}_${d}`) ?? 0) >= 36000) {
+          isDayOvertime = true;
+          break;
+        }
+      }
+      if (isDayOvertime) {
+        currentStreak += 1;
+        if (currentStreak > maxOvertimeStreak) maxOvertimeStreak = currentStreak;
+      } else {
+        currentStreak = 0;
+      }
+    }
+
+    // Risk score 0 - 100
+    let riskScore = 10;
+    riskScore += overtimeDays * 15;
+    riskScore += Math.min(30, Math.round(lateNightSessionsCount * 3));
+    if (switchesPerHour > 25) riskScore += 15;
+    if (maxOvertimeStreak >= 3) riskScore += 20;
+    riskScore = Math.min(100, Math.max(0, riskScore));
+
+    let burnoutLevel: "Low Risk" | "Moderate Risk" | "High Risk" = "Low Risk";
+    let burnoutNarrative = "Healthy work rhythms with minimal after-hours activity detected.";
+    if (riskScore >= 65) {
+      burnoutLevel = "High Risk";
+      burnoutNarrative = `High strain signal: ${overtimeDays} overtime days (>10h) and recurring after-hours activity past 8 PM.`;
+    } else if (riskScore >= 35) {
+      burnoutLevel = "Moderate Risk";
+      burnoutNarrative = `Moderate workload strain: ${overtimeDays} overtime days detected with intermittent late-night activity.`;
+    }
+
+    // 5. Executive Insights
+    const executiveInsights: string[] = [];
+
+    // Focus / Deep Work insight
+    if (deepWorkSessionCount > 0) {
+      executiveInsights.push(
+        `Focus Index: ${deepWorkScore}% of productive time spent in uninterrupted deep work blocks (avg ${avgFocusMinutes}m per focus session).`,
+      );
+    } else {
+      executiveInsights.push(
+        `Focus Index: No uninterrupted 45m+ focus sessions recorded (${switchesPerHour} app switches/hr indicate frequent interruptions).`,
+      );
+    }
+
+    // Maker vs Collaboration dynamic insight
+    if (identifiedSecs > 0) {
+      executiveInsights.push(
+        `Collaboration Ratio: ${collaborationPercent}% synchronous communication vs ${makerPercent}% deep execution & builder tooling (${makerRatioStr}).`,
+      );
+    } else {
+      executiveInsights.push(
+        `Workflow Balance: Average context switching rate is ${switchesPerHour} switches/hr (${switchState}).`,
+      );
+    }
+
+    // Wellbeing & Burnout signal insight
+    executiveInsights.push(
+      `Workplace Wellbeing: Evaluated at ${burnoutLevel} (${riskScore}/100) with ${overtimeDays} extended 10h+ days and ${burnoutNarrative.toLowerCase()}`,
+    );
+
+    return {
+      deepWork: {
+        totalSeconds: deepWorkSeconds,
+        sessionCount: deepWorkSessionCount,
+        scorePercent: deepWorkScore,
+        averageSessionMinutes: avgFocusMinutes,
+      },
+      contextSwitching: {
+        totalSwitches,
+        switchesPerHour,
+        state: switchState,
+        description: switchDescription,
+      },
+      collaborationVsMaker: {
+        collaborationSeconds,
+        makerSeconds,
+        collaborationPercent,
+        makerPercent,
+        ratio: makerRatioStr,
+      },
+      burnoutRisk: {
+        score: riskScore,
+        level: burnoutLevel,
+        overtimeDays,
+        lateNightSessionsCount,
+        consecutiveOvertimeStreak: maxOvertimeStreak,
+        narrative: burnoutNarrative,
+      },
+      executiveInsights,
+    };
+  }
+
   /**
    * Employee detail (spec section 5): first page of the timeline, active-vs-idle split, top apps and
    * domains for the range. Defaults to today when no range is given.
@@ -1218,6 +1562,17 @@ export class ReportService {
       }),
     );
 
+    // Calculate workplace intelligence metrics (Deep Work, Context-Switching, Burnout Signal)
+    const workplaceIntelligence = await this.calculateWorkplaceIntelligence(
+      deviceIds,
+      [employeeId],
+      start,
+      end,
+      totals,
+      appGroups,
+      domainGroups,
+    );
+
     return {
       employee,
       period: { start, end },
@@ -1226,6 +1581,7 @@ export class ReportService {
       topApps,
       topDomains,
       activityMetrics,
+      workplaceIntelligence,
       attendance: attendanceSessions,
       attendanceDays: this.summarizeAttendance(
         attendanceSessions,
@@ -1287,6 +1643,31 @@ export class ReportService {
           mouseRightKeyCount: 0,
           mouseMiddleKeyCount: 0,
           mouseOtherKeyCount: 0,
+        },
+        workplaceIntelligence: {
+          deepWork: { totalSeconds: 0, sessionCount: 0, scorePercent: 0, averageSessionMinutes: 0 },
+          contextSwitching: {
+            totalSwitches: 0,
+            switchesPerHour: 0,
+            state: "Low Friction" as const,
+            description: "No activity recorded.",
+          },
+          collaborationVsMaker: {
+            collaborationSeconds: 0,
+            makerSeconds: 0,
+            collaborationPercent: 0,
+            makerPercent: 0,
+            ratio: "N/A",
+          },
+          burnoutRisk: {
+            score: 0,
+            level: "Low Risk" as const,
+            overtimeDays: 0,
+            lateNightSessionsCount: 0,
+            consecutiveOvertimeStreak: 0,
+            narrative: "No activity recorded.",
+          },
+          executiveInsights: ["No activity data recorded in this period for the department."],
         },
         members: dept.employees.map((e) => ({
           employee: e,
@@ -1383,6 +1764,16 @@ export class ReportService {
       }),
     );
 
+    const workplaceIntelligence = await this.calculateWorkplaceIntelligence(
+      allDeviceIds,
+      employeeIds,
+      start,
+      end,
+      deptTotals,
+      appGroups,
+      domainGroups,
+    );
+
     return {
       department: { id: dept.id, name: dept.name, description: dept.description },
       organization: dept.organization,
@@ -1392,6 +1783,7 @@ export class ReportService {
       topApps,
       topDomains,
       activityMetrics,
+      workplaceIntelligence,
       members,
     };
   }

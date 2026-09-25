@@ -1,7 +1,7 @@
 import PDFDocument from "pdfkit";
 import * as archiverModule from "archiver";
 import { formatDuration } from "../../lib/format";
-import { reportService } from "./reportService";
+import { reportService, type WorkplaceIntelligence } from "./reportService";
 
 function createZipArchive() {
   const m = archiverModule as any;
@@ -70,6 +70,7 @@ export interface EmployeeReportData {
     mouseMiddleKeyCount: number;
     mouseOtherKeyCount: number;
   };
+  workplaceIntelligence?: WorkplaceIntelligence;
   attendanceDays: Array<{
     workDate: string;
     firstLogin: Date;
@@ -132,6 +133,7 @@ export interface DepartmentReportData {
     mouseMiddleKeyCount: number;
     mouseOtherKeyCount: number;
   };
+  workplaceIntelligence?: WorkplaceIntelligence;
   members: Array<{
     employee: {
       id: string;
@@ -229,19 +231,29 @@ export function generateEmployeeReportPdf(data: EmployeeReportData): PDFKit.PDFD
   doc.text(`Tracked Devices: ${deviceNames}`, 300, empY + 24, { width: 240, align: "right" });
 
   // Key KPI Cards
-  const kpiY = 170;
+  const kpiY = 168;
   const cardW = 120;
-  const cardH = 50;
+  const cardH = 48;
   const gap = (515 - cardW * 4) / 3;
+
+  const deepScore = data.workplaceIntelligence?.deepWork.scorePercent ?? 0;
+  const switchRate = data.workplaceIntelligence?.contextSwitching.switchesPerHour ?? 0;
+  const switchState = data.workplaceIntelligence?.contextSwitching.state || "Low Friction";
+  const switchColor =
+    switchState === "High Fragmentation"
+      ? DANGER_COLOR
+      : switchState === "Moderate Switching"
+        ? WARNING_COLOR
+        : SUCCESS_COLOR;
 
   const kpis = [
     { label: "Active Time", value: formatDuration(data.totals.activeSeconds), color: ACCENT_BLUE },
-    { label: "Idle Time", value: formatDuration(data.totals.idleSeconds), color: NEUTRAL_COLOR },
     { label: "Productivity", value: `${data.totals.productivityPercent}%`, color: SUCCESS_COLOR },
+    { label: "Deep Work Index", value: `${deepScore}%`, color: "#0284c7" },
     {
-      label: "Keys / Clicks",
-      value: `${data.activityMetrics.keyCount.toLocaleString()} / ${data.activityMetrics.mouseCount.toLocaleString()}`,
-      color: PRIMARY_COLOR,
+      label: "Context Switches",
+      value: `${switchRate} / hr`,
+      color: switchColor,
     },
   ];
 
@@ -252,19 +264,19 @@ export function generateEmployeeReportPdf(data: EmployeeReportData): PDFKit.PDFD
       .fillColor(SECONDARY_COLOR)
       .fontSize(7.5)
       .font("Helvetica-Bold")
-      .text(kpi.label.toUpperCase(), x + 8, kpiY + 8);
+      .text(kpi.label.toUpperCase(), x + 8, kpiY + 7);
     doc
       .fillColor(kpi.color)
       .fontSize(12)
       .font("Helvetica-Bold")
-      .text(kpi.value, x + 8, kpiY + 23);
+      .text(kpi.value, x + 8, kpiY + 22);
   });
 
   // Productivity Breakdown Bar
-  const barY = 230;
+  const barY = 224;
   doc
     .fillColor(PRIMARY_COLOR)
-    .fontSize(10)
+    .fontSize(9.5)
     .font("Helvetica-Bold")
     .text("Productivity Breakdown", 40, barY);
 
@@ -275,16 +287,16 @@ export function generateEmployeeReportPdf(data: EmployeeReportData): PDFKit.PDFD
   const bW = (data.totals.blacklistedSeconds / totalSecs) * 515;
 
   let curX = 40;
-  doc.rect(curX, barY + 14, pW, 8).fill(SUCCESS_COLOR);
+  doc.rect(curX, barY + 13, pW, 7).fill(SUCCESS_COLOR);
   curX += pW;
-  doc.rect(curX, barY + 14, nW, 8).fill(NEUTRAL_COLOR);
+  doc.rect(curX, barY + 13, nW, 7).fill(NEUTRAL_COLOR);
   curX += nW;
-  doc.rect(curX, barY + 14, uW, 8).fill(WARNING_COLOR);
+  doc.rect(curX, barY + 13, uW, 7).fill(WARNING_COLOR);
   curX += uW;
-  doc.rect(curX, barY + 14, bW, 8).fill(DANGER_COLOR);
+  doc.rect(curX, barY + 13, bW, 7).fill(DANGER_COLOR);
 
   // Legend
-  const legY = barY + 26;
+  const legY = barY + 24;
   const legItems = [
     { label: `Productive: ${formatDuration(data.totals.productiveSeconds)}`, color: SUCCESS_COLOR },
     { label: `Neutral: ${formatDuration(data.totals.neutralSeconds)}`, color: NEUTRAL_COLOR },
@@ -308,37 +320,37 @@ export function generateEmployeeReportPdf(data: EmployeeReportData): PDFKit.PDFD
       .text(leg.label, lx + 10, legY + 2);
   });
 
-  // Top Applications Table (Top 6)
-  let tableY = 280;
+  // Top Applications Table (Top 5)
+  let tableY = 270;
   doc
     .fillColor(PRIMARY_COLOR)
-    .fontSize(10)
+    .fontSize(9.5)
     .font("Helvetica-Bold")
     .text("Top Applications", 40, tableY);
-  tableY += 14;
+  tableY += 13;
 
-  doc.rect(40, tableY, 515, 16).fill(TABLE_HEADER_BG);
+  doc.rect(40, tableY, 515, 15).fill(TABLE_HEADER_BG);
   doc.fillColor(SECONDARY_COLOR).fontSize(7.5).font("Helvetica-Bold");
   doc.text("APPLICATION", 48, tableY + 4);
   doc.text("TAG", 220, tableY + 4);
   doc.text("PRODUCTIVE", 300, tableY + 4, { align: "right", width: 65 });
   doc.text("UNPROD/BLACK", 380, tableY + 4, { align: "right", width: 75 });
   doc.text("TOTAL TIME", 475, tableY + 4, { align: "right", width: 70 });
-  tableY += 16;
+  tableY += 15;
 
-  const apps = data.topApps.slice(0, 6);
+  const apps = data.topApps.slice(0, 5);
   if (apps.length === 0) {
     doc
       .fillColor(SECONDARY_COLOR)
       .fontSize(7.5)
       .font("Helvetica")
-      .text("No application activity recorded in this period.", 48, tableY + 4);
-    tableY += 16;
+      .text("No application activity recorded in this period.", 48, tableY + 3);
+    tableY += 14;
   } else {
     apps.forEach((app, idx) => {
-      if (idx % 2 === 0) doc.rect(40, tableY, 515, 14).fill("#fafafa");
+      if (idx % 2 === 0) doc.rect(40, tableY, 515, 13).fill("#fafafa");
       doc.fillColor(PRIMARY_COLOR).fontSize(7.5).font("Helvetica");
-      doc.text(app.appName || "Unknown Application", 48, tableY + 3, {
+      doc.text(app.appName || "Unknown Application", 48, tableY + 2.5, {
         width: 165,
         lineBreak: false,
       });
@@ -353,58 +365,58 @@ export function generateEmployeeReportPdf(data: EmployeeReportData): PDFKit.PDFD
                 : NEUTRAL_COLOR,
         )
         .font("Helvetica-Bold")
-        .text(app.productivityTag, 220, tableY + 3);
+        .text(app.productivityTag, 220, tableY + 2.5);
       doc
         .fillColor(SECONDARY_COLOR)
         .font("Helvetica")
-        .text(formatDuration(app.productiveSeconds), 300, tableY + 3, {
+        .text(formatDuration(app.productiveSeconds), 300, tableY + 2.5, {
           align: "right",
           width: 65,
         });
       const badTime = app.unproductiveSeconds + app.blacklistedSeconds;
-      doc.text(badTime > 0 ? formatDuration(badTime) : "-", 380, tableY + 3, {
+      doc.text(badTime > 0 ? formatDuration(badTime) : "-", 380, tableY + 2.5, {
         align: "right",
         width: 75,
       });
       doc
         .fillColor(PRIMARY_COLOR)
         .font("Helvetica-Bold")
-        .text(formatDuration(app.seconds), 475, tableY + 3, { align: "right", width: 70 });
-      tableY += 14;
+        .text(formatDuration(app.seconds), 475, tableY + 2.5, { align: "right", width: 70 });
+      tableY += 13;
     });
   }
 
-  // Top Visited Websites Table (Top 6)
-  tableY += 12;
+  // Top Visited Websites Table (Top 5)
+  tableY += 10;
   doc
     .fillColor(PRIMARY_COLOR)
-    .fontSize(10)
+    .fontSize(9.5)
     .font("Helvetica-Bold")
     .text("Top Visited Websites", 40, tableY);
-  tableY += 14;
+  tableY += 13;
 
-  doc.rect(40, tableY, 515, 16).fill(TABLE_HEADER_BG);
+  doc.rect(40, tableY, 515, 15).fill(TABLE_HEADER_BG);
   doc.fillColor(SECONDARY_COLOR).fontSize(7.5).font("Helvetica-Bold");
   doc.text("DOMAIN", 48, tableY + 4);
   doc.text("TAG", 220, tableY + 4);
   doc.text("PRODUCTIVE", 300, tableY + 4, { align: "right", width: 65 });
   doc.text("UNPROD/BLACK", 380, tableY + 4, { align: "right", width: 75 });
   doc.text("TOTAL TIME", 475, tableY + 4, { align: "right", width: 70 });
-  tableY += 16;
+  tableY += 15;
 
-  const domains = data.topDomains.slice(0, 6);
+  const domains = data.topDomains.slice(0, 5);
   if (domains.length === 0) {
     doc
       .fillColor(SECONDARY_COLOR)
       .fontSize(7.5)
       .font("Helvetica")
-      .text("No web browsing recorded in this period.", 48, tableY + 4);
-    tableY += 16;
+      .text("No web browsing recorded in this period.", 48, tableY + 3);
+    tableY += 14;
   } else {
     domains.forEach((site, idx) => {
-      if (idx % 2 === 0) doc.rect(40, tableY, 515, 14).fill("#fafafa");
+      if (idx % 2 === 0) doc.rect(40, tableY, 515, 13).fill("#fafafa");
       doc.fillColor(PRIMARY_COLOR).fontSize(7.5).font("Helvetica");
-      doc.text(site.domain, 48, tableY + 3, { width: 165, lineBreak: false });
+      doc.text(site.domain, 48, tableY + 2.5, { width: 165, lineBreak: false });
       doc
         .fillColor(
           site.productivityTag === "Productive"
@@ -416,43 +428,61 @@ export function generateEmployeeReportPdf(data: EmployeeReportData): PDFKit.PDFD
                 : NEUTRAL_COLOR,
         )
         .font("Helvetica-Bold")
-        .text(site.productivityTag, 220, tableY + 3);
+        .text(site.productivityTag, 220, tableY + 2.5);
       doc
         .fillColor(SECONDARY_COLOR)
         .font("Helvetica")
-        .text(formatDuration(site.productiveSeconds), 300, tableY + 3, {
+        .text(formatDuration(site.productiveSeconds), 300, tableY + 2.5, {
           align: "right",
           width: 65,
         });
       const badTime = site.unproductiveSeconds + site.blacklistedSeconds;
-      doc.text(badTime > 0 ? formatDuration(badTime) : "-", 380, tableY + 3, {
+      doc.text(badTime > 0 ? formatDuration(badTime) : "-", 380, tableY + 2.5, {
         align: "right",
         width: 75,
       });
       doc
         .fillColor(PRIMARY_COLOR)
         .font("Helvetica-Bold")
-        .text(formatDuration(site.seconds), 475, tableY + 3, { align: "right", width: 70 });
-      tableY += 14;
+        .text(formatDuration(site.seconds), 475, tableY + 2.5, { align: "right", width: 70 });
+      tableY += 13;
     });
   }
 
-  // Activity Metrics Summary Bar
-  tableY += 12;
-  doc.rect(40, tableY, 515, 32).fillAndStroke(CARD_BG, TABLE_BORDER);
+  // Workplace Intelligence & Flow State Telemetry Box
+  tableY += 10;
+  doc.rect(40, tableY, 515, 42).fillAndStroke(CARD_BG, TABLE_BORDER);
   doc
     .fillColor(SECONDARY_COLOR)
     .fontSize(7.5)
     .font("Helvetica-Bold")
-    .text("ACTIVITY METRICS BREAKDOWN", 48, tableY + 6);
+    .text("WORKPLACE PRODUCTIVITY INTELLIGENCE & FLOW TELEMETRY", 48, tableY + 6);
+
+  const focusTimeStr = formatDuration(data.workplaceIntelligence?.deepWork.totalSeconds || 0);
+  const focusCount = data.workplaceIntelligence?.deepWork.sessionCount || 0;
+  const makerRatio = data.workplaceIntelligence?.collaborationVsMaker.ratio || "Balanced";
+  const burnoutLvl = data.workplaceIntelligence?.burnoutRisk.level || "Low Risk";
+  const otDays = data.workplaceIntelligence?.burnoutRisk.overtimeDays || 0;
+  const lateCount = data.workplaceIntelligence?.burnoutRisk.lateNightSessionsCount || 0;
+
   doc
     .fillColor(PRIMARY_COLOR)
     .fontSize(7.5)
     .font("Helvetica")
     .text(
-      `Keyboard: ${data.activityMetrics.keyCount.toLocaleString()} keystrokes   |   Mouse Total: ${data.activityMetrics.mouseCount.toLocaleString()}   (Left: ${data.activityMetrics.mouseLeftKeyCount.toLocaleString()}, Right: ${data.activityMetrics.mouseRightKeyCount.toLocaleString()}, Mid/Other: ${(data.activityMetrics.mouseMiddleKeyCount + data.activityMetrics.mouseOtherKeyCount).toLocaleString()})`,
+      `Focus Time: ${focusTimeStr} (${focusCount} blocks >=45m)   |   Context State: ${switchState}   |   Maker vs Sync: ${makerRatio}   |   Wellbeing: ${burnoutLvl} (${otDays} OT days, ${lateCount} late-night)`,
       48,
-      tableY + 18,
+      tableY + 17,
+    );
+
+  doc
+    .fillColor(NEUTRAL_COLOR)
+    .fontSize(7)
+    .font("Helvetica")
+    .text(
+      `Hardware Telemetry: ${data.activityMetrics.keyCount.toLocaleString()} keystrokes, ${data.activityMetrics.mouseCount.toLocaleString()} clicks (L:${data.activityMetrics.mouseLeftKeyCount.toLocaleString()}, R:${data.activityMetrics.mouseRightKeyCount.toLocaleString()}, Mid/Other:${(data.activityMetrics.mouseMiddleKeyCount + data.activityMetrics.mouseOtherKeyCount).toLocaleString()})`,
+      48,
+      tableY + 28,
     );
 
   // Page 1 Footer
@@ -616,10 +646,20 @@ export function generateDepartmentReportPdf(data: DepartmentReportData): PDFKit.
   });
 
   // Key KPI Cards
-  const kpiY = 170;
+  const kpiY = 168;
   const cardW = 120;
-  const cardH = 50;
+  const cardH = 48;
   const gap = (515 - cardW * 4) / 3;
+
+  const deepScore = data.workplaceIntelligence?.deepWork.scorePercent ?? 0;
+  const switchRate = data.workplaceIntelligence?.contextSwitching.switchesPerHour ?? 0;
+  const switchState = data.workplaceIntelligence?.contextSwitching.state || "Low Friction";
+  const switchColor =
+    switchState === "High Fragmentation"
+      ? DANGER_COLOR
+      : switchState === "Moderate Switching"
+        ? WARNING_COLOR
+        : SUCCESS_COLOR;
 
   const kpis = [
     {
@@ -628,19 +668,19 @@ export function generateDepartmentReportPdf(data: DepartmentReportData): PDFKit.
       color: ACCENT_BLUE,
     },
     {
-      label: "Total Idle Time",
-      value: formatDuration(data.totals.idleSeconds),
-      color: NEUTRAL_COLOR,
-    },
-    {
       label: "Dept Productivity",
       value: `${data.totals.productivityPercent}%`,
       color: SUCCESS_COLOR,
     },
     {
-      label: "Keys / Clicks",
-      value: `${data.activityMetrics.keyCount.toLocaleString()} / ${data.activityMetrics.mouseCount.toLocaleString()}`,
-      color: PRIMARY_COLOR,
+      label: "Team Deep Work",
+      value: `${deepScore}%`,
+      color: "#0284c7",
+    },
+    {
+      label: "Context Switches",
+      value: `${switchRate} / hr`,
+      color: switchColor,
     },
   ];
 
@@ -651,19 +691,46 @@ export function generateDepartmentReportPdf(data: DepartmentReportData): PDFKit.
       .fillColor(SECONDARY_COLOR)
       .fontSize(7.5)
       .font("Helvetica-Bold")
-      .text(kpi.label.toUpperCase(), x + 8, kpiY + 8);
+      .text(kpi.label.toUpperCase(), x + 8, kpiY + 7);
     doc
       .fillColor(kpi.color)
       .fontSize(12)
       .font("Helvetica-Bold")
-      .text(kpi.value, x + 8, kpiY + 23);
+      .text(kpi.value, x + 8, kpiY + 22);
+  });
+
+  // Executive Narrative Insights Callout Box
+  const boxY = 224;
+  doc.rect(40, boxY, 515, 66).fillAndStroke("#f8fafc", TABLE_BORDER);
+  doc
+    .fillColor(PRIMARY_COLOR)
+    .fontSize(8)
+    .font("Helvetica-Bold")
+    .text("EXECUTIVE PRODUCTIVITY & WORKPLACE INSIGHTS", 48, boxY + 7);
+
+  const insights = data.workplaceIntelligence?.executiveInsights && data.workplaceIntelligence.executiveInsights.length > 0
+    ? data.workplaceIntelligence.executiveInsights.slice(0, 3)
+    : [
+        `Focus Index: ${deepScore}% of active team time maintained in uninterrupted deep work flow states.`,
+        `Collaboration Rhythm: ${data.workplaceIntelligence?.collaborationVsMaker.ratio || "N/A"} maker-to-meeting ratio across active tooling.`,
+        `Team Wellbeing: ${data.workplaceIntelligence?.burnoutRisk.level || "Low Risk"} with balanced working hours observed across members.`,
+      ];
+
+  insights.forEach((insight, idx) => {
+    const lineY = boxY + 21 + idx * 14;
+    doc.circle(52, lineY + 3.5, 1.8).fill(ACCENT_BLUE);
+    doc
+      .fillColor(PRIMARY_COLOR)
+      .fontSize(7.2)
+      .font("Helvetica")
+      .text(insight, 59, lineY, { width: 485, lineBreak: false });
   });
 
   // Productivity Breakdown Bar
-  const barY = 230;
+  const barY = 298;
   doc
     .fillColor(PRIMARY_COLOR)
-    .fontSize(10)
+    .fontSize(9.5)
     .font("Helvetica-Bold")
     .text("Department Productivity Mix", 40, barY);
 
@@ -674,16 +741,16 @@ export function generateDepartmentReportPdf(data: DepartmentReportData): PDFKit.
   const bW = (data.totals.blacklistedSeconds / totalSecs) * 515;
 
   let curX = 40;
-  doc.rect(curX, barY + 14, pW, 8).fill(SUCCESS_COLOR);
+  doc.rect(curX, barY + 13, pW, 7).fill(SUCCESS_COLOR);
   curX += pW;
-  doc.rect(curX, barY + 14, nW, 8).fill(NEUTRAL_COLOR);
+  doc.rect(curX, barY + 13, nW, 7).fill(NEUTRAL_COLOR);
   curX += nW;
-  doc.rect(curX, barY + 14, uW, 8).fill(WARNING_COLOR);
+  doc.rect(curX, barY + 13, uW, 7).fill(WARNING_COLOR);
   curX += uW;
-  doc.rect(curX, barY + 14, bW, 8).fill(DANGER_COLOR);
+  doc.rect(curX, barY + 13, bW, 7).fill(DANGER_COLOR);
 
   // Legend
-  const legY = barY + 26;
+  const legY = barY + 24;
   const legItems = [
     { label: `Productive: ${formatDuration(data.totals.productiveSeconds)}`, color: SUCCESS_COLOR },
     { label: `Neutral: ${formatDuration(data.totals.neutralSeconds)}`, color: NEUTRAL_COLOR },
@@ -699,45 +766,45 @@ export function generateDepartmentReportPdf(data: DepartmentReportData): PDFKit.
 
   legItems.forEach((leg, idx) => {
     const lx = 40 + idx * 130;
-    doc.rect(lx, legY + 2, 6, 6).fill(leg.color);
+    doc.rect(lx, legY + 2, 5, 5).fill(leg.color);
     doc
       .fillColor(SECONDARY_COLOR)
-      .fontSize(7.5)
+      .fontSize(7.2)
       .font("Helvetica")
-      .text(leg.label, lx + 10, legY + 2);
+      .text(leg.label, lx + 9, legY + 1);
   });
 
-  // Department Top Applications Table (Top 6)
-  let tableY = 280;
+  // Department Top Applications Table (Top 4)
+  let tableY = 344;
   doc
     .fillColor(PRIMARY_COLOR)
-    .fontSize(10)
+    .fontSize(9.5)
     .font("Helvetica-Bold")
     .text("Department Top Applications", 40, tableY);
-  tableY += 14;
+  tableY += 13;
 
-  doc.rect(40, tableY, 515, 16).fill(TABLE_HEADER_BG);
+  doc.rect(40, tableY, 515, 15).fill(TABLE_HEADER_BG);
   doc.fillColor(SECONDARY_COLOR).fontSize(7.5).font("Helvetica-Bold");
-  doc.text("APPLICATION", 48, tableY + 4);
-  doc.text("TAG", 220, tableY + 4);
-  doc.text("PRODUCTIVE", 300, tableY + 4, { align: "right", width: 65 });
-  doc.text("UNPROD/BLACK", 380, tableY + 4, { align: "right", width: 75 });
-  doc.text("TOTAL TIME", 475, tableY + 4, { align: "right", width: 70 });
-  tableY += 16;
+  doc.text("APPLICATION", 48, tableY + 3.5);
+  doc.text("TAG", 220, tableY + 3.5);
+  doc.text("PRODUCTIVE", 300, tableY + 3.5, { align: "right", width: 65 });
+  doc.text("UNPROD/BLACK", 380, tableY + 3.5, { align: "right", width: 75 });
+  doc.text("TOTAL TIME", 475, tableY + 3.5, { align: "right", width: 70 });
+  tableY += 15;
 
-  const apps = data.topApps.slice(0, 6);
+  const apps = data.topApps.slice(0, 4);
   if (apps.length === 0) {
     doc
       .fillColor(SECONDARY_COLOR)
       .fontSize(7.5)
       .font("Helvetica")
-      .text("No application activity recorded in this department.", 48, tableY + 4);
-    tableY += 16;
+      .text("No application activity recorded in this department.", 48, tableY + 3);
+    tableY += 13;
   } else {
     apps.forEach((app, idx) => {
-      if (idx % 2 === 0) doc.rect(40, tableY, 515, 14).fill("#fafafa");
+      if (idx % 2 === 0) doc.rect(40, tableY, 515, 13).fill("#fafafa");
       doc.fillColor(PRIMARY_COLOR).fontSize(7.5).font("Helvetica");
-      doc.text(app.appName || "Unknown Application", 48, tableY + 3, {
+      doc.text(app.appName || "Unknown Application", 48, tableY + 2.5, {
         width: 165,
         lineBreak: false,
       });
@@ -752,58 +819,58 @@ export function generateDepartmentReportPdf(data: DepartmentReportData): PDFKit.
                 : NEUTRAL_COLOR,
         )
         .font("Helvetica-Bold")
-        .text(app.productivityTag, 220, tableY + 3);
+        .text(app.productivityTag, 220, tableY + 2.5);
       doc
         .fillColor(SECONDARY_COLOR)
         .font("Helvetica")
-        .text(formatDuration(app.productiveSeconds), 300, tableY + 3, {
+        .text(formatDuration(app.productiveSeconds), 300, tableY + 2.5, {
           align: "right",
           width: 65,
         });
       const badTime = app.unproductiveSeconds + app.blacklistedSeconds;
-      doc.text(badTime > 0 ? formatDuration(badTime) : "-", 380, tableY + 3, {
+      doc.text(badTime > 0 ? formatDuration(badTime) : "-", 380, tableY + 2.5, {
         align: "right",
         width: 75,
       });
       doc
         .fillColor(PRIMARY_COLOR)
         .font("Helvetica-Bold")
-        .text(formatDuration(app.seconds), 475, tableY + 3, { align: "right", width: 70 });
-      tableY += 14;
+        .text(formatDuration(app.seconds), 475, tableY + 2.5, { align: "right", width: 70 });
+      tableY += 13;
     });
   }
 
-  // Department Top Visited Websites Table (Top 6)
-  tableY += 12;
+  // Department Top Visited Websites Table (Top 4)
+  tableY += 10;
   doc
     .fillColor(PRIMARY_COLOR)
-    .fontSize(10)
+    .fontSize(9.5)
     .font("Helvetica-Bold")
     .text("Department Top Websites", 40, tableY);
-  tableY += 14;
+  tableY += 13;
 
-  doc.rect(40, tableY, 515, 16).fill(TABLE_HEADER_BG);
+  doc.rect(40, tableY, 515, 15).fill(TABLE_HEADER_BG);
   doc.fillColor(SECONDARY_COLOR).fontSize(7.5).font("Helvetica-Bold");
-  doc.text("DOMAIN", 48, tableY + 4);
-  doc.text("TAG", 220, tableY + 4);
-  doc.text("PRODUCTIVE", 300, tableY + 4, { align: "right", width: 65 });
-  doc.text("UNPROD/BLACK", 380, tableY + 4, { align: "right", width: 75 });
-  doc.text("TOTAL TIME", 475, tableY + 4, { align: "right", width: 70 });
-  tableY += 16;
+  doc.text("DOMAIN", 48, tableY + 3.5);
+  doc.text("TAG", 220, tableY + 3.5);
+  doc.text("PRODUCTIVE", 300, tableY + 3.5, { align: "right", width: 65 });
+  doc.text("UNPROD/BLACK", 380, tableY + 3.5, { align: "right", width: 75 });
+  doc.text("TOTAL TIME", 475, tableY + 3.5, { align: "right", width: 70 });
+  tableY += 15;
 
-  const domains = data.topDomains.slice(0, 6);
+  const domains = data.topDomains.slice(0, 4);
   if (domains.length === 0) {
     doc
       .fillColor(SECONDARY_COLOR)
       .fontSize(7.5)
       .font("Helvetica")
-      .text("No web browsing recorded in this department.", 48, tableY + 4);
-    tableY += 16;
+      .text("No web browsing recorded in this department.", 48, tableY + 3);
+    tableY += 13;
   } else {
     domains.forEach((site, idx) => {
-      if (idx % 2 === 0) doc.rect(40, tableY, 515, 14).fill("#fafafa");
+      if (idx % 2 === 0) doc.rect(40, tableY, 515, 13).fill("#fafafa");
       doc.fillColor(PRIMARY_COLOR).fontSize(7.5).font("Helvetica");
-      doc.text(site.domain, 48, tableY + 3, { width: 165, lineBreak: false });
+      doc.text(site.domain, 48, tableY + 2.5, { width: 165, lineBreak: false });
       doc
         .fillColor(
           site.productivityTag === "Productive"
@@ -815,24 +882,24 @@ export function generateDepartmentReportPdf(data: DepartmentReportData): PDFKit.
                 : NEUTRAL_COLOR,
         )
         .font("Helvetica-Bold")
-        .text(site.productivityTag, 220, tableY + 3);
+        .text(site.productivityTag, 220, tableY + 2.5);
       doc
         .fillColor(SECONDARY_COLOR)
         .font("Helvetica")
-        .text(formatDuration(site.productiveSeconds), 300, tableY + 3, {
+        .text(formatDuration(site.productiveSeconds), 300, tableY + 2.5, {
           align: "right",
           width: 65,
         });
       const badTime = site.unproductiveSeconds + site.blacklistedSeconds;
-      doc.text(badTime > 0 ? formatDuration(badTime) : "-", 380, tableY + 3, {
+      doc.text(badTime > 0 ? formatDuration(badTime) : "-", 380, tableY + 2.5, {
         align: "right",
         width: 75,
       });
       doc
         .fillColor(PRIMARY_COLOR)
         .font("Helvetica-Bold")
-        .text(formatDuration(site.seconds), 475, tableY + 3, { align: "right", width: 70 });
-      tableY += 14;
+        .text(formatDuration(site.seconds), 475, tableY + 2.5, { align: "right", width: 70 });
+      tableY += 13;
     });
   }
 
