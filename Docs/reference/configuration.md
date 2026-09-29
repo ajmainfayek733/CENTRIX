@@ -32,7 +32,7 @@ invalid value**, naming the variable.
 | `DATABASE_URL`       | **required**            |                                                                                                                            |
 | `BETTER_AUTH_SECRET` | **required**            | Min 16 characters                                                                                                          |
 | `BETTER_AUTH_URL`    | `http://localhost:3000` |                                                                                                                            |
-| `FRONTEND_URL`       | `http://localhost:3000` | The CORS origin                                                                                                            |
+| `FRONTEND_URL`       | `http://localhost:3000` | The CORS origin, and the base of emailed password reset links                                                              |
 | `PUBLIC_BASE_URL`    | `http://localhost:5000` | Builds `remoteUri` in the screenshot response. The agent only logs it, so it need not be publicly resolvable - just stable |
 
 ### Secrets
@@ -105,6 +105,25 @@ these are safe to leave enabled on every replica.
 | ------------------------ | ----------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `SCREENSHOT_STORAGE_DIR` | `./storage/screenshots` | **Local storage is what blocks horizontal scaling** - each replica holds a different subset                               |
 | `DATABASE_POOL_MAX`      | `10`                    | Burst tolerance, not parallelism. Raise if requests queue behind the pool; divide the database's ceiling between replicas |
+
+### Email and password recovery
+
+See [../backend/password-recovery.md](../backend/password-recovery.md). The four EmailJS
+credentials are all-or-nothing; a partial set fails startup.
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `EMAILJS_SERVICE_ID` | - | EmailJS service |
+| `EMAILJS_PASSWORD_RESET_TEMPLATE_ID` | - | Recovery email template |
+| `EMAILJS_PUBLIC_KEY` | - | Account public key |
+| `EMAILJS_PRIVATE_KEY` | - | Account private key; required for server-side sends |
+| `EMAILJS_API_URL` | `https://api.emailjs.com/api/v1.0/email/send` | REST endpoint |
+| `EMAILJS_TIMEOUT_MS` | `10000` | Abort bound on one send |
+| `APP_NAME` | `CENTRIX` | Rendered as `{{app_name}}` |
+| `PASSWORD_RESET_DELIVERY` | `both` | `link` \| `code` \| `both` |
+| `PASSWORD_RESET_TTL_MINUTES` | `30` | Max 1440 |
+| `PASSWORD_RESET_MAX_ATTEMPTS` | `5` | Wrong guesses before the recovery is revoked, max 20 |
+| `PASSWORD_RESET_CODE_LENGTH` | `6` | 6 to 10 digits |
 
 ## Frontend environment
 

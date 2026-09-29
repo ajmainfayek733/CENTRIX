@@ -1,181 +1,213 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button, Field, Input, useToast } from '@/components/ui';
+import { AUTH_PRIMARY_BUTTON_CLASS } from '@/lib/auth-ui';
 
-const PRIMARY_BTN_CLASS =
-  'w-full inline-flex items-center justify-center gap-2 rounded-lg bg-brand-strong px-4 py-2.5 text-xs font-semibold text-brand-contrast shadow-[0_1px_2px_rgba(0,0,0,0.05),0_4px_12px_rgba(14,165,233,0.25)] transition-all hover:bg-brand hover:shadow-[0_2px_4px_rgba(0,0,0,0.05),0_6px_20px_rgba(14,165,233,0.35)] active:scale-[0.98] disabled:opacity-50';
+const MIN_PASSWORD_LENGTH = 8;
+const RESEND_COOLDOWN_SECONDS = 60;
+const ONE_SECOND_MS = 1000;
+const FORGOT_PASSWORD_PATH = '/forgot-password';
+const NETWORK_ERROR_MESSAGE = 'Could not reach the server. Check that the API is running.';
 
-const SECONDARY_BTN_CLASS =
-  'inline-flex items-center justify-center gap-2 rounded-lg border border-glass-border bg-surface-muted px-3 py-1.5 text-xs font-medium text-text-primary transition-all hover:bg-row-hover';
+type DeliveryMode = 'link' | 'code' | 'both';
+type Step = 'request' | 'verify';
+
+interface ForgotPasswordResponse {
+  message?: string;
+  error?: string;
+  data?: { delivery?: DeliveryMode; expiresInMinutes?: number };
+}
+
+function isDeliveryMode(value: unknown): value is DeliveryMode {
+  return value === 'link' || value === 'code' || value === 'both';
+}
+
+function errorMessage(body: { error?: unknown; message?: unknown }, fallback: string): string {
+  if (typeof body.error === 'string' && body.error.trim()) return body.error;
+  if (typeof body.message === 'string' && body.message.trim()) return body.message;
+  return fallback;
+}
 
 export function ForgotPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const toast = useToast();
 
-  const [step, setStep] = useState<'request' | 'reset'>(() =>
-    searchParams.get('token') ? 'reset' : 'request'
-  );
+  // A token in the URL means the user arrived from the emailed link.
+  const [linkToken, setLinkToken] = useState(() => searchParams.get('token')?.trim() ?? '');
+  const [step, setStep] = useState<Step>(() => (linkToken ? 'verify' : 'request'));
   const [email, setEmail] = useState(() => searchParams.get('email') ?? '');
-  const [token, setToken] = useState(() => searchParams.get('token') ?? '');
+  const [code, setCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  const [generatedToken, setGeneratedToken] = useState<string | null>(null);
-  const [copiedToken, setCopiedToken] = useState(false);
+  const [delivery, setDelivery] = useState<DeliveryMode>('both');
+  const [notice, setNotice] = useState<string | null>(null);
+  const [cooldown, setCooldown] = useState(0);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resetSuccess, setResetSuccess] = useState(false);
 
-  async function handleRequestToken(e: React.FormEvent) {
-    e.preventDefault();
+  // Remove the secret from the address bar and history as soon as it has been captured.
+  useEffect(() => {
+    if (!linkToken) return;
+    const params = new URLSearchParams();
+    const initialEmail = searchParams.get('email');
+    if (initialEmail) params.set('email', initialEmail);
+    const suffix = params.size > 0 ? `?${params.toString()}` : '';
+    window.history.replaceState(null, '', `${FORGOT_PASSWORD_PATH}${suffix}`);
+  }, [linkToken, searchParams]);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = window.setTimeout(() => setCooldown((value) => value - 1), ONE_SECOND_MS);
+    return () => window.clearTimeout(timer);
+  }, [cooldown]);
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const acceptsCode = !linkToken && delivery !== 'link';
+
+  async function requestRecovery() {
     setError(null);
 
-    if (!email.trim()) {
+    if (!normalizedEmail) {
       setError('Please enter your work email.');
       return;
     }
 
     setPending(true);
-
     try {
       const res = await fetch('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+        body: JSON.stringify({ email: normalizedEmail }),
       });
-
-      const body = await res.json().catch(() => ({}));
+      const body = (await res.json().catch(() => ({}))) as ForgotPasswordResponse;
 
       if (!res.ok) {
-        const msg = body.error || body.message || 'Failed to request password reset.';
+        const msg = errorMessage(body, 'Failed to request password reset.');
         setError(msg);
         toast.error(msg, 'Recovery Failed');
-        setPending(false);
         return;
       }
 
-      if (body.data?.token) {
-        setGeneratedToken(body.data.token);
-        setToken(body.data.token);
-      }
-
-      toast.success(
-        'Password recovery verification token generated successfully.',
-        'Recovery Code Issued'
+      const mode = isDeliveryMode(body.data?.delivery) ? body.data.delivery : 'both';
+      const msg = errorMessage(
+        { message: body.message },
+        'If an account exists for this email, recovery instructions have been sent.',
       );
+      setDelivery(mode);
+      setNotice(msg);
+      setCode('');
+      setCooldown(RESEND_COOLDOWN_SECONDS);
+      setStep('verify');
+      toast.success('Check your inbox for recovery instructions.', 'Email Sent');
     } catch {
-      const msg = 'Could not reach server. Please check your network connection.';
-      setError(msg);
-      toast.error(msg, 'Network Error');
+      setError(NETWORK_ERROR_MESSAGE);
+      toast.error(NETWORK_ERROR_MESSAGE, 'Network Error');
     } finally {
       setPending(false);
     }
+  }
+
+  function handleRequestSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    void requestRecovery();
   }
 
   async function handleResetPassword(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
-    if (!email.trim()) {
+    const secret = linkToken || code.trim();
+
+    if (!normalizedEmail) {
       setError('Email address is required.');
       return;
     }
-
-    if (!token.trim()) {
-      setError('Recovery token is required.');
+    if (!secret) {
+      setError('Enter the verification code from your email.');
       return;
     }
-
-    if (!newPassword || newPassword.length < 8) {
-      setError('New password must be at least 8 characters long.');
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      setError(`New password must be at least ${MIN_PASSWORD_LENGTH} characters long.`);
       return;
     }
-
     if (newPassword !== confirmPassword) {
       setError('Passwords do not match. Please verify your confirmation password.');
       return;
     }
 
     setPending(true);
-
     try {
       const res = await fetch('/api/auth/reset-password', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          email: email.trim().toLowerCase(),
-          token: token.trim(),
-          newPassword,
-        }),
+        body: JSON.stringify({ email: normalizedEmail, token: secret, newPassword }),
       });
-
-      const body = await res.json().catch(() => ({}));
+      const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
 
       if (!res.ok) {
-        const msg = body.error || body.message || 'Failed to reset password.';
+        const msg = errorMessage(body, 'Failed to reset password.');
         setError(msg);
         toast.error(msg, 'Reset Failed');
-        setPending(false);
         return;
       }
 
+      setNewPassword('');
+      setConfirmPassword('');
       setResetSuccess(true);
       toast.success('Your password has been successfully reset.', 'Password Updated');
     } catch {
-      const msg = 'Could not communicate with the server. Please try again.';
-      setError(msg);
-      toast.error(msg, 'Network Error');
+      setError(NETWORK_ERROR_MESSAGE);
+      toast.error(NETWORK_ERROR_MESSAGE, 'Network Error');
     } finally {
       setPending(false);
     }
   }
 
-  function copyToken() {
-    if (!generatedToken) return;
-    navigator.clipboard.writeText(generatedToken);
-    setCopiedToken(true);
-    toast.success('Recovery token copied to clipboard.', 'Token Copied');
-    setTimeout(() => setCopiedToken(false), 3000);
+  function startOver() {
+    setError(null);
+    setNotice(null);
+    setCode('');
+    setLinkToken('');
+    setStep('request');
   }
+
+  const errorBanner = error && (
+    <p role="alert" className="rounded-md bg-danger/10 px-3 py-2 text-xs text-danger">
+      {error}
+    </p>
+  );
+
+  const backToSignIn = (
+    <p className="text-center text-xs text-text-secondary">
+      <Link href="/login" className="font-medium text-brand hover:underline">
+        Back to sign in
+      </Link>
+    </p>
+  );
 
   if (resetSuccess) {
     return (
-      <div className="glass space-y-6 rounded-xl border border-glass-border bg-surface p-6 shadow-glass-md sm:p-8">
-        <div className="flex items-center gap-3 border-b border-border pb-4">
-          <div className="grid size-10 place-items-center rounded-lg bg-success/15 text-success">
-            <svg
-              className="size-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-            </svg>
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-text-primary">Password Reset Complete</h2>
-            <p className="text-xs text-text-secondary">
-              Your credentials have been securely updated.
-            </p>
-          </div>
+      <div className="glass space-y-4 rounded-lg p-6">
+        <div>
+          <h2 className="text-base font-semibold text-text-primary">Password reset complete</h2>
+          <p className="mt-1 text-xs text-text-secondary">
+            You can now sign in with your new password. Other devices have been signed out.
+          </p>
         </div>
-
-        <p className="text-xs leading-relaxed text-text-secondary">
-          You can now sign in to your CENTRIX dashboard using your updated password.
-        </p>
 
         <Button
           type="button"
           variant="ghost"
-          onClick={() => router.push(`/login?email=${encodeURIComponent(email)}`)}
-          className={PRIMARY_BTN_CLASS}
+          onClick={() => router.push(`/login?email=${encodeURIComponent(normalizedEmail)}`)}
+          className={AUTH_PRIMARY_BUTTON_CLASS}
         >
-          Proceed to Sign In
+          Sign in
         </Button>
       </div>
     );
@@ -183,190 +215,194 @@ export function ForgotPasswordForm() {
 
   if (step === 'request') {
     return (
-      <form
-        onSubmit={handleRequestToken}
-        className="glass space-y-5 rounded-xl border border-glass-border bg-surface p-6 shadow-glass-md sm:p-8"
-      >
-        <div className="border-b border-border pb-3">
-          <h2 className="text-base font-semibold text-text-primary">Reset Account Password</h2>
-          <p className="mt-0.5 text-xs text-text-secondary">
-            Enter your registered work email to receive a recovery token.
+      <form onSubmit={handleRequestSubmit} className="glass space-y-4 rounded-lg p-6">
+        <div>
+          <h2 className="text-base font-semibold text-text-primary">Reset password</h2>
+          <p className="mt-1 text-xs text-text-secondary">
+            Enter your registered work email and we will send you a reset link or verification
+            code.
           </p>
         </div>
 
-        <Field label="Work Email" htmlFor="email">
+        <Field label="Work email" htmlFor="email">
           <Input
             id="email"
             type="email"
             required
             autoComplete="email"
-            placeholder="admin@company.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
         </Field>
 
-        {generatedToken && (
-          <div className="space-y-3 rounded-lg border border-brand/20 bg-brand-soft p-4 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-brand">Self-Service Recovery Code</span>
-              <span className="rounded bg-brand/20 px-2 py-0.5 text-[10px] font-semibold uppercase text-brand">
-                Valid 60 Mins
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <code className="block flex-1 overflow-x-auto rounded border border-border bg-surface-strong px-3 py-2 font-mono text-[11px] text-text-primary">
-                {generatedToken}
-              </code>
-              <button
-                type="button"
-                onClick={copyToken}
-                className={SECONDARY_BTN_CLASS}
-                title="Copy Token"
-              >
-                {copiedToken ? <span className="text-success font-semibold">Copied!</span> : 'Copy'}
-              </button>
-            </div>
-            <p className="text-[11px] text-text-secondary">
-              Use this recovery code to set your new account password.
-            </p>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setStep('reset')}
-              className={PRIMARY_BTN_CLASS}
-            >
-              Set New Password Now
-            </Button>
-          </div>
-        )}
+        {errorBanner}
 
-        {error && (
-          <p role="alert" className="rounded-lg bg-danger/10 px-3.5 py-2.5 text-xs text-danger">
-            {error}
-          </p>
-        )}
+        <div className="space-y-3">
+          <Button type="submit" variant="ghost" disabled={pending} className={AUTH_PRIMARY_BUTTON_CLASS}>
+            {pending ? 'Sending email...' : 'Send recovery email'}
+          </Button>
 
-        {!generatedToken && (
-          <div className="space-y-3 pt-1">
-            <Button
-              type="submit"
-              variant="ghost"
-              disabled={pending}
-              className={PRIMARY_BTN_CLASS}
-            >
-              {pending ? 'Generating Recovery Code...' : 'Request Recovery Token'}
-            </Button>
-
-            <button
-              type="button"
-              onClick={() => setStep('reset')}
-              className="w-full text-center text-xs font-medium text-text-secondary hover:text-text-primary"
-            >
-              Already have a recovery token? Enter token
-            </button>
-          </div>
-        )}
-
-        <div className="border-t border-border pt-4 text-center">
-          <Link href="/login" className="text-xs font-medium text-brand hover:underline">
-            &larr; Back to Sign In
-          </Link>
+          <button
+            type="button"
+            onClick={() => {
+              setError(null);
+              setStep('verify');
+            }}
+            className="w-full text-center text-xs font-medium text-text-secondary hover:text-text-primary"
+          >
+            Already have a verification code? Enter code
+          </button>
         </div>
+
+        {backToSignIn}
       </form>
     );
   }
 
+  // Link-only delivery and no link token yet: nothing to type, the user must open the email.
+  if (!linkToken && delivery === 'link') {
+    return (
+      <div className="glass space-y-4 rounded-lg p-6">
+        <div>
+          <h2 className="text-base font-semibold text-text-primary">Check your email</h2>
+          <p className="mt-1 text-xs text-text-secondary">
+            {notice ?? 'If an account exists for this email, a reset link has been sent.'} Open
+            the link in the email to choose a new password.
+          </p>
+        </div>
+
+        {errorBanner}
+
+        <ResendControls
+          cooldown={cooldown}
+          pending={pending}
+          onResend={() => void requestRecovery()}
+          onChangeEmail={startOver}
+        />
+
+        {backToSignIn}
+      </div>
+    );
+  }
+
   return (
-    <form
-      onSubmit={handleResetPassword}
-      className="glass space-y-5 rounded-xl border border-glass-border bg-surface p-6 shadow-glass-md sm:p-8"
-    >
-      <div className="border-b border-border pb-3">
-        <h2 className="text-base font-semibold text-text-primary">Set New Password</h2>
-        <p className="mt-0.5 text-xs text-text-secondary">
-          Enter your recovery token and choose a secure new password.
+    <form onSubmit={handleResetPassword} className="glass space-y-4 rounded-lg p-6">
+      <div>
+        <h2 className="text-base font-semibold text-text-primary">Set new password</h2>
+        <p className="mt-1 text-xs text-text-secondary">
+          {linkToken
+            ? 'Your recovery link has been accepted. Choose a new password.'
+            : 'Enter the verification code from your email and choose a new password.'}
         </p>
       </div>
 
-      <Field label="Work Email" htmlFor="resetEmail">
+      {notice && (
+        <p className="rounded-md bg-surface-muted px-3 py-2 text-xs text-text-secondary">{notice}</p>
+      )}
+
+      <Field label="Work email" htmlFor="resetEmail">
         <Input
           id="resetEmail"
           type="email"
           required
           autoComplete="email"
+          readOnly={Boolean(linkToken)}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
       </Field>
 
-      <Field label="Recovery Token / Code" htmlFor="token">
+      {acceptsCode && (
+        <Field label="Verification code" htmlFor="code">
+          <Input
+            id="code"
+            type="text"
+            required
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            spellCheck={false}
+            value={code}
+            onChange={(e) => setCode(e.target.value.trim())}
+          />
+        </Field>
+      )}
+
+      <Field label="New password" htmlFor="newPassword">
         <Input
-          id="token"
-          type="text"
+          id="newPassword"
+          type="password"
           required
-          placeholder="Paste recovery token"
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
+          minLength={MIN_PASSWORD_LENGTH}
+          autoComplete="new-password"
+          value={newPassword}
+          onChange={(e) => setNewPassword(e.target.value)}
         />
       </Field>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="New Password" htmlFor="newPassword">
-          <Input
-            id="newPassword"
-            type="password"
-            required
-            autoComplete="new-password"
-            placeholder="Min 8 characters"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-          />
-        </Field>
+      <Field label="Confirm password" htmlFor="confirmPassword">
+        <Input
+          id="confirmPassword"
+          type="password"
+          required
+          minLength={MIN_PASSWORD_LENGTH}
+          autoComplete="new-password"
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+        />
+      </Field>
 
-        <Field label="Confirm Password" htmlFor="confirmPassword">
-          <Input
-            id="confirmPassword"
-            type="password"
-            required
-            autoComplete="new-password"
-            placeholder="Re-enter password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-          />
-        </Field>
-      </div>
+      {errorBanner}
 
-      {error && (
-        <p role="alert" className="rounded-lg bg-danger/10 px-3.5 py-2.5 text-xs text-danger">
-          {error}
-        </p>
-      )}
-
-      <div className="space-y-3 pt-2">
-        <Button
-          type="submit"
-          variant="ghost"
-          disabled={pending}
-          className={PRIMARY_BTN_CLASS}
-        >
-          {pending ? 'Updating Password...' : 'Reset & Save New Password'}
+      <div className="space-y-3">
+        <Button type="submit" variant="ghost" disabled={pending} className={AUTH_PRIMARY_BUTTON_CLASS}>
+          {pending ? 'Saving password...' : 'Save new password'}
         </Button>
 
-        <button
-          type="button"
-          onClick={() => setStep('request')}
-          className="w-full text-center text-xs font-medium text-text-secondary hover:text-text-primary"
-        >
-          Need a new recovery token? Request code
-        </button>
+        {linkToken ? (
+          <button
+            type="button"
+            onClick={startOver}
+            className="w-full text-center text-xs font-medium text-text-secondary hover:text-text-primary"
+          >
+            Link not working? Request a new one
+          </button>
+        ) : (
+          <ResendControls
+            cooldown={cooldown}
+            pending={pending}
+            onResend={() => void requestRecovery()}
+            onChangeEmail={startOver}
+          />
+        )}
       </div>
 
-      <div className="border-t border-border pt-4 text-center">
-        <Link href="/login" className="text-xs font-medium text-brand hover:underline">
-          &larr; Back to Sign In
-        </Link>
-      </div>
+      {backToSignIn}
     </form>
+  );
+}
+
+function ResendControls({
+  cooldown,
+  pending,
+  onResend,
+  onChangeEmail,
+}: {
+  cooldown: number;
+  pending: boolean;
+  onResend: () => void;
+  onChangeEmail: () => void;
+}) {
+  const linkClass =
+    'text-xs font-medium text-text-secondary hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50';
+
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <button type="button" onClick={onChangeEmail} className={linkClass}>
+        Use a different email
+      </button>
+      <button type="button" onClick={onResend} disabled={pending || cooldown > 0} className={linkClass}>
+        {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend email'}
+      </button>
+    </div>
   );
 }

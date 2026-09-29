@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
+import { malformedJsonResponse, proxyPublicPost } from '@/lib/auth-proxy';
 
-const API_URL = process.env.MONITORING_API_URL || 'http://127.0.0.1:4000';
+const MIN_PASSWORD_LENGTH = 8;
 
 export async function POST(request: Request) {
   let body: { email?: string; token?: string; newPassword?: string };
@@ -8,46 +9,30 @@ export async function POST(request: Request) {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: 'Malformed request payload' }, { status: 400 });
+    return malformedJsonResponse();
   }
 
-  if (!body.email || !body.token || !body.newPassword) {
+  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+  const token = typeof body.token === 'string' ? body.token.trim() : '';
+  const newPassword = typeof body.newPassword === 'string' ? body.newPassword : '';
+
+  if (!email || !token || !newPassword) {
     return NextResponse.json(
-      { error: 'Email, recovery token, and new password are required.' },
-      { status: 400 }
+      { error: 'Email, verification code, and new password are required.' },
+      { status: 400 },
     );
   }
 
-  if (body.newPassword.length < 8) {
+  if (newPassword.length < MIN_PASSWORD_LENGTH) {
     return NextResponse.json(
-      { error: 'New password must be at least 8 characters long.' },
-      { status: 400 }
+      { error: `New password must be at least ${MIN_PASSWORD_LENGTH} characters long.` },
+      { status: 400 },
     );
   }
 
-  try {
-    const upstream = await fetch(`${API_URL}/v1/dashboard/auth/reset-password`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-      cache: 'no-store',
-    });
-
-    const data = await upstream.json().catch(() => ({}));
-
-    if (!upstream.ok) {
-      return NextResponse.json(
-        { error: data.error || data.message || 'Failed to reset password.' },
-        { status: upstream.status }
-      );
-    }
-
-    return NextResponse.json(data, { status: upstream.status });
-  } catch (error) {
-    console.error('reset-password: upstream unreachable:', error);
-    return NextResponse.json(
-      { error: 'The backend service is currently unreachable. Please try again shortly.' },
-      { status: 503 }
-    );
-  }
+  return proxyPublicPost(
+    '/v1/dashboard/auth/reset-password',
+    { email, token, newPassword },
+    'Failed to reset password.',
+  );
 }

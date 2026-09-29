@@ -3,7 +3,7 @@ import { authController } from './authController';
 import { validate } from '../../middleware/validate';
 import { userAuth } from '../../middleware/userAuth';
 import { rateLimiter } from '../../middleware/rateLimiter';
-import { registerSchema, loginSchema } from './auth.dto';
+import { registerSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema } from './auth.dto';
 
 const router = Router();
 
@@ -20,6 +20,20 @@ router.post(
   rateLimiter(10, 60 * 1000),
   validate(loginSchema),
   authController.login
+);
+
+router.post(
+  '/forgot-password',
+  rateLimiter({ max: 5, windowMs: 15 * 60 * 1000, name: 'password recovery' }),
+  validate(forgotPasswordSchema),
+  authController.forgotPassword
+);
+
+router.post(
+  '/reset-password',
+  rateLimiter({ max: 5, windowMs: 15 * 60 * 1000, name: 'password reset' }),
+  validate(resetPasswordSchema),
+  authController.resetPassword
 );
 
 router.get(

@@ -27,13 +27,14 @@ Backend/src/
     errorHandler.ts         terminal handler; 4xx warn, 5xx with stack
   lib/
     scheduler.ts            maintenance loop; advisory-locked so one replica sweeps
+    email/emailjs.ts        EmailJS REST client for transactional email
   modules/
     ingest/                 the agent write path        -> ingest.md
     report/                 the dashboard read path     -> reporting.md
     attendance/             closes sessions the workstation never could -> ingest.md section 9
     employee/               employees and device inventory
     organization/           organizations, policy, categories
-    auth/                   login, register, /me, realtime ticket
+    auth/                   login, register, /me, realtime ticket, password recovery -> password-recovery.md
   realtime/                 Socket.IO namespaces        -> realtime.md
   utils/token.ts            enrollment token and device API key hashing
 ```
@@ -123,6 +124,7 @@ database. It is the thing that catches a broken wire contract.
 - [reporting.md](reporting.md) - the read path
 - [realtime.md](realtime.md) - Socket.IO
 - [security.md](security.md) - auth, RBAC, rate limiting, audit
+- [password-recovery.md](password-recovery.md) - EmailJS reset link and code
 - [spec.md](spec.md) - the original governing specification
 - [../operations/backend-deployment.md](../operations/backend-deployment.md) - production
 - [../reference/data-model.md](../reference/data-model.md) - tables and indexes

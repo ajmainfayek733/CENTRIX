@@ -15,7 +15,9 @@ Frontend/src/
   app/
     layout.tsx                     root shell, theme
     error.tsx                      root error boundary
-    login/                         the only unauthenticated page
+    login/                         unauthenticated sign-in; links to password recovery
+    forgot-password/               unauthenticated password recovery
+    ems/advanced/register-organization/  unauthenticated org bootstrap (not linked from UI)
     (dashboard)/                   RBAC-protected route group
       layout.tsx                   resolves the session, wraps in RealtimeProvider
       error.tsx                    dashboard error boundary
@@ -27,7 +29,8 @@ Frontend/src/
       alerts/                      alerts + USB feeds
       settings/                    policy and category editors (super_admin)
     api/                           server-side proxies ONLY - see session-and-auth.md
-      auth/login, auth/logout
+      auth/login, auth/logout, auth/forgot-password, auth/reset-password,
+      auth/register-organization
       logs/[feed]
       realtime/ticket
       screenshots/[deviceId]/[file]
@@ -84,6 +87,9 @@ purpose; none is a general-purpose passthrough.
 | Route | Why it exists |
 |---|---|
 | `api/auth/login` | Must set the httpOnly cookie |
+| `api/auth/forgot-password` | Public recovery; no session cookie |
+| `api/auth/reset-password` | Public recovery; no session cookie |
+| `api/auth/register-organization` | Public onboarding; returns enrollment token once |
 | `api/logs/[feed]` | Scroll paging; feeds (`activity`, `alerts`, `usb`, `employee-usb`, `screenshots`) are **allowlisted** so it cannot become an open proxy |
 | `api/realtime/ticket` | Mints a socket credential that is not the session token |
 | `api/screenshots/[deviceId]/[file]` | An `<img>` tag cannot send an Authorization header |

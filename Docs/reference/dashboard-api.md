@@ -4,7 +4,8 @@
 `Backend/src/modules/{auth,organization,employee,report}/*.routes.ts`.
 
 **Authentication:** Better Auth session (cookie or `Authorization: Bearer <session token>`),
-verified by `userAuth`. **Every route** carries `requireRole(...)` and `auditLogger(...)`.
+verified by `userAuth`. Authenticated dashboard routes carry `requireRole(...)` and
+`auditLogger(...)`. Public exceptions: login, password recovery, and organization registration.
 
 **Envelope:** every response is
 
@@ -27,6 +28,8 @@ Roles: `A` = `super_admin`, `M` = `manager`, `U` = `auditor`.
 |---|---|---|---|
 | POST | `/register` | - | Rate limited 10/min per IP |
 | POST | `/login` | - | Rate limited 10/min per IP |
+| POST | `/forgot-password` | - | Rate limited 5 / 15 min per IP. Emails a reset link and/or code via EmailJS. Same response for every email: `{ delivery, expiresInMinutes }`, never a secret. 503 when email is not configured in production. See [password-recovery.md](../backend/password-recovery.md). |
+| POST | `/reset-password` | - | Rate limited 5 / 15 min per IP. Body: `email`, `token` (link token or code), `newPassword`. Revokes the recovery after `PASSWORD_RESET_MAX_ATTEMPTS` failures. Invalidates existing sessions. |
 | GET | `/me` | Any session | Role comes from the server every request - a revoked session takes effect immediately |
 | POST | `/realtime-ticket` | Any session | Mints a short-lived signed socket ticket |
 
@@ -37,6 +40,7 @@ before `express.json()`.
 
 | Method | Path | Roles | Audit action |
 |---|---|---|---|
+| POST | `/register` | - | Public onboarding. Creates org, default policy, first `super_admin`, and enrollment token. Rate limited 5 / 15 min per IP. |
 | GET | `/` | A M U | `VIEW_ALL_ORGANIZATIONS` |
 | GET | `/:id` | A M U | `VIEW_ORGANIZATION_DETAIL` |
 | POST | `/` | A | `CREATE_ORGANIZATION` |
@@ -47,7 +51,8 @@ before `express.json()`.
 | PUT | `/:id/categories` | A | `UPSERT_CATEGORY` |
 | DELETE | `/:id/categories/:categoryId` | A | `DELETE_CATEGORY` |
 
-`POST /` returns the enrollment token **once**; only its HMAC is persisted.
+`POST /` and `POST /register` return the enrollment token **once**; only its HMAC is persisted.
+The token is required in the Windows agent installer to register organization devices.
 
 `POST /:id/enrollment-token` rotates it. Already-issued device keys keep working, but every
 `agent.config.json` in the fleet now holds a stale token - see
@@ -132,6 +137,9 @@ Not part of this API - same-origin Next.js handlers that attach the session serv
 | Route | Proxies to |
 |---|---|
 | `POST /api/auth/login` | `/v1/dashboard/auth/login`, sets the httpOnly cookie |
+| `POST /api/auth/forgot-password` | `/v1/dashboard/auth/forgot-password` |
+| `POST /api/auth/reset-password` | `/v1/dashboard/auth/reset-password` |
+| `POST /api/auth/register-organization` | `/v1/dashboard/organizations/register` |
 | `POST /api/auth/logout` | Clears the cookie |
 | `GET /api/logs/[feed]` | `activity`, `alerts`, `usb`, `screenshots` - **allowlisted**, 404 otherwise |
 | `POST /api/realtime/ticket` | `/v1/dashboard/auth/realtime-ticket` |

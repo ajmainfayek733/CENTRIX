@@ -48,6 +48,7 @@ Applies to more than one tier. Read before making a structural change.
 | [reporting.md](backend/reporting.md) | The dashboard read path: rollup-backed reports, keyset pagination |
 | [realtime.md](backend/realtime.md) | Socket.IO namespaces, presence, and why a socket is not an availability signal |
 | [security.md](backend/security.md) | The two auth systems, RBAC, rate limiting, audit logging |
+| [password-recovery.md](backend/password-recovery.md) | Password reset by emailed link or code through EmailJS |
 | [spec.md](backend/spec.md) | Original governing specification for this tier |
 
 ### [frontend/](frontend/) - Next.js App Router dashboard

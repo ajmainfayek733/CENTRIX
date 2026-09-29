@@ -1,18 +1,16 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button, Field, Input } from '@/components/ui';
-
-/** Solid fill so the control stays readable over the page gradient in both themes. */
-const SIGN_IN_CLASS =
-  'w-full border border-brand-strong bg-brand-strong text-brand-contrast shadow-none hover:bg-brand hover:text-brand-contrast';
+import { AUTH_PRIMARY_BUTTON_CLASS } from '@/lib/auth-ui';
 
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(() => searchParams.get('email') ?? '');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -28,7 +26,7 @@ export function LoginForm() {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
       });
 
       if (!response.ok) {
@@ -82,9 +80,22 @@ export function LoginForm() {
         </p>
       )}
 
-      <Button type="submit" variant="ghost" disabled={pending} className={SIGN_IN_CLASS}>
+      <Button type="submit" variant="ghost" disabled={pending} className={AUTH_PRIMARY_BUTTON_CLASS}>
         {pending ? 'Signing in...' : 'Sign in'}
       </Button>
+
+      <p className="text-center text-xs text-text-secondary">
+        <Link
+          href={
+            email.trim()
+              ? `/forgot-password?email=${encodeURIComponent(email.trim())}`
+              : '/forgot-password'
+          }
+          className="font-medium text-brand hover:underline"
+        >
+          Forgot password?
+        </Link>
+      </p>
     </form>
   );
 }

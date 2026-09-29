@@ -21,6 +21,15 @@ LoginForm (client)
 
 The proxy exists solely to set that cookie. The browser never sees the token value.
 
+Password recovery is linked from the login form (`/forgot-password`). It posts to
+`/api/auth/forgot-password` and `/api/auth/reset-password`, which forward to the Express API.
+The backend emails a reset link and/or verification code through EmailJS; no secret is ever
+returned to the browser. A link lands on `/reset-password`, which redirects to `/forgot-password`;
+the form captures the token and removes it from the address bar. See
+[../backend/password-recovery.md](../backend/password-recovery.md). Organization registration is **not** linked from the dashboard; operators open
+`/ems/advanced/register-organization` directly. That page posts to
+`/api/auth/register-organization` and displays the enrollment token once.
+
 ## 2. Resolving the current user
 
 `getSessionUser()` in `Frontend/src/lib/session.ts` asks the API rather than decoding the token.

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { ToastProvider } from "@/components/ui";
 
 /*
  * Inter is the blueprint's typeface. It is loaded through next/font rather than the
@@ -50,7 +51,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* The ambient ground every surface floats on. Rendered once here so the login screen
             and the dashboard share it, and so it never repaints on navigation. */}
         <div className="spatial-bg" aria-hidden />
-        <div className="relative z-10">{children}</div>
+        <div className="relative z-10">
+          <ToastProvider>{children}</ToastProvider>
+        </div>
       </body>
     </html>
   );

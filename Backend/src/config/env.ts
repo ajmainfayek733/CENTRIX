@@ -143,6 +143,28 @@ const envSchema = z.object({
   // How often the batch-idempotency ledger is pruned. It only grows by one row per device per
   // channel per sync, so daily is ample.
   INGEST_BATCH_PRUNE_INTERVAL_SECONDS: z.coerce.number().int().positive().default(86_400),
+
+  // -- Transactional email (EmailJS REST API) ----------------------------------
+  // Password recovery is delivered by EmailJS. Calls are made server-side with the account's
+  // private key, so "Allow EmailJS API for non-browser applications" must be enabled under
+  // Account > Security. Leave all four blank in development to log recovery links instead.
+  EMAILJS_SERVICE_ID: z.string().trim().optional(),
+  EMAILJS_PASSWORD_RESET_TEMPLATE_ID: z.string().trim().optional(),
+  EMAILJS_PUBLIC_KEY: z.string().trim().optional(),
+  EMAILJS_PRIVATE_KEY: z.string().trim().optional(),
+  EMAILJS_API_URL: z.string().url().default("https://api.emailjs.com/api/v1.0/email/send"),
+  EMAILJS_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
+  // Product name rendered into email templates as {{app_name}}.
+  APP_NAME: z.string().trim().min(1).default("CENTRIX"),
+
+  // -- Password recovery -------------------------------------------------------
+  // What the recovery email carries: a one-click link, a short numeric code, or both.
+  PASSWORD_RESET_DELIVERY: z.enum(["link", "code", "both"]).default("both"),
+  PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().positive().max(1_440).default(30),
+  // Failed verification attempts allowed per issued recovery before it is revoked. This is what
+  // keeps a short numeric code from being brute-forced across rotating IP addresses.
+  PASSWORD_RESET_MAX_ATTEMPTS: z.coerce.number().int().positive().max(20).default(5),
+  PASSWORD_RESET_CODE_LENGTH: z.coerce.number().int().min(6).max(10).default(6),
 });
 
 const _env = envSchema.safeParse(process.env);
@@ -168,5 +190,32 @@ if (
 if (env.SCREENSHOT_STORAGE_PROVIDER === "s3" && !env.SCREENSHOT_S3_BUCKET) {
   throw new Error(
     "SCREENSHOT_S3_BUCKET must be set when SCREENSHOT_STORAGE_PROVIDER=s3 (see .env.example)",
+  );
+}
+
+const EMAILJS_REQUIRED_KEYS = [
+  "EMAILJS_SERVICE_ID",
+  "EMAILJS_PASSWORD_RESET_TEMPLATE_ID",
+  "EMAILJS_PUBLIC_KEY",
+  "EMAILJS_PRIVATE_KEY",
+] as const;
+
+const configuredEmailJsKeys = EMAILJS_REQUIRED_KEYS.filter((key) => Boolean(env[key]));
+
+/** True when every EmailJS credential is present. Partial configuration fails startup below. */
+export const isEmailDeliveryConfigured = configuredEmailJsKeys.length === EMAILJS_REQUIRED_KEYS.length;
+
+if (configuredEmailJsKeys.length > 0 && !isEmailDeliveryConfigured) {
+  const missing = EMAILJS_REQUIRED_KEYS.filter((key) => !env[key]);
+  throw new Error(
+    `EmailJS is partially configured. Missing: ${missing.join(", ")} (see .env.example)`,
+  );
+}
+
+// Recovery is the only consumer, so a missing mailer disables that endpoint (503) rather than
+// refusing to start a server that also carries telemetry ingest.
+if (env.NODE_ENV === "production" && !isEmailDeliveryConfigured) {
+  console.warn(
+    `EmailJS is not configured; password recovery is disabled. Set ${EMAILJS_REQUIRED_KEYS.join(", ")}.`,
   );
 }

@@ -12,8 +12,11 @@ no per-machine provisioning step.
 
 ### Order of operations
 
-1. **Create the organization.** `POST /v1/dashboard/organizations` returns the enrollment token
-   **once**. Store it - only its HMAC is persisted.
+1. **Create the organization.** Open `/ems/advanced/register-organization` on the dashboard (this
+   route is not linked from the UI) or `POST /v1/dashboard/organizations/register`. The response
+   includes the enrollment token **once**. Store it - only its HMAC is persisted, and agents need
+   it to register organization devices. Authenticated `POST /v1/dashboard/organizations` also
+   mints a token for an additional tenant.
 2. **Import the roster.** Employees screen -> *Import roster* -> paste
    `name, email, department` (one per line). Tab-separated text pasted straight from a
    spreadsheet works, a header row is ignored, and re-importing a file that already contains
@@ -110,6 +113,14 @@ with more than one replica each holds a different subset of images, so the dashb
 whichever replica it asks. Before scaling out, either point this at shared storage (NFS/EFS) or
 replace `screenshotStorage.ts` with an S3/Azure Blob backend - the module is deliberately a
 two-function surface so the swap is contained.
+
+### EmailJS and `FRONTEND_URL`
+
+Password recovery emails go out through EmailJS. Set `EMAILJS_SERVICE_ID`,
+`EMAILJS_PASSWORD_RESET_TEMPLATE_ID`, `EMAILJS_PUBLIC_KEY` and `EMAILJS_PRIVATE_KEY`, and enable
+non-browser API access in the EmailJS account. Without them the API still starts, but
+`/forgot-password` returns 503. `FRONTEND_URL` must be the public dashboard URL, because reset
+links are built from it. Setup and template: [../backend/password-recovery.md](../backend/password-recovery.md).
 
 ---
 
