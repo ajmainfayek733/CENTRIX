@@ -283,6 +283,12 @@ image slowly and relies on swap during `next build`.
 
 ## 7. Switching to RDS
 
+> **Not wired up or tested.** The bundled Postgres is the supported path for the first
+> deployment. The stack does not yet include the RDS certificate authority, and the Postgres
+> driver treats `sslmode=require` as full certificate verification. A connection using the URL
+> below fails with a self-signed certificate error until the AWS global RDS CA bundle is
+> mounted into the `api` and `migrate` services and `NODE_EXTRA_CA_CERTS` points at it.
+
 1. Create a PostgreSQL 17 RDS instance in ap-south-1, in the same VPC. Its security group must allow 5432 from the EC2 instance's security group only.
 2. In `deploy/.env`, set `COMPOSE_PROFILES=` (empty), then set
    `DATABASE_URL=postgresql://USER:PASS@ENDPOINT:5432/centrix?sslmode=require`.
