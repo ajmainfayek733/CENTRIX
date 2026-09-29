@@ -16,6 +16,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.862.0",
     "@better-auth/prisma-adapter": "^1.6.23",
+    "@emailjs/nodejs": "^5.0.2",
     "@prisma/adapter-pg": "^7.9.0",
     "@prisma/client": "^7.8.0",
     "archiver": "^8.0.0",

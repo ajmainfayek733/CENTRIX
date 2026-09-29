@@ -144,7 +144,7 @@ const envSchema = z.object({
   // channel per sync, so daily is ample.
   INGEST_BATCH_PRUNE_INTERVAL_SECONDS: z.coerce.number().int().positive().default(86_400),
 
-  // -- Transactional email (EmailJS REST API) ----------------------------------
+  // -- Transactional email (EmailJS Node.js SDK) -------------------------------
   // Password recovery is delivered by EmailJS. Calls are made server-side with the account's
   // private key, so "Allow EmailJS API for non-browser applications" must be enabled under
   // Account > Security. Leave all four blank in development to log recovery links instead.
@@ -152,7 +152,6 @@ const envSchema = z.object({
   EMAILJS_PASSWORD_RESET_TEMPLATE_ID: z.string().trim().optional(),
   EMAILJS_PUBLIC_KEY: z.string().trim().optional(),
   EMAILJS_PRIVATE_KEY: z.string().trim().optional(),
-  EMAILJS_API_URL: z.string().url().default("https://api.emailjs.com/api/v1.0/email/send"),
   EMAILJS_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
   // Product name rendered into email templates as {{app_name}}.
   APP_NAME: z.string().trim().min(1).default("CENTRIX"),

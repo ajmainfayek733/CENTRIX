@@ -148,6 +148,10 @@ export async function deliverResetEmail(
   }
 
   await sendEmailJsTemplate(env.EMAILJS_PASSWORD_RESET_TEMPLATE_ID, {
+    // Short aliases match the minimal template ({{email}} as To Email, {{link}}, {{code}}).
+    email: recipient.email,
+    link: resetLink,
+    code: resetCode,
     to_email: recipient.email,
     to_name: recipient.name?.trim() || recipient.email,
     app_name: env.APP_NAME,

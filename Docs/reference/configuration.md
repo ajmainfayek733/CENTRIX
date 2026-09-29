@@ -117,7 +117,6 @@ credentials are all-or-nothing; a partial set fails startup.
 | `EMAILJS_PASSWORD_RESET_TEMPLATE_ID` | - | Recovery email template |
 | `EMAILJS_PUBLIC_KEY` | - | Account public key |
 | `EMAILJS_PRIVATE_KEY` | - | Account private key; required for server-side sends |
-| `EMAILJS_API_URL` | `https://api.emailjs.com/api/v1.0/email/send` | REST endpoint |
 | `EMAILJS_TIMEOUT_MS` | `10000` | Abort bound on one send |
 | `APP_NAME` | `CENTRIX` | Rendered as `{{app_name}}` |
 | `PASSWORD_RESET_DELIVERY` | `both` | `link` \| `code` \| `both` |

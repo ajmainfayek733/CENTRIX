@@ -1,7 +1,7 @@
 # Password recovery
 
 Dashboard users reset a forgotten password from `/forgot-password`. The backend emails a
-one-click link, a numeric verification code, or both, through the EmailJS REST API.
+one-click link, a numeric verification code, or both, through the official EmailJS Node.js SDK (`@emailjs/nodejs`).
 
 Source: `Backend/src/modules/auth/passwordReset.ts`, `Backend/src/modules/auth/authService.ts`,
 `Backend/src/lib/email/emailjs.ts`, `Frontend/src/app/forgot-password/ForgotPasswordForm.tsx`.
@@ -10,7 +10,7 @@ Source: `Backend/src/modules/auth/passwordReset.ts`, `Backend/src/modules/auth/a
 
 ## 1. Flow
 
-```
+```text
 /forgot-password (email)
   -> POST /api/auth/forgot-password          Next.js proxy
      -> POST /v1/dashboard/auth/forgot-password
@@ -59,7 +59,9 @@ can serve every delivery mode with EmailJS conditional sections.
 
 | Parameter | Value |
 |---|---|
-| `to_email` | Recipient address |
+| `email` / `to_email` | Recipient address. Bind the template's **To Email** to either one. |
+| `link` | Same as `reset_link` |
+| `code` | Same as `reset_code` |
 | `to_name` | User's name, or the address when no name is set |
 | `app_name` | `APP_NAME` |
 | `reset_link` | One-click link, empty in `code` mode |
@@ -88,7 +90,6 @@ Example template body:
 | `EMAILJS_PASSWORD_RESET_TEMPLATE_ID` | - | Template described above |
 | `EMAILJS_PUBLIC_KEY` | - | Sent as `user_id` |
 | `EMAILJS_PRIVATE_KEY` | - | Sent as `accessToken`; required for server-side calls |
-| `EMAILJS_API_URL` | `https://api.emailjs.com/api/v1.0/email/send` | REST endpoint |
 | `EMAILJS_TIMEOUT_MS` | `10000` | Abort bound on one send |
 | `APP_NAME` | `CENTRIX` | `{{app_name}}` |
 | `PASSWORD_RESET_DELIVERY` | `both` | `link`, `code`, or `both` |
@@ -109,7 +110,8 @@ The four EmailJS credentials are all-or-nothing: a partial set fails startup. Wi
 |---|---|
 | `forgot-password` returns 503 in production | EmailJS credentials not set |
 | API log: `EmailJS rejected the request with status 403` | Non-browser API access is disabled in EmailJS account security |
-| API log: status 400 with a template message | Template ID wrong, or **To Email** not bound to `{{to_email}}` |
+| API log: status 400 or 422 with a template or recipient message | Template ID wrong, or **To Email** not bound to `{{email}}` or `{{to_email}}` |
+| No email and no error in the browser | Expected: the send runs in the background. The failure is only in the API console, prefixed `passwordReset:` |
 | API log: status 429 | EmailJS plan quota or rate limit reached |
 | Link opens the wrong host | `FRONTEND_URL` still points at localhost |
 | "Too many incorrect attempts" | Attempt budget spent; request a new email |
