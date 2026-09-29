@@ -1,0 +1,83 @@
+# Local test overrides for docker-compose.prod.yml. NOT for production.
+#
+# Runs the full production stack on a workstation with no AWS account and no public domain:
+#   - DOMAIN=localhost makes Caddy issue a certificate from its own local CA instead of
+#     Let's Encrypt (the browser warns once; see Docs/operations/aws-ec2-deployment.md).
+#   - S3 is replaced by Adobe S3Mock, an S3-compatible emulator, so screenshot uploads and
+#     viewing exercise the same S3 code path as production.
+#
+#   cd deploy
+#   docker compose --env-file .env -f docker-compose.prod.yml -f docker-compose.local.yml up -d --build
+
+services:
+  caddy:
+    volumes:
+      # `z` relabels the file for SELinux (Fedora, RHEL). Without it an enforcing host can deny
+      # Caddy read access to its own config.
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro,z
+
+  api:
+    depends_on:
+      s3-init:
+        condition: service_completed_successfully
+    environment:
+      SCREENSHOT_S3_ENDPOINT: http://s3mock:${S3MOCK_PORT:-9090}
+      # Emulators address buckets by path (http://host/bucket/key), not by DNS subdomain.
+      SCREENSHOT_S3_FORCE_PATH_STYLE: 'true'
+      # S3Mock ignores credentials, but the AWS SDK refuses to sign a request without any. Static
+      # values also stop the SDK probing EC2 instance metadata, which does not exist here.
+      AWS_ACCESS_KEY_ID: local-test
+      AWS_SECRET_ACCESS_KEY: local-test
+
+  s3mock:
+    image: adobe/s3mock:${S3MOCK_VERSION:-5}
+    restart: unless-stopped
+    environment:
+      # Keeps uploaded screenshots when the container restarts; they live in the volume below.
+      COM_ADOBE_TESTING_S3MOCK_STORE_RETAIN_FILES_ON_EXIT: 'true'
+      COM_ADOBE_TESTING_S3MOCK_STORE_ROOT: /s3mockroot
+    volumes:
+      - s3mock-data:/s3mockroot
+    expose:
+      - '${S3MOCK_PORT:-9090}'
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  # Creates the bucket named in .env once S3Mock answers, then exits. The API waits for it.
+  s3-init:
+    image: amazon/aws-cli:${AWS_CLI_VERSION:-latest}
+    restart: 'no'
+    depends_on:
+      - s3mock
+    environment:
+      AWS_ACCESS_KEY_ID: local-test
+      AWS_SECRET_ACCESS_KEY: local-test
+      AWS_DEFAULT_REGION: us-east-1
+      BUCKET: ${SCREENSHOT_S3_BUCKET:?set SCREENSHOT_S3_BUCKET in deploy/.env}
+      ENDPOINT: http://s3mock:${S3MOCK_PORT:-9090}
+      MAX_ATTEMPTS: ${S3_INIT_MAX_ATTEMPTS:-30}
+      RETRY_SECONDS: ${S3_INIT_RETRY_SECONDS:-2}
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - |
+        attempt=0
+        until aws --endpoint-url "$$ENDPOINT" s3api list-buckets >/dev/null 2>&1; do
+          attempt=$$((attempt + 1))
+          if [ "$$attempt" -ge "$$MAX_ATTEMPTS" ]; then
+            echo "s3-init: S3Mock did not answer at $$ENDPOINT" >&2
+            exit 1
+          fi
+          sleep "$$RETRY_SECONDS"
+        done
+        if aws --endpoint-url "$$ENDPOINT" s3api head-bucket --bucket "$$BUCKET" >/dev/null 2>&1; then
+          echo "s3-init: bucket $$BUCKET exists"
+        else
+          aws --endpoint-url "$$ENDPOINT" s3api create-bucket --bucket "$$BUCKET"
+          echo "s3-init: created bucket $$BUCKET"
+        fi
+
+volumes:
+  s3mock-data:

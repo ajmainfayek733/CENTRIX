@@ -305,3 +305,93 @@ image slowly and relies on swap during `next build`.
 | Every agent rate-limited at once | `TRUST_PROXY` wrong for the topology; must be `1` behind Caddy alone |
 
 See [troubleshooting.md](troubleshooting.md) for application-level symptoms.
+
+---
+
+## 9. Testing the production stack locally (Fedora)
+
+[`deploy/docker-compose.local.yml`](../../deploy/docker-compose.local.yml) layers over the
+production file. The images, Caddy routing, migrations and health checks are the same as in
+production. Two things differ:
+
+- **TLS.** `DOMAIN=localhost` makes Caddy use its own local certificate authority instead of Let's Encrypt.
+- **S3.** Adobe S3Mock, an S3-compatible emulator, stands in for the bucket. Screenshot upload and viewing still run through the real S3 client code.
+
+### 9.1 Install Docker Engine
+
+Use Docker CE rather than Podman. The stack relies on Compose features such as optional
+dependencies, profiles and completion conditions that `podman-compose` does not fully support.
+
+```bash
+sudo dnf -y remove podman-docker 2>/dev/null   # only if installed; it shadows the docker command
+sudo dnf -y install dnf-plugins-core
+sudo dnf config-manager addrepo --from-repofile https://download.docker.com/linux/fedora/docker-ce.repo
+sudo dnf -y install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+sudo usermod -aG docker "$USER"   # then log out and back in
+docker compose version
+```
+
+### 9.2 Configure
+
+```bash
+cd deploy
+cp .env.example .env
+```
+
+Set these values in `deploy/.env`. Everything else can stay as it is.
+
+```dotenv
+DOMAIN=localhost
+ACME_EMAIL=test@example.org
+SCREENSHOT_S3_BUCKET=centrix-local
+POSTGRES_PASSWORD=<openssl rand -hex 32>
+BETTER_AUTH_SECRET=<openssl rand -hex 32>
+DEVICE_TOKEN_PEPPER=<openssl rand -hex 32>
+```
+
+Ports 80 and 443 must be free on the machine. Stop any local web server first.
+
+### 9.3 Run
+
+```bash
+docker compose --env-file .env -f docker-compose.prod.yml -f docker-compose.local.yml up -d --build
+docker compose --env-file .env -f docker-compose.prod.yml -f docker-compose.local.yml ps
+```
+
+Do not use `deploy.sh` here. Its final check requires a publicly trusted certificate, which a
+localhost certificate cannot be.
+
+### 9.4 Verify
+
+```bash
+curl -k https://localhost/health        # API through Caddy, proves the database
+curl -k https://localhost/api/health    # dashboard through Caddy
+```
+
+Then open `https://localhost` in a browser and accept the certificate warning once. Register an
+organization at `https://localhost/ems/advanced/register-organization` and sign in.
+
+To remove the browser warning, trust Caddy's local root certificate. Firefox keeps its own
+certificate store, so it may still need a one-time exception.
+
+```bash
+docker compose -f docker-compose.prod.yml -f docker-compose.local.yml \
+  cp caddy:/data/caddy/pki/authorities/local/root.crt ./caddy-local-root.crt
+sudo trust anchor --store ./caddy-local-root.crt
+```
+
+Windows agents cannot easily enroll against this setup, because they require a publicly trusted
+certificate. Test agents against the real server.
+
+### 9.5 Tear down
+
+```bash
+# Stop, keep data
+docker compose --env-file .env -f docker-compose.prod.yml -f docker-compose.local.yml down
+# Stop and delete the database, screenshots and certificates
+docker compose --env-file .env -f docker-compose.prod.yml -f docker-compose.local.yml down -v
+```
+
+Before deploying to EC2, replace the local values in `.env`. The simplest way is to start again
+from `.env.example` on the server.
