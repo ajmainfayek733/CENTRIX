@@ -12,12 +12,28 @@ import { NextResponse, type NextRequest } from 'next/server';
  * would mean an API call on every navigation. An expired-but-present cookie falls through to
  * the layout, which resolves the real session and redirects.
  */
+const PUBLIC_PATHS = [
+  '/login',
+  '/forgot-password',
+  '/recovery',
+  '/reset-password',
+];
+
+function isPublicRoute(pathname: string): boolean {
+  if (PUBLIC_PATHS.includes(pathname)) return true;
+  if (pathname.startsWith('/ems')) return true;
+  return false;
+}
+
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hasSession = Boolean(request.cookies.get('session')?.value);
 
-  if (pathname === '/login') {
-    return hasSession ? NextResponse.redirect(new URL('/overview', request.url)) : NextResponse.next();
+  if (isPublicRoute(pathname)) {
+    if (pathname === '/login' && hasSession) {
+      return NextResponse.redirect(new URL('/overview', request.url));
+    }
+    return NextResponse.next();
   }
 
   if (!hasSession) {

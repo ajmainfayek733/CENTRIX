@@ -82,7 +82,17 @@ function DeviceTable({
 }) {
   return (
     <TableWrap>
-      <table className={`${TABLE_CLASS} min-w-[900px]`}>
+      <table className={TABLE_CLASS + "min-w-250"}>
+        <colgroup>
+          <col className="w-[18%]" /> {/* Device */}
+          <col className="w-[22%]" /> {/* Assigned to (Increased slightly for the dropdown) */}
+          <col className="w-[15%]" /> {/* Operating system */}
+          <col className="w-[13%]" /> {/* MAC */}
+          <col className="w-[10%]" /> {/* Agent */}
+          <col className="w-[12%]" /> {/* Last seen */}
+          <col className="w-[10%]" /> {/* Actions */}
+        </colgroup>
+
         <thead>
           <tr>
             <Th>Device</Th>
@@ -107,9 +117,9 @@ function DeviceTable({
                     />
                     {device.deviceName}
                   </span>
-                  <span className="mt-0.5 block pl-4 font-mono text-[11px] text-text-tertiary">
+                  {/* <span className="mt-0.5 block pl-4 font-mono text-[11px] text-text-tertiary">
                     {device.deviceId}
-                  </span>
+                  </span> */}
                 </Td>
                 <Td muted>
                   {isAdmin ? (
