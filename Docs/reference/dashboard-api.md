@@ -28,8 +28,8 @@ Roles: `A` = `super_admin`, `M` = `manager`, `U` = `auditor`.
 |---|---|---|---|
 | POST | `/register` | - | Rate limited 10/min per IP |
 | POST | `/login` | - | Rate limited 10/min per IP |
-| POST | `/forgot-password` | - | Rate limited 5 / 15 min per IP. Emails a reset link and/or code via EmailJS. Same response for every email: `{ delivery, expiresInMinutes }`, never a secret. 503 when email is not configured in production. See [password-recovery.md](../backend/password-recovery.md). |
-| POST | `/reset-password` | - | Rate limited 5 / 15 min per IP. Body: `email`, `token` (link token or code), `newPassword`. Revokes the recovery after `PASSWORD_RESET_MAX_ATTEMPTS` failures. Invalidates existing sessions. |
+| POST | `/forgot-password` | - | Rate limited 5 / 15 min per IP. Emails a reset link via EmailJS (Better Auth `requestPasswordReset`). Same response for every email: `{ expiresInMinutes }`, never a secret. 503 when email is not configured in production. See [password-recovery.md](../backend/password-recovery.md). |
+| POST | `/reset-password` | - | Rate limited 5 / 15 min per IP. Body: `token` (from the emailed link), `newPassword`. Native Better Auth reset; the token is single use. Invalidates existing sessions. |
 | GET | `/me` | Any session | Role comes from the server every request - a revoked session takes effect immediately |
 | POST | `/realtime-ticket` | Any session | Mints a short-lived signed socket ticket |
 
@@ -74,9 +74,21 @@ on every agent.
 | PATCH | `/devices/:deviceId/assignment` | A | `ASSIGN_DEVICE` |
 | PATCH | `/devices/:deviceId/status` | A | `SET_DEVICE_STATUS` |
 
-`POST /bulk` backs the roster import: `name, email, department` per line, tab-separated
-spreadsheet paste works, a header row is ignored, and existing people are skipped rather than
-failing the import.
+`POST /bulk` inserts a roster (max 1000). Body: `organizationId`, `employees[]` of
+`{ name, email, departmentId? , department? }`. The Employees screen offers two front ends:
+**Add employees** (one form row per person, plus button for another row, department picked from
+`GET /organizations/:id/departments`) and **Import roster** (paste `name, email, department`
+per line; tab-separated spreadsheet paste works, a header row is ignored).
+
+- `departmentId` is authoritative; `department` (a name) is matched case-insensitively to an
+  existing department. Departments are never created here.
+- A missing or unknown department leaves the employee **unassigned** (still created, with a
+  per-row `warning`); the response carries `unassigned`. The admin creates the department on the
+  Departments screen and assigns members there.
+- `departmentId` and the `department` name column are both set, so per-department category rules
+  apply to the employee's devices immediately.
+- Existing or duplicate emails are skipped per row rather than failing the request; an unknown
+  `organizationId` is a 404. `POST /` (single create) resolves departments the same way.
 
 `PATCH /devices/:deviceId/assignment` moves a device off the "Unassigned Devices" placeholder.
 **Until this is done its telemetry is stored but reaches no per-employee report.**
@@ -99,6 +111,7 @@ around it. It also emits `device:deactivated` so the agent stops pushing without
 | GET | `/departments/:departmentId/batch-zip` | A M U | Detail + member PDFs | `EXPORT_DEPARTMENT_BATCH_ZIP` |
 | GET | `/employees/:employeeId/activity` | A M U | Keyset | `VIEW_EMPLOYEE_ACTIVITY_LOG` |
 | GET | `/alerts` | A M U | Keyset | `VIEW_ALERTS` |
+| GET | `/alerts/count` | A M U | `{ count, latestCreatedAt }` | none (polled by the bell) |
 | GET | `/usb-events` | A M U | Keyset | `VIEW_USB_EVENTS` |
 | GET | `/employees/:employeeId/usb-events` | A M U | Keyset | `VIEW_EMPLOYEE_USB_EVENTS` |
 | GET | `/employees/:employeeId/screenshots` | **A M** | Keyset | `VIEW_SCREENSHOT_INDEX` |
@@ -115,6 +128,15 @@ around it. It also emits `device:deactivated` so the agent stops pushing without
 | `cursor` | Keyset feeds | Opaque `<ISO timestamp>\|<uuid>`. Malformed serves the first page |
 | `limit` | Keyset feeds | May request **fewer** than policy allows, never more |
 | `includeResolved` | `/alerts` | |
+| `since` | `/alerts/count` | ISO timestamp. Counts open alerts with `createdAt` after it; 400 if unparseable |
+
+### Navbar bell and "Dismiss alerts"
+
+The bell shows `count` of open alerts created after this browser's dismissal watermark, capped at
+`99+`, and plays a tone when the count rises. "Dismiss alerts" on `/alerts` stores
+`latestCreatedAt` (a server timestamp) in `localStorage` as the watermark. Dismissal is per
+browser and does not resolve or hide alerts. The tone needs one prior click on the page, because
+browsers block audio until the user interacts.
 
 ### Paged response shape
 
@@ -141,7 +163,7 @@ Not part of this API - same-origin Next.js handlers that attach the session serv
 | `POST /api/auth/reset-password` | `/v1/dashboard/auth/reset-password` |
 | `POST /api/auth/register-organization` | `/v1/dashboard/organizations/register` |
 | `POST /api/auth/logout` | Clears the cookie |
-| `GET /api/logs/[feed]` | `activity`, `alerts`, `usb`, `screenshots` - **allowlisted**, 404 otherwise |
+| `GET /api/logs/[feed]` | `activity`, `alerts`, `alerts-count`, `usb`, `screenshots` - **allowlisted**, 404 otherwise |
 | `POST /api/realtime/ticket` | `/v1/dashboard/auth/realtime-ticket` |
 | `GET /api/screenshots/[deviceId]/[file]` | The image bytes |
 | `GET /api/reports/employees/[employeeId]/pdf` | Employee PDF stream |

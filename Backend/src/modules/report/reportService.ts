@@ -2065,6 +2065,34 @@ export class ReportService {
   }
 
   /**
+   * How many open alerts arrived after `since`, for the navbar bell.
+   *
+   * Counted on `createdAt` (when the server stored the alert), not `triggeredAt` (the agent's
+   * clock, which can be hours old for a backfilled batch). A backfilled alert is new to the
+   * operator even if it fired yesterday, and must not slip under a dismissal watermark.
+   *
+   * `latestCreatedAt` is the newest open alert regardless of `since`. The client stores it as its
+   * dismissal watermark, so "dismiss" is stamped with a server clock and browser clock skew can
+   * never hide or resurrect an alert.
+   */
+  async getAlertCount(since?: Date) {
+    const openAlerts = { resolvedAt: null };
+
+    const [count, latest] = await Promise.all([
+      prisma.alert.count({
+        where: { ...openAlerts, ...(since ? { createdAt: { gt: since } } : {}) },
+      }),
+      prisma.alert.findFirst({
+        where: openAlerts,
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true },
+      }),
+    ]);
+
+    return { count, latestCreatedAt: latest ? latest.createdAt.toISOString() : null };
+  }
+
+  /**
    * USB device audit trail (Features.md "USB Logs").
    *
    * `employeeId` narrows the trail to the machines assigned to one person, which is what the

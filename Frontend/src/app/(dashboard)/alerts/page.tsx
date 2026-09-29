@@ -3,6 +3,7 @@ import { Card, PageHeader } from "@/components/ui";
 import type { LogPage } from "@/components/LogScroller";
 import type { AlertRow, UsbEventRow } from "@/types/api";
 import { AlertsTable } from "./AlertsTable";
+import { DismissAlertsButton } from "./DismissAlertsButton";
 import { UsbTable } from "./UsbTable";
 
 export const metadata = { title: "Alerts - C E N T R I X" };
@@ -26,6 +27,7 @@ export default async function AlertsPage() {
       <PageHeader
         title="Alerts &amp; device activity"
         subtitle="Unresolved alerts and the removable-device audit trail. Both update as they happen."
+        action={<DismissAlertsButton />}
       />
 
       {/*

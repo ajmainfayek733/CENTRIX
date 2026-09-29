@@ -191,6 +191,25 @@ export class ReportController {
     }
   }
 
+  async getAlertCount(req: Request, res: Response, next: NextFunction) {
+    try {
+      const rawSince = req.query.since;
+      let since: Date | undefined;
+
+      if (typeof rawSince === "string" && rawSince) {
+        since = new Date(rawSince);
+        if (Number.isNaN(since.getTime())) {
+          return res.status(400).json({ error: "since must be an ISO 8601 timestamp" });
+        }
+      }
+
+      const data = await reportService.getAlertCount(since);
+      return res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async getUsbEvents(req: Request, res: Response, next: NextFunction) {
     try {
       const data = await reportService.getUsbEvents({

@@ -20,6 +20,8 @@ const FEEDS = {
     return `/v1/dashboard/reports/employees/${encodeURIComponent(employeeId)}/activity`;
   },
   alerts: () => '/v1/dashboard/reports/alerts',
+  // Bell badge: a count and a watermark, never rows.
+  'alerts-count': () => '/v1/dashboard/reports/alerts/count',
   usb: () => '/v1/dashboard/reports/usb-events',
   // The same trail narrowed to one employee. A distinct feed rather than an employeeId parameter
   // on `usb` above, because the upstream route differs and the API audits the two separately.
@@ -41,7 +43,7 @@ const FEEDS = {
 type Feed = keyof typeof FEEDS;
 
 /** Query parameters forwarded upstream. Anything else is dropped rather than passed through. */
-const FORWARDED_PARAMS = ['cursor', 'limit', 'startDate', 'endDate', 'includeResolved'] as const;
+const FORWARDED_PARAMS = ['cursor', 'limit', 'startDate', 'endDate', 'includeResolved', 'since'] as const;
 
 export async function GET(request: NextRequest, context: { params: Promise<{ feed: string }> }) {
   const { feed } = await context.params;

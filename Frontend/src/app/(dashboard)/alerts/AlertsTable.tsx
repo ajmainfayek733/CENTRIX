@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { useCallback } from 'react';
-import { LogScroller, type LogPage } from '@/components/LogScroller';
-import { formatDateTime, formatDuration } from '@/lib/format';
-import { TableWrap, TABLE_CLASS, Th, Td, SeverityBadge, Badge } from '@/components/ui';
-import type { AlertRow } from '@/types/api';
+import Link from "next/link";
+import { useCallback } from "react";
+import { LogScroller, type LogPage } from "@/components/LogScroller";
+import { formatDateTime, formatDuration } from "@/lib/format";
+import { TableWrap, TABLE_CLASS, Th, Td, SeverityBadge, Badge } from "@/components/ui";
+import type { AlertRow } from "@/types/api";
 
 /** Turns the typed context columns back into one readable line per alert type. */
 function describeContext(alert: AlertRow): string {
@@ -13,7 +13,7 @@ function describeContext(alert: AlertRow): string {
   if (alert.contextAppName) return alert.contextAppName;
   if (alert.contextUsbFriendlyName) return alert.contextUsbFriendlyName;
   if (alert.idleSeconds !== null) return `Idle ${formatDuration(alert.idleSeconds)}`;
-  return '-';
+  return "-";
 }
 
 /**
@@ -27,7 +27,7 @@ export function AlertsTable({ initial }: { initial: LogPage<AlertRow> }) {
 
   return (
     <TableWrap>
-      <table className={`${TABLE_CLASS} min-w-[720px]`}>
+      <table className={TABLE_CLASS}>
         <thead>
           <tr>
             <Th>Triggered</Th>
@@ -46,7 +46,7 @@ export function AlertsTable({ initial }: { initial: LogPage<AlertRow> }) {
         emptyMessage="No open alerts. Idle escalations and blacklist hits appear here as they happen."
       >
         {(rows) => (
-          <table className={`${TABLE_CLASS} min-w-[720px]`}>
+          <table className={TABLE_CLASS}>
             <tbody>
               {rows.map((alert) => (
                 <tr key={alert.id}>
@@ -60,7 +60,9 @@ export function AlertsTable({ initial }: { initial: LogPage<AlertRow> }) {
                     >
                       {alert.device.employee.name}
                     </Link>
-                    <span className="mt-px block text-xs text-text-tertiary">{alert.device.deviceName}</span>
+                    <span className="mt-px block text-xs text-text-tertiary">
+                      {alert.device.deviceName}
+                    </span>
                   </Td>
                   <Td>
                     {alert.title}

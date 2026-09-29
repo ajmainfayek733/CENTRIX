@@ -80,6 +80,14 @@ router.get(
   reportController.getAlerts,
 );
 
+// Polled by the navbar bell on every live alert, so deliberately not audited: a VIEW_ row per
+// poll would bury the audit log in noise that says nothing about what anyone looked at.
+router.get(
+  "/alerts/count",
+  requireRole("super_admin", "manager", "auditor"),
+  reportController.getAlertCount,
+);
+
 router.get(
   "/usb-events",
   requireRole("super_admin", "manager", "auditor"),
