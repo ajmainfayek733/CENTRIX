@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { env, isEmailDeliveryConfigured } from '../../config/env';
-import { sendEmailJsTemplate } from '../../lib/email/emailjs';
+import { sendEmailJsTemplate, type EmailTemplateParams } from '../../lib/email/emailjs';
 
 /**
  * Password recovery secrets and delivery.
@@ -123,31 +123,34 @@ export function buildResetLink(normalizedEmail: string, linkToken: string): stri
   return url.toString();
 }
 
+/** What the dashboard needs to send the recovery email itself with @emailjs/browser. */
+export interface BrowserEmailDispatch {
+  serviceId: string;
+  templateId: string;
+  publicKey: string;
+  templateParams: EmailTemplateParams;
+}
+
 export function isResetDeliveryAvailable(): boolean {
   return isEmailDeliveryConfigured || env.NODE_ENV !== 'production';
 }
 
+export function isBrowserTransport(): boolean {
+  return env.PASSWORD_RESET_EMAIL_TRANSPORT === 'browser';
+}
+
 /**
- * Sends the recovery email. Template params are always all present (empty when unused) so an
- * EmailJS template can use `{{#reset_link}}...{{/reset_link}}` sections for either mode.
+ * Template params for the recovery email. Every key is always present (empty when unused) so
+ * one EmailJS template can use `{{#reset_link}}...{{/reset_link}}` sections for any mode.
  */
-export async function deliverResetEmail(
+function buildResetTemplateParams(
   recipient: ResetEmailRecipient,
   secrets: Pick<IssuedResetSecrets, 'linkToken' | 'code'>,
-): Promise<void> {
+): EmailTemplateParams {
   const resetLink = secrets.linkToken ? buildResetLink(recipient.email, secrets.linkToken) : '';
   const resetCode = secrets.code ?? '';
 
-  if (!isEmailDeliveryConfigured) {
-    // Development only: isResetDeliveryAvailable() blocks this path in production.
-    console.warn(
-      `passwordReset: EmailJS not configured; development recovery for ${recipient.email}` +
-        `${resetLink ? ` link=${resetLink}` : ''}${resetCode ? ` code=${resetCode}` : ''}`,
-    );
-    return;
-  }
-
-  await sendEmailJsTemplate(env.EMAILJS_PASSWORD_RESET_TEMPLATE_ID, {
+  return {
     // Short aliases match the minimal template ({{email}} as To Email, {{link}}, {{code}}).
     email: recipient.email,
     link: resetLink,
@@ -158,5 +161,57 @@ export async function deliverResetEmail(
     reset_link: resetLink,
     reset_code: resetCode,
     expires_in_minutes: String(env.PASSWORD_RESET_TTL_MINUTES),
-  });
+  };
+}
+
+function logDevelopmentRecovery(email: string, params: EmailTemplateParams): void {
+  // Development only: isResetDeliveryAvailable() blocks this path in production.
+  console.warn(
+    `passwordReset: EmailJS not configured; development recovery for ${email}` +
+      `${params.link ? ` link=${params.link}` : ''}${params.code ? ` code=${params.code}` : ''}`,
+  );
+}
+
+/** Server transport: sends the recovery email with the EmailJS Node.js SDK. */
+export async function deliverResetEmail(
+  recipient: ResetEmailRecipient,
+  secrets: Pick<IssuedResetSecrets, 'linkToken' | 'code'>,
+): Promise<void> {
+  const params = buildResetTemplateParams(recipient, secrets);
+
+  if (!isEmailDeliveryConfigured) {
+    logDevelopmentRecovery(recipient.email, params);
+    return;
+  }
+
+  await sendEmailJsTemplate(env.EMAILJS_PASSWORD_RESET_TEMPLATE_ID, params);
+}
+
+/**
+ * Browser transport: returns what @emailjs/browser needs to send the email. Only the public
+ * key is exposed; the private key is never included. Returns null when EmailJS is not
+ * configured (development), after logging the recovery like the server transport does.
+ */
+export function buildBrowserEmailDispatch(
+  recipient: ResetEmailRecipient,
+  secrets: Pick<IssuedResetSecrets, 'linkToken' | 'code'>,
+): BrowserEmailDispatch | null {
+  const params = buildResetTemplateParams(recipient, secrets);
+
+  if (
+    !isEmailDeliveryConfigured ||
+    !env.EMAILJS_SERVICE_ID ||
+    !env.EMAILJS_PASSWORD_RESET_TEMPLATE_ID ||
+    !env.EMAILJS_PUBLIC_KEY
+  ) {
+    logDevelopmentRecovery(recipient.email, params);
+    return null;
+  }
+
+  return {
+    serviceId: env.EMAILJS_SERVICE_ID,
+    templateId: env.EMAILJS_PASSWORD_RESET_TEMPLATE_ID,
+    publicKey: env.EMAILJS_PUBLIC_KEY,
+    templateParams: params,
+  };
 }

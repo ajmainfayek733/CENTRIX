@@ -4,7 +4,9 @@ import { prisma } from '../../config/db';
 import { env } from '../../config/env';
 import { RegisterDto, LoginDto, ResetPasswordDto } from './auth.dto';
 import {
+  buildBrowserEmailDispatch,
   deliverResetEmail,
+  isBrowserTransport,
   isResetDeliveryAvailable,
   issueResetSecrets,
   parseResetRecord,
@@ -130,10 +132,16 @@ export class AuthService {
       }),
     ]);
 
-    void deliverResetEmail(
-      { email: normalizedEmail, name: user.name },
-      { linkToken: secrets.linkToken, code: secrets.code },
-    ).catch((error: unknown) => {
+    const recipient = { email: normalizedEmail, name: user.name };
+    const secretsToSend = { linkToken: secrets.linkToken, code: secrets.code };
+
+    if (isBrowserTransport()) {
+      // The dashboard sends the email itself; see PASSWORD_RESET_EMAIL_TRANSPORT in env.ts.
+      const emailDispatch = buildBrowserEmailDispatch(recipient, secretsToSend);
+      return emailDispatch ? { ...response, emailDispatch } : response;
+    }
+
+    void deliverResetEmail(recipient, secretsToSend).catch((error: unknown) => {
       // Recipient only: secrets are never logged. The row stays so a retry simply replaces it.
       console.error(`passwordReset: failed to deliver recovery email to ${normalizedEmail}:`, error);
     });

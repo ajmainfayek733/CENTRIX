@@ -118,6 +118,7 @@ credentials are all-or-nothing; a partial set fails startup.
 | `EMAILJS_PUBLIC_KEY` | - | Account public key |
 | `EMAILJS_PRIVATE_KEY` | - | Account private key; required for server-side sends |
 | `EMAILJS_TIMEOUT_MS` | `10000` | Abort bound on one send |
+| `PASSWORD_RESET_EMAIL_TRANSPORT` | `server` | `server` sends with `@emailjs/nodejs`. `browser` makes the dashboard send with `@emailjs/browser`; see section 6 |
 | `APP_NAME` | `CENTRIX` | Rendered as `{{app_name}}` |
 | `PASSWORD_RESET_DELIVERY` | `both` | `link` \| `code` \| `both` |
 | `PASSWORD_RESET_TTL_MINUTES` | `30` | Max 1440 |

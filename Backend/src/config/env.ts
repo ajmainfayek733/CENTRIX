@@ -153,6 +153,14 @@ const envSchema = z.object({
   EMAILJS_PUBLIC_KEY: z.string().trim().optional(),
   EMAILJS_PRIVATE_KEY: z.string().trim().optional(),
   EMAILJS_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
+  // Who calls EmailJS for recovery email.
+  //   server  - this API sends with @emailjs/nodejs and the private key. Secrets never leave
+  //             the server. Requires "Allow EmailJS API for non-browser applications".
+  //   browser - the dashboard sends with @emailjs/browser and the public key. The API returns
+  //             the template params, INCLUDING the reset link and code, in the forgot-password
+  //             response. Anyone who can call that endpoint can then reset any account's
+  //             password without reading the email. Use only when server sending is impossible.
+  PASSWORD_RESET_EMAIL_TRANSPORT: z.enum(["server", "browser"]).default("server"),
   // Product name rendered into email templates as {{app_name}}.
   APP_NAME: z.string().trim().min(1).default("CENTRIX"),
 
@@ -192,16 +200,24 @@ if (env.SCREENSHOT_STORAGE_PROVIDER === "s3" && !env.SCREENSHOT_S3_BUCKET) {
   );
 }
 
-const EMAILJS_REQUIRED_KEYS = [
+const EMAILJS_BROWSER_KEYS = [
   "EMAILJS_SERVICE_ID",
   "EMAILJS_PASSWORD_RESET_TEMPLATE_ID",
   "EMAILJS_PUBLIC_KEY",
-  "EMAILJS_PRIVATE_KEY",
 ] as const;
+
+// The private key authenticates server-side sends only; the browser SDK never receives it.
+const EMAILJS_REQUIRED_KEYS: readonly (keyof typeof env)[] =
+  env.PASSWORD_RESET_EMAIL_TRANSPORT === "server"
+    ? [...EMAILJS_BROWSER_KEYS, "EMAILJS_PRIVATE_KEY"]
+    : EMAILJS_BROWSER_KEYS;
 
 const configuredEmailJsKeys = EMAILJS_REQUIRED_KEYS.filter((key) => Boolean(env[key]));
 
-/** True when every EmailJS credential is present. Partial configuration fails startup below. */
+/**
+ * True when every EmailJS credential the selected transport needs is present. Partial
+ * configuration fails startup below.
+ */
 export const isEmailDeliveryConfigured = configuredEmailJsKeys.length === EMAILJS_REQUIRED_KEYS.length;
 
 if (configuredEmailJsKeys.length > 0 && !isEmailDeliveryConfigured) {
@@ -216,5 +232,12 @@ if (configuredEmailJsKeys.length > 0 && !isEmailDeliveryConfigured) {
 if (env.NODE_ENV === "production" && !isEmailDeliveryConfigured) {
   console.warn(
     `EmailJS is not configured; password recovery is disabled. Set ${EMAILJS_REQUIRED_KEYS.join(", ")}.`,
+  );
+}
+
+if (env.PASSWORD_RESET_EMAIL_TRANSPORT === "browser") {
+  console.warn(
+    "PASSWORD_RESET_EMAIL_TRANSPORT=browser: recovery secrets are returned to the browser, so " +
+      "any caller can reset any account. Switch to server once non-browser API access is enabled.",
   );
 }

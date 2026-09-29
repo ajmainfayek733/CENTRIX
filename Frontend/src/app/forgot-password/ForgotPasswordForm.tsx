@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button, Field, Input, useToast } from '@/components/ui';
 import { AUTH_PRIMARY_BUTTON_CLASS } from '@/lib/auth-ui';
+import { EmailSendError, parseEmailDispatch, sendDispatchedEmail } from '@/lib/emailjs';
 
 const MIN_PASSWORD_LENGTH = 8;
 const RESEND_COOLDOWN_SECONDS = 60;
@@ -18,7 +19,7 @@ type Step = 'request' | 'verify';
 interface ForgotPasswordResponse {
   message?: string;
   error?: string;
-  data?: { delivery?: DeliveryMode; expiresInMinutes?: number };
+  data?: { delivery?: DeliveryMode; expiresInMinutes?: number; emailDispatch?: unknown };
 }
 
 function isDeliveryMode(value: unknown): value is DeliveryMode {
@@ -92,6 +93,20 @@ export function ForgotPasswordForm() {
         setError(msg);
         toast.error(msg, 'Recovery Failed');
         return;
+      }
+
+      // Present only when the backend delegates sending to the browser SDK.
+      const dispatch = parseEmailDispatch(body.data?.emailDispatch);
+      if (dispatch) {
+        try {
+          await sendDispatchedEmail(dispatch);
+        } catch (sendError) {
+          const msg =
+            sendError instanceof EmailSendError ? sendError.message : 'Failed to send the recovery email.';
+          setError(msg);
+          toast.error(msg, 'Email Not Sent');
+          return;
+        }
       }
 
       const mode = isDeliveryMode(body.data?.delivery) ? body.data.delivery : 'both';

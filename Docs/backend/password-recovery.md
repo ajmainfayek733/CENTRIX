@@ -91,6 +91,7 @@ Example template body:
 | `EMAILJS_PUBLIC_KEY` | - | Sent as `user_id` |
 | `EMAILJS_PRIVATE_KEY` | - | Sent as `accessToken`; required for server-side calls |
 | `EMAILJS_TIMEOUT_MS` | `10000` | Abort bound on one send |
+| `PASSWORD_RESET_EMAIL_TRANSPORT` | `server` | `server` sends with `@emailjs/nodejs`. `browser` makes the dashboard send with `@emailjs/browser`; see section 6 |
 | `APP_NAME` | `CENTRIX` | `{{app_name}}` |
 | `PASSWORD_RESET_DELIVERY` | `both` | `link`, `code`, or `both` |
 | `PASSWORD_RESET_TTL_MINUTES` | `30` | Lifetime of a recovery, max 1440 |
@@ -115,6 +116,28 @@ The four EmailJS credentials are all-or-nothing: a partial set fails startup. Wi
 | API log: status 429 | EmailJS plan quota or rate limit reached |
 | Link opens the wrong host | `FRONTEND_URL` still points at localhost |
 | "Too many incorrect attempts" | Attempt budget spent; request a new email |
+
+## 6. Browser transport
+
+Set `PASSWORD_RESET_EMAIL_TRANSPORT=browser` when the EmailJS account cannot enable
+"Allow EmailJS API for non-browser applications". The flow becomes:
+
+```text
+POST /forgot-password
+  <- { ..., emailDispatch: { serviceId, templateId, publicKey, templateParams } }
+     (only for an existing, active account; the private key is never included)
+ForgotPasswordForm
+  -> @emailjs/browser send(serviceId, templateId, templateParams, { publicKey, blockHeadless })
+     Frontend/src/lib/emailjs.ts
+```
+
+`EMAILJS_PRIVATE_KEY` is not required in this mode.
+
+> **Security warning.** `templateParams` carries the reset link and code, so the caller of
+> `/forgot-password` receives them. Anyone can reset any account's password, including a
+> `super_admin`, without access to its mailbox. The response also differs for known and unknown
+> emails, which reveals which addresses have accounts. The API logs a warning at startup in this
+> mode. Switch back to `server` as soon as non-browser API access can be enabled.
 
 ## Related
 
