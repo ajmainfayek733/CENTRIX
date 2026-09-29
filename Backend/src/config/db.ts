@@ -6,7 +6,7 @@ import { env } from './env';
 // Pool size is configurable because the right value depends on where this runs: a single
 // container against a managed Postgres wants a modest pool, several replicas behind a load
 // balancer must divide the database's own connection ceiling between them.
-const pool = new Pool({
+export const pool = new Pool({
   connectionString: env.DATABASE_URL,
   max: env.DATABASE_POOL_MAX,
   // A telemetry write is a short transaction. Reaping idle connections keeps a fleet that syncs

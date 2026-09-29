@@ -172,6 +172,13 @@ const envSchema = z.object({
   // keeps a short numeric code from being brute-forced across rotating IP addresses.
   PASSWORD_RESET_MAX_ATTEMPTS: z.coerce.number().int().positive().max(20).default(5),
   PASSWORD_RESET_CODE_LENGTH: z.coerce.number().int().min(6).max(10).default(6),
+
+  // -- Process lifecycle -------------------------------------------------------
+  // How long a SIGTERM/SIGINT shutdown may spend draining in-flight requests and closing the
+  // database pool before the process force-exits. Must stay below the orchestrator's own grace
+  // period (docker compose stop_grace_period, ECS stopTimeout), or the orchestrator SIGKILLs first
+  // and the drain never finishes.
+  SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
 });
 
 const _env = envSchema.safeParse(process.env);

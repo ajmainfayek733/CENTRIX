@@ -23,6 +23,11 @@ agent cannot enroll until the backend has an organization with an enrollment tok
 > Nothing live depends on them, and their documentation is archived in
 > [Docs/archive/](Docs/archive/). Do not build on either.
 
+## Production
+
+AWS EC2 + S3 with Docker Compose and automatic HTTPS: [deploy/](deploy/) and
+[Docs/operations/aws-ec2-deployment.md](Docs/operations/aws-ec2-deployment.md).
+
 ## Quick start
 
 ```bash

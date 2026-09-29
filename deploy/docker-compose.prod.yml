@@ -1,0 +1,202 @@
+# CENTRIX - production stack for a single AWS EC2 host.
+#
+#   Internet --443--> caddy --+--> frontend:3000   (APP_DOMAIN, the dashboard)
+#                             +--> api:5000        (API_DOMAIN, agents + browser Socket.IO)
+#   api --> postgres:5432 (bundled container, or RDS via DATABASE_URL)
+#   api --> S3 (screenshots, via the EC2 instance role - no access keys)
+#
+# Two hostnames, not one: the Next.js dashboard owns /api/* for its own route handlers, so the
+# Express API cannot share its path space.
+#
+#   cd deploy
+#   cp .env.example .env            # fill in every REQUIRED value
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# See Docs/operations/aws-ec2-deployment.md for the full runbook.
+
+name: centrix
+
+x-logging: &default-logging
+  # Docker's default json-file driver never rotates. On a long-lived host that is how the root
+  # volume fills up and Postgres stops accepting writes.
+  driver: json-file
+  options:
+    max-size: ${LOG_MAX_SIZE:-20m}
+    max-file: ${LOG_MAX_FILES:-5}
+
+x-hardening: &hardening
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  caddy:
+    image: caddy:${CADDY_VERSION:-2.10}-alpine
+    restart: unless-stopped
+    <<: *hardening
+    depends_on:
+      frontend:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?set APP_DOMAIN in deploy/.env}
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in deploy/.env}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in deploy/.env}
+      API_MAX_BODY_SIZE: ${API_MAX_BODY_SIZE:-20MB}
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp' # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Issued certificates and ACME account. Losing this re-issues on next start, and doing that
+      # repeatedly runs into Let's Encrypt's duplicate-certificate rate limit.
+      - caddy-data:/data
+      - caddy-config:/config
+    mem_limit: ${CADDY_MEM_LIMIT:-128m}
+    logging: *default-logging
+
+  frontend:
+    build:
+      context: ../Frontend
+      args:
+        # Inlined into the browser bundle at build time. Changing it requires a rebuild.
+        NEXT_PUBLIC_MONITORING_API_URL: https://${API_DOMAIN:?set API_DOMAIN in deploy/.env}
+    image: centrix-frontend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    <<: *hardening
+    cap_drop: [ALL]
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      HOSTNAME: 0.0.0.0
+      # Server-side calls stay on the private compose network - no TLS hairpin through Caddy.
+      MONITORING_API_URL: http://api:5000
+      NODE_OPTIONS: --max-old-space-size=${FRONTEND_NODE_HEAP_MB:-384}
+    expose:
+      - '3000'
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    stop_grace_period: 30s
+    mem_limit: ${FRONTEND_MEM_LIMIT:-640m}
+    logging: *default-logging
+
+  api:
+    build:
+      context: ../Backend
+    image: centrix-api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    <<: *hardening
+    cap_drop: [ALL]
+    depends_on:
+      postgres:
+        condition: service_healthy
+        # Absent when COMPOSE_PROFILES excludes bundled-db (external database such as RDS).
+        required: false
+      migrate:
+        condition: service_completed_successfully
+    # Every backend setting in deploy/.env reaches the API (EmailJS, rate limits, retention...).
+    # The block below then pins the values this topology dictates, so .env cannot contradict it.
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: '5000'
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-centrix}:${POSTGRES_PASSWORD:-}@postgres:5432/${POSTGRES_DB:-centrix}}
+      BETTER_AUTH_URL: https://${API_DOMAIN}
+      PUBLIC_BASE_URL: https://${API_DOMAIN}
+      FRONTEND_URL: https://${APP_DOMAIN}
+      # Exactly one proxy (Caddy) sits between clients and this container. Raise to 2 only if an
+      # ALB or CloudFront is added in front of Caddy - see TRUST_PROXY in Backend/.env.example.
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+      SCREENSHOT_STORAGE_PROVIDER: s3
+      SCREENSHOT_S3_BUCKET: ${SCREENSHOT_S3_BUCKET:?set SCREENSHOT_S3_BUCKET in deploy/.env}
+      SCREENSHOT_S3_REGION: ${AWS_REGION:?set AWS_REGION in deploy/.env}
+      AWS_REGION: ${AWS_REGION}
+      SHUTDOWN_TIMEOUT_MS: ${SHUTDOWN_TIMEOUT_MS:-20000}
+      NODE_OPTIONS: --max-old-space-size=${API_NODE_HEAP_MB:-512}
+    expose:
+      - '5000'
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:5000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    # Longer than SHUTDOWN_TIMEOUT_MS so the in-process drain finishes before Docker's SIGKILL.
+    stop_grace_period: 30s
+    mem_limit: ${API_MEM_LIMIT:-768m}
+    logging: *default-logging
+
+  # One-shot migration runner, same image as the API. Separate so migrations never race when the
+  # API is scaled out, and so a failed migration blocks the API from starting on a stale schema.
+  migrate:
+    image: centrix-api:${IMAGE_TAG:-latest}
+    restart: 'no'
+    <<: *hardening
+    cap_drop: [ALL]
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+    # Same context and tag as the api service, so this resolves to the image just built rather
+    # than an attempt to pull a local-only tag from a registry.
+    build:
+      context: ../Backend
+    command: ['node_modules/.bin/prisma', 'migrate', 'deploy']
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-centrix}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-centrix}}
+    logging: *default-logging
+
+  postgres:
+    image: postgres:${POSTGRES_VERSION:-17}-alpine
+    # Bundled database. Leave `bundled-db` out of COMPOSE_PROFILES and set DATABASE_URL to use RDS.
+    profiles: ['bundled-db']
+    restart: unless-stopped
+    <<: *hardening
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-centrix}
+      # Not `:?`-guarded: compose interpolates every service even when this profile is off, and
+      # an RDS deployment has no bundled password to give. deploy.sh enforces it when needed.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      POSTGRES_DB: ${POSTGRES_DB:-centrix}
+    command:
+      - postgres
+      - -c
+      - shared_buffers=${POSTGRES_SHARED_BUFFERS:-256MB}
+      - -c
+      - effective_cache_size=${POSTGRES_EFFECTIVE_CACHE_SIZE:-768MB}
+      - -c
+      - max_connections=${POSTGRES_MAX_CONNECTIONS:-100}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    # Postgres uses /dev/shm for parallel query; Docker's 64MB default fails large reports.
+    shm_size: ${POSTGRES_SHM_SIZE:-256m}
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # Never published. Only the api and migrate containers reach it, over the compose network.
+    mem_limit: ${POSTGRES_MEM_LIMIT:-1g}
+    logging: *default-logging
+
+volumes:
+  caddy-data:
+  caddy-config:
+  postgres-data:

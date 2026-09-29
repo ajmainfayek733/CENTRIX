@@ -5,6 +5,7 @@ Running the system, and fixing it when it misbehaves.
 | Document | Use it when |
 |---|---|
 | [running-the-stack.md](running-the-stack.md) | Setting up locally, or verifying an install end to end |
+| [aws-ec2-deployment.md](aws-ec2-deployment.md) | **Production on AWS:** EC2 + S3, HTTPS, backups, monthly cost |
 | [backend-deployment.md](backend-deployment.md) | Deploying the API and onboarding a fleet |
 | [agent-deployment.md](agent-deployment.md) | Installing, updating or removing the agent on workstations |
 | [troubleshooting.md](troubleshooting.md) | **Something is wrong.** Indexed by symptom |
@@ -50,7 +51,7 @@ Then:
 | Agents upload sequentially | Never parallel, screenshots one at a time |
 | Rate limits are per device | A healthy fleet never hits them; one agent doing so is stuck in a retry loop |
 | The rollup is incremented, never recomputed | A double count is permanent - there is no repair pass |
-| Screenshot storage is local to one replica | This is what blocks horizontal scaling |
+| Screenshot storage is local to one replica unless `SCREENSHOT_STORAGE_PROVIDER=s3` | Local storage blocks horizontal scaling; the AWS deployment uses S3 |
 
 ---
 

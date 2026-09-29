@@ -1,4 +1,7 @@
-# CENTRIX - backend + database.
+# CENTRIX - backend + database, for local and on-premises use.
+#
+# Production on AWS (dashboard, API, HTTPS, S3 screenshots) uses deploy/docker-compose.prod.yml
+# instead - see Docs/operations/aws-ec2-deployment.md.
 #
 # Deployment target is intentionally open: this composes the two pieces the agent fleet needs
 # (an HTTP API and Postgres) with everything else driven by environment variables, so the same

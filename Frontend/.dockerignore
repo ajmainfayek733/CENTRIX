@@ -1,0 +1,21 @@
+# Anything here would either bloat the build context or leak into the image.
+
+node_modules
+.next
+out
+build
+coverage
+npm-debug.log*
+*.tsbuildinfo
+
+# Secrets. The image must never carry them. Server-side settings arrive as runtime environment
+# variables; NEXT_PUBLIC_* values arrive as build args (see Dockerfile).
+.env
+.env.*
+!.env.example
+
+.git
+.gitignore
+Dockerfile
+.dockerignore
+*.md

@@ -5,11 +5,11 @@ import helmet from "helmet";
 import morgan from "morgan";
 import { toNodeHandler } from "better-auth/node";
 import { auth } from "./config/auth";
-import { prisma } from "./config/db";
+import { pool, prisma } from "./config/db";
 import { env } from "./config/env";
 import { errorHandler } from "./middleware/errorHandler";
 import { initRealtime } from "./realtime";
-import { defineJob, startMaintenanceJobs } from "./lib/scheduler";
+import { defineJob, startMaintenanceJobs, stopMaintenanceJobs } from "./lib/scheduler";
 import { closeAbandonedSessions, describeReap } from "./modules/attendance/attendanceReaper";
 import { ingestService } from "./modules/ingest/ingestService";
 import { runBrowserSummarySchedule } from "./modules/report/browserSummaryService";
@@ -142,5 +142,61 @@ server.listen(env.PORT, () => {
   console.log(` Better Auth endpoints mounted at http://localhost:${env.PORT}/api/auth/*`);
   console.log(` Realtime signalling on /agents and /dashboard`);
 });
+
+/**
+ * Graceful shutdown.
+ *
+ * `docker stop`, a compose redeploy, and an ECS task replacement all send SIGTERM and wait a grace
+ * period before SIGKILL. Node's default SIGTERM action is to die immediately, which cuts off
+ * in-flight screenshot uploads and ingest transactions mid-write. Agents retry, so nothing is
+ * lost, but every deploy would still turn into a burst of failed requests and a retry storm.
+ *
+ * Order matters: stop accepting work (jobs, sockets, HTTP) first, then release the database, so
+ * no request is left holding a connection that has already been closed underneath it.
+ */
+let shuttingDown = false;
+
+async function shutdown(signal: NodeJS.Signals): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`shutdown: ${signal} received, draining (timeout ${env.SHUTDOWN_TIMEOUT_MS}ms)`);
+
+  const forceExit = setTimeout(() => {
+    console.error("shutdown: drain timed out, forcing exit");
+    server.closeAllConnections();
+    process.exit(1);
+  }, env.SHUTDOWN_TIMEOUT_MS);
+  forceExit.unref();
+
+  try {
+    stopMaintenanceJobs();
+
+    // io.close() disconnects every socket and closes the underlying http.Server, which stops
+    // accepting new connections and resolves once in-flight requests have finished.
+    await new Promise<void>((resolve, reject) => {
+      io.close((error) => {
+        if (error && (error as NodeJS.ErrnoException).code !== "ERR_SERVER_NOT_RUNNING") {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+      server.closeIdleConnections();
+    });
+
+    await prisma.$disconnect();
+    await pool.end();
+
+    clearTimeout(forceExit);
+    console.log("shutdown: complete");
+    process.exit(0);
+  } catch (error) {
+    console.error("shutdown: failed while draining:", error);
+    process.exit(1);
+  }
+}
+
+process.once("SIGTERM", (signal) => void shutdown(signal));
+process.once("SIGINT", (signal) => void shutdown(signal));
 
 export default app;

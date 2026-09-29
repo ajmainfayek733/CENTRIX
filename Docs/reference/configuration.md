@@ -104,6 +104,9 @@ these are safe to leave enabled on every replica.
 | Variable                 | Default                 | Notes                                                                                                                     |
 | ------------------------ | ----------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `SCREENSHOT_STORAGE_DIR` | `./storage/screenshots` | **Local storage is what blocks horizontal scaling** - each replica holds a different subset                               |
+| `SCREENSHOT_STORAGE_PROVIDER` | `local` | `s3` in production. The AWS deployment pins it; see [../operations/aws-ec2-deployment.md](../operations/aws-ec2-deployment.md) |
+| `SCREENSHOT_S3_BUCKET` | - | Required when the provider is `s3`. Credentials come from the SDK default chain: the EC2 instance role on AWS |
+| `SCREENSHOT_S3_REGION` | `us-east-1` | Bucket region |
 | `DATABASE_POOL_MAX`      | `10`                    | Burst tolerance, not parallelism. Raise if requests queue behind the pool; divide the database's ceiling between replicas |
 
 ### Email and password recovery
@@ -124,6 +127,12 @@ credentials are all-or-nothing; a partial set fails startup.
 | `PASSWORD_RESET_TTL_MINUTES` | `30` | Max 1440 |
 | `PASSWORD_RESET_MAX_ATTEMPTS` | `5` | Wrong guesses before the recovery is revoked, max 20 |
 | `PASSWORD_RESET_CODE_LENGTH` | `6` | 6 to 10 digits |
+
+### Process lifecycle
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `SHUTDOWN_TIMEOUT_MS` | `20000` | Drain budget after SIGTERM/SIGINT before a forced exit. Keep it below the orchestrator's grace period (compose `stop_grace_period` is 30s) |
 
 ## Frontend environment
 

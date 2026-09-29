@@ -1,0 +1,55 @@
+# CENTRIX reverse proxy. TLS certificates are obtained and renewed automatically from Let's Encrypt
+# for both hostnames, which requires:
+#   - DNS A records for APP_DOMAIN and API_DOMAIN pointing at this host's Elastic IP, and
+#   - inbound 80 and 443 open in the EC2 security group (80 serves the HTTP-01 challenge and the
+#     HTTPS redirect).
+#
+# {$VAR} values are substituted from the container environment set in docker-compose.prod.yml.
+
+{
+	email {$ACME_EMAIL}
+	servers {
+		# Clients reach Caddy directly, so no upstream proxy is trusted for X-Forwarded-For.
+		# Caddy then sets X-Forwarded-For to the real client address, which is what the API's
+		# TRUST_PROXY=1 relies on for per-IP rate limiting.
+		protocols h1 h2 h3
+	}
+}
+
+(common_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+		-X-Powered-By
+	}
+	log {
+		output stdout
+		format json
+	}
+}
+
+# Dashboard (Next.js).
+{$APP_DOMAIN} {
+	import common_headers
+	header {
+		X-Frame-Options "DENY"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	}
+	encode zstd gzip
+	reverse_proxy frontend:3000
+}
+
+# API: Windows agents (telemetry, screenshots) and the browser's Socket.IO connection.
+# WebSocket upgrades are proxied automatically.
+{$API_DOMAIN} {
+	import common_headers
+	request_body {
+		# Screenshot uploads are capped at 15 MB by the API itself; this rejects anything
+		# larger at the edge before it is buffered to disk.
+		max_size {$API_MAX_BODY_SIZE}
+	}
+	encode zstd gzip
+	reverse_proxy api:5000
+}
