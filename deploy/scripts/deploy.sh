@@ -58,9 +58,11 @@ require_secret() {
 }
 
 log "validating ${ENV_FILE}"
-for key in APP_DOMAIN API_DOMAIN ACME_EMAIL AWS_REGION SCREENSHOT_S3_BUCKET; do
+for key in DOMAIN ACME_EMAIL AWS_REGION SCREENSHOT_S3_BUCKET; do
   require "$key"
 done
+DOMAIN="$(env_value DOMAIN)"
+[[ "$DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]] || die "DOMAIN must be a bare hostname (no https:// and no path): ${DOMAIN}"
 require_secret BETTER_AUTH_SECRET
 require_secret DEVICE_TOKEN_PEPPER
 
@@ -100,12 +102,12 @@ log "starting stack (migrations run before the API starts)"
 compose up -d --remove-orphans \
   || { compose ps -a; compose logs --tail=100 migrate api frontend caddy; die "stack did not become healthy"; }
 
+# Two probes on one domain exercise both sides of the Caddy path split: /health must reach the
+# API (and prove the database), /api/health must reach the dashboard.
 log "verifying public endpoints"
-API_DOMAIN="$(env_value API_DOMAIN)"
-APP_DOMAIN="$(env_value APP_DOMAIN)"
 deadline=$(( SECONDS + HEALTH_WAIT_SECONDS ))
-until curl -fsS "https://${API_DOMAIN}/health" >/dev/null 2>&1 \
-  && curl -fsS "https://${APP_DOMAIN}/api/health" >/dev/null 2>&1; do
+until curl -fsS "https://${DOMAIN}/health" >/dev/null 2>&1 \
+  && curl -fsS "https://${DOMAIN}/api/health" >/dev/null 2>&1; do
   (( SECONDS < deadline )) || { compose logs --tail=50 caddy; die "public HTTPS checks failed (DNS or certificate issue?)"; }
   sleep "$HEALTH_POLL_SECONDS"
 done
@@ -114,4 +116,4 @@ log "pruning dangling images"
 docker image prune -f >/dev/null
 
 compose ps
-log "deployed ${IMAGE_TAG}: https://${APP_DOMAIN} and https://${API_DOMAIN}"
+log "deployed ${IMAGE_TAG}: dashboard https://${DOMAIN}, agent ServerUrl https://${DOMAIN}"

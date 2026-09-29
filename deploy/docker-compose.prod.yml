@@ -1,12 +1,12 @@
 # CENTRIX - production stack for a single AWS EC2 host.
 #
-#   Internet --443--> caddy --+--> frontend:3000   (APP_DOMAIN, the dashboard)
-#                             +--> api:5000        (API_DOMAIN, agents + browser Socket.IO)
+#   Internet --443--> caddy (DOMAIN) --+--> api:5000       /api/v1/*, /socket.io/*, /health
+#                                      +--> frontend:3000  everything else (the dashboard)
 #   api --> postgres:5432 (bundled container, or RDS via DATABASE_URL)
 #   api --> S3 (screenshots, via the EC2 instance role - no access keys)
 #
-# Two hostnames, not one: the Next.js dashboard owns /api/* for its own route handlers, so the
-# Express API cannot share its path space.
+# One domain, split by path in deploy/Caddyfile. The dashboard keeps its own /api/* routes
+# (login, reports, screenshots); only the API's public surface is routed to the api service.
 #
 #   cd deploy
 #   cp .env.example .env            # fill in every REQUIRED value
@@ -39,8 +39,7 @@ services:
       api:
         condition: service_healthy
     environment:
-      APP_DOMAIN: ${APP_DOMAIN:?set APP_DOMAIN in deploy/.env}
-      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in deploy/.env}
+      DOMAIN: ${DOMAIN:?set DOMAIN in deploy/.env}
       ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in deploy/.env}
       API_MAX_BODY_SIZE: ${API_MAX_BODY_SIZE:-20MB}
     ports:
@@ -60,8 +59,9 @@ services:
     build:
       context: ../Frontend
       args:
-        # Inlined into the browser bundle at build time. Changing it requires a rebuild.
-        NEXT_PUBLIC_MONITORING_API_URL: https://${API_DOMAIN:?set API_DOMAIN in deploy/.env}
+        # Inlined into the browser bundle at build time. Changing it requires a rebuild. The
+        # browser opens Socket.IO at https://DOMAIN/socket.io, which Caddy routes to the API.
+        NEXT_PUBLIC_MONITORING_API_URL: https://${DOMAIN:?set DOMAIN in deploy/.env}
     image: centrix-frontend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     <<: *hardening
@@ -114,9 +114,11 @@ services:
       NODE_ENV: production
       PORT: '5000'
       DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-centrix}:${POSTGRES_PASSWORD:-}@postgres:5432/${POSTGRES_DB:-centrix}}
-      BETTER_AUTH_URL: https://${API_DOMAIN}
-      PUBLIC_BASE_URL: https://${API_DOMAIN}
-      FRONTEND_URL: https://${APP_DOMAIN}
+      # Dashboard and API share one origin, so CORS and the Socket.IO origin check both
+      # resolve to the same value.
+      BETTER_AUTH_URL: https://${DOMAIN}
+      PUBLIC_BASE_URL: https://${DOMAIN}
+      FRONTEND_URL: https://${DOMAIN}
       # Exactly one proxy (Caddy) sits between clients and this container. Raise to 2 only if an
       # ALB or CloudFront is added in front of Caddy - see TRUST_PROXY in Backend/.env.example.
       TRUST_PROXY: ${TRUST_PROXY:-1}
