@@ -130,5 +130,9 @@ services:
         echo "minio-init: bucket $$BUCKET ready, service user $$APP_ACCESS_KEY bound to $$POLICY_NAME"
     logging: *default-logging
 
+# External for the same reason as postgres-data in docker-compose.prod.yml: screenshots survive
+# `docker compose down -v`. deploy.sh creates it on first run.
 volumes:
   minio-data:
+    external: true
+    name: centrix_minio-data

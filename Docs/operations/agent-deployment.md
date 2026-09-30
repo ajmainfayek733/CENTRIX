@@ -160,8 +160,9 @@ one otherwise, because the spec requires TLS in production.
 
 ## 4. Fleet rollout order
 
-1. **Create the organization.** `POST /v1/dashboard/organizations` returns the enrollment token
-   **once**. Store it; only its HMAC is persisted.
+1. **Create the organization.** Open `/ems/advanced/register-organization` or
+   `POST /v1/dashboard/organizations/register`. The enrollment token is returned **once**. Store
+   it; only its HMAC is persisted, and every agent install needs it to register a device.
 2. **Import the roster** _before_ the rollout, so devices have somewhere to be assigned.
    Employees screen -> _Import roster_ -> paste `name, email, department`, one per line.
    Tab-separated text pasted from a spreadsheet works, a header row is ignored, and re-importing a

@@ -198,7 +198,14 @@ services:
     mem_limit: ${POSTGRES_MEM_LIMIT:-1g}
     logging: *default-logging
 
+# Data that must outlive every deploy. Declared external so `docker compose down -v` cannot
+# delete them: only an explicit `docker volume rm` can. deploy.sh creates them on first run.
+# The names match what compose generated before this change, so existing hosts keep their data.
 volumes:
   caddy-data:
+    external: true
+    name: centrix_caddy-data
   caddy-config:
   postgres-data:
+    external: true
+    name: centrix_postgres-data

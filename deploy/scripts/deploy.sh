@@ -3,6 +3,12 @@
 #
 #   ./deploy/scripts/deploy.sh            # build from the current checkout and roll forward
 #   ./deploy/scripts/deploy.sh --no-build # restart with the images already on this host
+#   ./deploy/scripts/deploy.sh --skip-backup   # emergency only: skip the pre-deploy database dump
+#
+# Data safety: Postgres, MinIO and Caddy state live in external named volumes that this script
+# creates once and never removes. Before changing anything, a running bundled database is dumped
+# with backup-postgres.sh, and the deploy aborts if that dump fails, so a bad migration can be
+# undone by restoring it.
 #
 # STORAGE_BACKEND in deploy/.env selects where screenshots live: "s3" (default, Amazon S3 through
 # the EC2 instance role) or "minio" (self-hosted MinIO via docker-compose.minio.yml).
@@ -20,6 +26,10 @@ readonly MIN_SECRET_LENGTH=32
 readonly PLACEHOLDER_PATTERN='example\.com|CHANGE-ME'
 readonly STORAGE_S3="s3"
 readonly STORAGE_MINIO="minio"
+# Must match the `name:` of each external volume in the compose files.
+readonly VOLUME_POSTGRES="centrix_postgres-data"
+readonly VOLUME_CADDY="centrix_caddy-data"
+readonly VOLUME_MINIO="centrix_minio-data"
 
 log() { printf '[deploy] %s\n' "$*"; }
 die() { printf '[deploy] ERROR: %s\n' "$*" >&2; exit 1; }
@@ -32,9 +42,11 @@ COMPOSE_FILE="${DEPLOY_DIR}/docker-compose.prod.yml"
 MINIO_COMPOSE_FILE="${DEPLOY_DIR}/docker-compose.minio.yml"
 
 BUILD=true
+PRE_DEPLOY_BACKUP=true
 for arg in "$@"; do
   case "$arg" in
     --no-build) BUILD=false ;;
+    --skip-backup) PRE_DEPLOY_BACKUP=false ;;
     *) die "unknown argument: $arg" ;;
   esac
 done
@@ -119,7 +131,33 @@ log "storage backend ${STORAGE_BACKEND}"
 
 compose() { docker compose "${COMPOSE_ARGS[@]}" "$@"; }
 
+# External volumes are never created by `compose up`. Creating an existing one is a no-op, so
+# this is safe on every run and never touches data already inside.
+BUNDLED_DB=false
+[[ ",$(env_value COMPOSE_PROFILES)," == *",bundled-db,"* ]] && BUNDLED_DB=true
+PERSISTENT_VOLUMES=("$VOLUME_CADDY")
+[[ "$BUNDLED_DB" == true ]] && PERSISTENT_VOLUMES+=("$VOLUME_POSTGRES")
+[[ "$STORAGE_BACKEND" == "$STORAGE_MINIO" ]] && PERSISTENT_VOLUMES+=("$VOLUME_MINIO")
+for volume in "${PERSISTENT_VOLUMES[@]}"; do
+  if ! docker volume inspect "$volume" >/dev/null 2>&1; then
+    log "creating persistent volume ${volume}"
+    docker volume create "$volume" >/dev/null
+  fi
+done
+
 compose config --quiet || die "compose configuration is invalid"
+
+# Dump the live database before anything is rebuilt or migrated. Absent on a first deploy, when
+# there is nothing to lose yet.
+postgres_running=false
+if [[ "$BUNDLED_DB" == true && -n "$(compose ps --status running --quiet postgres 2>/dev/null)" ]]; then
+  postgres_running=true
+fi
+if [[ "$PRE_DEPLOY_BACKUP" == true && "$postgres_running" == true ]]; then
+  log "backing up the database before deploying"
+  "${SCRIPT_DIR}/backup-postgres.sh" \
+    || die "pre-deploy backup failed; fix it, or rerun with --skip-backup to accept the risk"
+fi
 
 if [[ "$BUILD" == true ]]; then
   log "building images"

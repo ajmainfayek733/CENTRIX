@@ -37,9 +37,19 @@ URL routing on the single domain is identical to the AWS deployment; see section
 
 ## 2. Prerequisites
 
-1. **DNS.** The `A` record for the domain must equal the VPS IPv4. If an `AAAA` record exists it
-   must equal the VPS IPv6, or be deleted: Let's Encrypt prefers IPv6, so a stale `AAAA` fails
-   certificate issuance even when the `A` record is right.
+1. **DNS.** Point the domain at the VPS in hPanel, Domains, DNS / Nameservers, DNS records
+   (the domain must use Hostinger's nameservers). Replace every conflicting record:
+
+   | Type | Name | Content | TTL |
+   |---|---|---|---|
+   | `A` | `@` | the VPS IPv4 (hPanel, VPS, Overview) | 300 |
+   | `AAAA` | `@` | the VPS IPv6, or **delete the record** | 300 |
+   | `CNAME` | `www` | `DOMAIN` (keep if present) | 300 |
+
+   Hostinger creates default `A` and `AAAA` records that point at its parking page. Edit or
+   delete those rather than adding a second record. Let's Encrypt prefers IPv6, so a leftover
+   `AAAA` fails certificate issuance even when the `A` record is right. Verify before the first
+   deploy; both answers must be the VPS:
    ```bash
    dig +short A DOMAIN && dig +short AAAA DOMAIN
    ```
@@ -143,7 +153,36 @@ mistakes, not against losing the VPS. Enable Hostinger's automatic backups or we
 
 ---
 
-## 5. Troubleshooting
+## 5. Keeping data across updates
+
+| Data | Where it lives | Survives |
+|---|---|---|
+| Database | Docker volume `centrix_postgres-data` | `deploy.sh`, image rebuilds, reboots, `docker compose down -v` |
+| Screenshots and dumps | Docker volume `centrix_minio-data` | same |
+| TLS certificates | Docker volume `centrix_caddy-data` | same |
+
+`deploy.sh` creates these volumes once and never removes them. They are declared `external` in the
+compose files, so even `docker compose down -v` leaves them alone. An update replaces containers
+and images only. Before it touches anything, `deploy.sh` also dumps the live database into the
+MinIO bucket and **aborts if the dump fails**. The API only starts after `prisma migrate deploy`
+succeeds, and migrations are additive by convention.
+
+What still destroys data, so do not run it:
+
+- `docker volume rm centrix_*` or `docker volume prune` after the stack is stopped.
+- `docker system prune --volumes`.
+- Editing `POSTGRES_PASSWORD` or `MINIO_ROOT_PASSWORD` in `.env` after first start. Both are read
+  only when a volume is empty. The running data keeps the old password and the API then fails to
+  connect. Change them inside the service instead, then update `.env`.
+- Deleting `DEVICE_TOKEN_PEPPER` or `BETTER_AUTH_SECRET`: data stays, but every agent key or
+  session becomes invalid.
+
+To recover from a bad migration, restore the dump taken just before it (section 4.1), then
+redeploy the previous commit with `IMAGE_TAG=<previous short sha>`.
+
+---
+
+## 6. Troubleshooting
 
 | Symptom | Cause and fix |
 |---|---|

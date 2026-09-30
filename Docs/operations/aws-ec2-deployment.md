@@ -170,6 +170,10 @@ dashboard, and `aws s3 ls s3://BUCKET/ --recursive | head` must list it.
 | Restart one service | `docker compose -f deploy/docker-compose.prod.yml restart api` |
 | Database shell | `docker compose -f deploy/docker-compose.prod.yml exec postgres psql -U centrix centrix` |
 
+Postgres and Caddy data live in external volumes (`centrix_postgres-data`, `centrix_caddy-data`)
+that `docker compose down -v` does not remove, and `deploy.sh` dumps a running database before
+each update. Pass `--skip-backup` only in an emergency.
+
 Images are tagged with the git commit, so earlier builds stay on the host for rollback until
 `docker image prune -a` removes them. Rolling back past a migration requires restoring a backup,
 because Prisma migrations only move forward.
