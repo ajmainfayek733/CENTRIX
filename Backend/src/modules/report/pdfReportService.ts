@@ -2,6 +2,7 @@ import PDFDocument from "pdfkit";
 import * as archiverModule from "archiver";
 import { formatDuration } from "../../lib/format";
 import { reportService, type WorkplaceIntelligence } from "./reportService";
+import { localClockSeconds, localDateKey, localTimestamp } from "../../lib/timezone";
 
 function createZipArchive() {
   const m = archiverModule as any;
@@ -155,8 +156,9 @@ export interface DepartmentReportData {
   }>;
 }
 
+/** The organization-local calendar date of a period bound, which is an instant, not a bare date. */
 function formatDateStr(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  return localDateKey(date);
 }
 
 const PRIMARY_COLOR = "#0f172a";
@@ -197,7 +199,7 @@ export function generateEmployeeReportPdf(data: EmployeeReportData): PDFKit.PDFD
     .fillColor(SECONDARY_COLOR)
     .fontSize(8.5)
     .font("Helvetica")
-    .text(`Generated: ${new Date().toUTCString()}`, 55, 74);
+    .text(`Generated: ${localTimestamp(new Date())}`, 55, 74);
   doc
     .fillColor(ACCENT_BLUE)
     .fontSize(9.5)
@@ -545,12 +547,12 @@ export function generateEmployeeReportPdf(data: EmployeeReportData): PDFKit.PDFD
         .fillColor(SECONDARY_COLOR)
         .font("Helvetica")
         .text(
-          att.firstLogin ? new Date(att.firstLogin).toTimeString().slice(0, 8) : "-",
+          att.firstLogin ? localClockSeconds(new Date(att.firstLogin)) : "-",
           205,
           attY + 3,
         );
       doc.text(
-        att.lastLogout ? new Date(att.lastLogout).toTimeString().slice(0, 8) : "-",
+        att.lastLogout ? localClockSeconds(new Date(att.lastLogout)) : "-",
         295,
         attY + 3,
       );
@@ -609,7 +611,7 @@ export function generateDepartmentReportPdf(data: DepartmentReportData): PDFKit.
     .fontSize(8.5)
     .font("Helvetica")
     .text(
-      `Organization: ${data.organization.name}   |   Generated: ${new Date().toUTCString()}`,
+      `Organization: ${data.organization.name}   |   Generated: ${localTimestamp(new Date())}`,
       55,
       74,
     );

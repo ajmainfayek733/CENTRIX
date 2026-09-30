@@ -153,7 +153,26 @@ mistakes, not against losing the VPS. Enable Hostinger's automatic backups or we
 
 ---
 
-## 5. Keeping data across updates
+## 5. Time zone
+
+The server stores UTC, which is correct and stays that way. The dashboard, reports and "today"
+follow `APP_TIME_ZONE` in `deploy/.env`, set to `Asia/Dhaka` (UTC+6) in
+`.env.hostinger.example`. Logs from Docker and Caddy stay in UTC on purpose, so a log line can be
+compared with another server's without converting.
+
+Changing the zone later needs a rebuild, because the dashboard inlines it:
+
+```bash
+nano /opt/centrix/deploy/.env     # APP_TIME_ZONE=...
+cd /opt/centrix && ./deploy/scripts/deploy.sh
+```
+
+Existing data is not rewritten. Only how it is read and grouped changes. See
+[configuration.md](../reference/configuration.md#time-zone) for exactly what follows the zone.
+
+---
+
+## 6. Keeping data across updates
 
 | Data | Where it lives | Survives |
 |---|---|---|
@@ -182,7 +201,7 @@ redeploy the previous commit with `IMAGE_TAG=<previous short sha>`.
 
 ---
 
-## 6. Troubleshooting
+## 7. Troubleshooting
 
 | Symptom | Cause and fix |
 |---|---|

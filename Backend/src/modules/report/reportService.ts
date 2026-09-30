@@ -10,6 +10,15 @@ import {
   resolveScreenshotPageSize,
   toPage,
 } from "./pagination";
+import {
+  addDaysToKey,
+  dateColumnKey,
+  localDateKey,
+  localHour,
+  workDateOf,
+  zonedEndOfDay,
+  zonedMidnight,
+} from "../../lib/timezone";
 
 /**
  * Dashboard read path (spec section 5).
@@ -171,54 +180,71 @@ const TOP_LIST_SIZE = 15;
 /** Rolling window for the team attendance weekly active-time chart. */
 const TEAM_ATTENDANCE_WEEK_DAYS = 7;
 
-const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+/** Organization-local hours that count as late night: from 20:00 until 05:00. */
+const LATE_NIGHT_START_HOUR = 20;
+const LATE_NIGHT_END_HOUR = 5;
 
-function startOfUtcDay(date: Date): Date {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-}
+const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
 /** A bare calendar date, as every date input and preset on the dashboard sends. */
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Last representable instant of a day, so a date-only bound includes the day it names. */
-const END_OF_DAY_MS = 24 * 60 * 60 * 1000 - 1;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Resolves the `?startDate=&endDate=` pair every report screen sends into an instant range.
  * Defaults to today when bounds are not provided.
  *
- * **A date-only `endDate` is inclusive of the day it names.** `new Date('2026-08-15')` is midnight
- * *at the start* of the 15th, so taking it literally makes `startDate=endDate=2026-08-15` a
- * zero-width window - which is exactly what the "Today" preset sends. Totals still rendered,
- * because those read the rollup through `startOfUtcDay` on both bounds, but everything filtering
- * raw timestamps - attendance, sessions, timeline - came back empty on a day full of activity.
+ * **A bare date names an organization-local calendar day** (APP_TIME_ZONE), not a UTC day. For
+ * Asia/Dhaka, `2026-08-15` runs from 2026-08-14T18:00Z to 2026-08-15T17:59:59.999Z. Reading it as
+ * UTC would file the first six hours of every Dhaka working day under the previous date, so the
+ * attendance, session and timeline tables (which filter raw timestamps) would disagree with the
+ * daily rollup, which is keyed on the agent's local `workDate`.
+ *
+ * **A date-only `endDate` is inclusive of the day it names.** Taking it as the start of that day
+ * would make `startDate=endDate=2026-08-15` - what the "Today" preset sends - a zero-width window:
+ * totals still render, because those read the rollup by `workDate`, but everything filtering raw
+ * timestamps came back empty on a day full of activity.
  *
  * The snap is guarded on the date-only form rather than applied to every `endDate`, so a caller
  * that passes a full timestamp gets the instant it asked for instead of being silently widened by
- * up to a day. `startDate` needs no equivalent: midnight at the start of a day is already the
- * inclusive lower bound.
+ * up to a day. A full-timestamp bound is an absolute instant and is never reinterpreted.
  *
  * Exported only so the smoke suite can assert this directly. It is pure, and the bug it encodes
  * empties three tables on a screen that still renders its totals - which is precisely the kind
  * that comes back unnoticed.
  */
 export function resolveRange(startDate?: string, endDate?: string) {
-  const end = endDate ? new Date(endDate) : new Date();
-  const start = startDate ? new Date(startDate) : startOfUtcDay(end);
+  const startIsDateOnly = startDate !== undefined && DATE_ONLY.test(startDate);
+  const endIsDateOnly = endDate !== undefined && DATE_ONLY.test(endDate);
 
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+  // A date-only bound that is not a real calendar day (2026-02-31) would be silently rolled over
+  // by Date.UTC, so reject it the same way an unparseable string is rejected.
+  const parseBound = (value: string, dateOnly: boolean): Date => {
+    if (!dateOnly) return new Date(value);
+    const parsed = new Date(`${value}T00:00:00.000Z`);
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, value.length) !== value) {
+      return new Date(Number.NaN);
+    }
+    return parsed;
+  };
+
+  const rawEnd = endDate ? parseBound(endDate, endIsDateOnly) : new Date();
+  const rawStart = startDate ? parseBound(startDate, startIsDateOnly) : rawEnd;
+
+  if (Number.isNaN(rawStart.getTime()) || Number.isNaN(rawEnd.getTime())) {
     throw { statusCode: 400, message: "startDate/endDate must be valid ISO dates" };
   }
 
-  if (endDate !== undefined && DATE_ONLY.test(endDate)) {
-    return {
-      start: startDate && DATE_ONLY.test(startDate) ? startOfUtcDay(start) : start,
-      end: new Date(end.getTime() + END_OF_DAY_MS),
-    };
-  }
+  // With no start, the window opens at the beginning of the end bound's local day. A date-only
+  // end already names that day; an instant is converted to the local day it falls on.
+  const defaultStart = endIsDateOnly
+    ? zonedMidnight(endDate)
+    : zonedMidnight(localDateKey(rawEnd));
+  const start = !startDate ? defaultStart : startIsDateOnly ? zonedMidnight(startDate) : rawStart;
+  const end = endIsDateOnly ? zonedEndOfDay(endDate) : rawEnd;
 
-  return { start: startDate && DATE_ONLY.test(startDate) ? startOfUtcDay(start) : start, end };
+  return { start, end };
 }
 
 interface Totals {
@@ -339,8 +365,8 @@ function productivityPercent(t: Totals): number {
 }
 
 function reportDays(start: Date, end: Date): number {
-  const firstDay = startOfUtcDay(start).getTime();
-  const lastDay = startOfUtcDay(end).getTime();
+  const firstDay = workDateOf(start).getTime();
+  const lastDay = workDateOf(end).getTime();
   return Math.max(1, Math.floor((lastDay - firstDay) / DAY_MS) + 1);
 }
 
@@ -352,9 +378,7 @@ function latest(left: Date | null, right: Date | null): Date | null {
 }
 
 /** `yyyy-MM-dd` key for a `@db.Date` column, which Prisma hands back as UTC midnight. */
-function workDateKey(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
+const workDateKey = dateColumnKey;
 
 /**
  * Whether an attendance session that is still open belongs to a workstation still reporting.
@@ -397,9 +421,9 @@ export class ReportService {
     start: Date,
     end: Date,
   ): Promise<ApplicationTotals[]> {
-    const today = startOfUtcDay(new Date());
-    const startDay = startOfUtcDay(start);
-    const endDay = startOfUtcDay(end);
+    const today = workDateOf(new Date());
+    const startDay = workDateOf(start);
+    const endDay = workDateOf(end);
     const singleDay = startDay.getTime() === endDay.getTime();
     const totals = new Map<string, ApplicationTotals>();
     const summaryEnd = new Date(Math.min(endDay.getTime(), today.getTime() - DAY_MS));
@@ -456,7 +480,7 @@ export class ReportService {
         : [];
 
     for (const row of rawRows) {
-      const rowDay = workDateKey(row.startTime);
+      const rowDay = localDateKey(row.startTime);
       if (summaryDates.has(rowDay)) continue;
       addApplication(totals, row.appName, row.productivityTag, row.durationSeconds);
     }
@@ -547,9 +571,9 @@ export class ReportService {
     start: Date,
     end: Date,
   ): Promise<BrowserDomainTotals[]> {
-    const today = startOfUtcDay(new Date());
-    const startDay = startOfUtcDay(start);
-    const endDay = startOfUtcDay(end);
+    const today = workDateOf(new Date());
+    const startDay = workDateOf(start);
+    const endDay = workDateOf(end);
     const singleDay = startDay.getTime() === endDay.getTime();
     const totals = new Map<string, BrowserDomainTotals>();
     const summaryEnd = new Date(Math.min(endDay.getTime(), today.getTime() - DAY_MS));
@@ -607,7 +631,7 @@ export class ReportService {
         : [];
 
     for (const row of rawRows) {
-      const rowDay = workDateKey(row.startTime);
+      const rowDay = localDateKey(row.startTime);
       if (summaryDates.has(rowDay)) continue;
       addBrowserDomain(totals, row.domain, row.productivityTag, row.durationSeconds);
     }
@@ -642,9 +666,9 @@ export class ReportService {
   ) {
     const days = reportDays(start, end);
     const divisor = averagePerDay && days >= 2 ? days : 1;
-    const startDay = startOfUtcDay(start);
-    const endDay = startOfUtcDay(end);
-    const today = startOfUtcDay(new Date());
+    const startDay = workDateOf(start);
+    const endDay = workDateOf(end);
+    const today = workDateOf(new Date());
     const singleDay = startDay.getTime() === endDay.getTime();
     const summaryEnd = new Date(Math.min(endDay.getTime(), today.getTime() - DAY_MS));
     const hasSummaryRange = !singleDay && startDay <= summaryEnd;
@@ -719,7 +743,7 @@ export class ReportService {
 
     for (const row of liveBrowserRows) {
       const empId = row.device.employeeId;
-      const rowDay = workDateKey(row.startTime);
+      const rowDay = localDateKey(row.startTime);
       if (!singleDay && rowDay < workDateKey(today) && summaryDates.has(rowDay)) continue;
 
       const current = domainTotalsByEmployee.get(empId) ?? {
@@ -804,7 +828,7 @@ export class ReportService {
   private async dailyTotals(start: Date, end: Date, employeeId: string) {
     const grouped = await prisma.dailyActivityRollup.groupBy({
       by: ["workDate"],
-      where: { employeeId, workDate: { gte: startOfUtcDay(start), lte: startOfUtcDay(end) } },
+      where: { employeeId, workDate: { gte: workDateOf(start), lte: workDateOf(end) } },
       _sum: { activeSeconds: true, idleSeconds: true },
       _max: { lastActivityAt: true },
     });
@@ -948,7 +972,7 @@ export class ReportService {
   async getOverview(startDate?: string, endDate?: string) {
     const { start, end } = resolveRange(startDate, endDate);
     const onlineSince = new Date(Date.now() - ONLINE_WINDOW_MS);
-    const today = startOfUtcDay(new Date());
+    const today = workDateOf(new Date());
 
     const [totals, employees, onlineDevices, todaysAttendance, openAlerts] = await Promise.all([
       this.totalsByEmployee(start, end, undefined, true),
@@ -1002,7 +1026,7 @@ export class ReportService {
    */
   async getTeamAttendance() {
     const now = Date.now();
-    const today = startOfUtcDay(new Date());
+    const today = workDateOf(new Date());
     const todayKey = workDateKey(today);
     const weekStart = new Date(today.getTime() - (TEAM_ATTENDANCE_WEEK_DAYS - 1) * DAY_MS);
 
@@ -1200,9 +1224,9 @@ export class ReportService {
     start: Date,
     end: Date,
   ) {
-    const today = startOfUtcDay(new Date());
-    const startDay = startOfUtcDay(start);
-    const endDay = startOfUtcDay(end);
+    const today = workDateOf(new Date());
+    const startDay = workDateOf(start);
+    const endDay = workDateOf(end);
     const singleDay = startDay.getTime() === endDay.getTime();
     const summaryEnd = new Date(Math.min(endDay.getTime(), today.getTime() - DAY_MS));
     const hasSummaryRange = !singleDay && startDay <= summaryEnd;
@@ -1267,7 +1291,7 @@ export class ReportService {
         : [];
 
     for (const row of rawMetrics) {
-      const rowDay = workDateKey(row.windowEndUtc);
+      const rowDay = localDateKey(row.windowEndUtc);
       if (summaryDates.has(rowDay)) continue;
       keyCount += row.keyCount;
       mouseCount += row.mouseCount;
@@ -1296,8 +1320,8 @@ export class ReportService {
     appGroups: ApplicationTotals[],
     domainGroups: BrowserDomainTotals[] = [],
   ): Promise<WorkplaceIntelligence> {
-    const startDay = startOfUtcDay(start);
-    const endDay = startOfUtcDay(end);
+    const startDay = workDateOf(start);
+    const endDay = workDateOf(end);
 
     const [dailyRollups, rawSessions] = await Promise.all([
       prisma.dailyActivityRollup.findMany({
@@ -1418,8 +1442,8 @@ export class ReportService {
       dailyActiveByEmployeeDate.set(key, cur + rollup.activeSeconds);
 
       if (rollup.lastActivityAt) {
-        const utcHour = rollup.lastActivityAt.getUTCHours();
-        if (utcHour >= 20 || utcHour < 5) {
+        const hour = localHour(rollup.lastActivityAt);
+        if (hour >= LATE_NIGHT_START_HOUR || hour < LATE_NIGHT_END_HOUR) {
           lateNightSessionsCount += 1;
         }
       }
@@ -1432,8 +1456,8 @@ export class ReportService {
     }
 
     for (const s of rawSessions) {
-      const h = s.startTime.getUTCHours();
-      if (h >= 20 || h < 5) {
+      const h = localHour(s.startTime);
+      if (h >= LATE_NIGHT_START_HOUR || h < LATE_NIGHT_END_HOUR) {
         lateNightSessionsCount += 1;
       }
     }
@@ -1602,23 +1626,14 @@ export class ReportService {
 
     const deviceScope = { deviceId: { in: deviceIds } };
 
-    // Weekly attendance always spans at least the full ISO week(s) containing the period
-    const isoWeekStartDay = (start.getUTCDay() - 1 + 7) % 7;
-    const attendanceRangeStart = new Date(
-      Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate() - isoWeekStartDay),
-    );
-    const isoWeekEndDay = (end.getUTCDay() - 1 + 7) % 7;
-    const attendanceRangeEnd = new Date(
-      Date.UTC(
-        end.getUTCFullYear(),
-        end.getUTCMonth(),
-        end.getUTCDate() + (6 - isoWeekEndDay),
-        23,
-        59,
-        59,
-        999,
-      ),
-    );
+    // Weekly attendance always spans at least the full ISO week(s) containing the period, measured
+    // in organization-local days and expressed as instants for the raw-timestamp filters below.
+    const periodStartKey = localDateKey(start);
+    const periodEndKey = localDateKey(end);
+    const isoWeekStartDay = (workDateOf(start).getUTCDay() - 1 + 7) % 7;
+    const isoWeekEndDay = (workDateOf(end).getUTCDay() - 1 + 7) % 7;
+    const attendanceRangeStart = zonedMidnight(addDaysToKey(periodStartKey, -isoWeekStartDay));
+    const attendanceRangeEnd = zonedEndOfDay(addDaysToKey(periodEndKey, 6 - isoWeekEndDay));
 
     const [
       totalsByEmployee,
@@ -1973,7 +1988,7 @@ export class ReportService {
     const { start, end } =
       options.startDate || options.endDate
         ? resolveRange(options.startDate, options.endDate)
-        : { start: startOfUtcDay(new Date()), end: new Date() };
+        : { start: zonedMidnight(localDateKey(new Date())), end: new Date() };
 
     const organizationId = await currentOrganizationId();
     const pageSize = await resolvePageSize(organizationId, options.limit);

@@ -6,7 +6,8 @@ import { categoryService } from "../report/categoryService";
 import { generateDeviceApiKey, hashDeviceApiKey, hashEnrollmentToken } from "../../utils/token";
 import { persistScreenshot } from "./screenshotStorage";
 import { getOrCreatePolicy } from "./policyService";
-import { RollupAccumulator, applyRollup, utcWorkDate } from "./rollupService";
+import { RollupAccumulator, applyRollup, localWorkDate } from "./rollupService";
+import { dateColumnKey } from "../../lib/timezone";
 import { broadcastTelemetryIngested } from "../../realtime";
 import type {
   ActivityMetricEventDto,
@@ -201,8 +202,8 @@ class IngestService {
   // The rollup is keyed on the employee's local calendar date, which only the workstation knows
   // - a fleet spanning timezones would otherwise have days that start at the server's midnight.
   // Attendance carries that date, so telemetry that references an attendance session inherits
-  // it. Everything else falls back to the UTC date of its own timestamp, which is correct for a
-  // single-timezone office and never worse than guessing.
+  // it. Everything else falls back to the organization-local date of its own timestamp
+  // (APP_TIME_ZONE), which is correct for a single-timezone office and never worse than guessing.
   // -------------------------------------------------------------------------
 
   private async workDatesBySession(sessionIds: string[]): Promise<Map<string, string>> {
@@ -214,7 +215,7 @@ class IngestService {
       select: { sessionId: true, workDate: true },
     });
 
-    return new Map(rows.map((r) => [r.sessionId, utcWorkDate(r.workDate)]));
+    return new Map(rows.map((r) => [r.sessionId, dateColumnKey(r.workDate)]));
   }
 
   /** The subset of ids already stored on this channel, so the rollup never counts them twice. */
@@ -401,7 +402,7 @@ class IngestService {
 
     for (const e of fresh) {
       accumulator.addActivityMetric(
-        workDates.get(e.sessionId) ?? utcWorkDate(e.windowEndUtc),
+        workDates.get(e.sessionId) ?? localWorkDate(e.windowEndUtc),
         e.keyCount,
         e.mouseCount,
         e.mouseLeftKeyCount,
@@ -470,7 +471,7 @@ class IngestService {
       );
 
       const productivityTag = match ? match.tag : (e.productivityTag as ProductivityTag);
-      const workDate = workDates.get(e.sessionId) ?? utcWorkDate(e.startTime);
+      const workDate = workDates.get(e.sessionId) ?? localWorkDate(e.startTime);
 
       accumulator.addActivitySession(
         workDate,
@@ -539,7 +540,7 @@ class IngestService {
     ];
 
     // sessionId comes along for the ride: it is how a browser visit inherits the local work date
-    // of the attendance session that contained it, rather than being attributed by UTC midnight.
+    // of the attendance session that contained it, rather than being attributed by midnight in the server zone.
     const parents = await prisma.activitySession.findMany({
       where: { activitySessionId: { in: referenced } },
       select: { activitySessionId: true, sessionId: true },
@@ -561,7 +562,7 @@ class IngestService {
       const parentSession = e.activitySessionId
         ? parentSessionId.get(e.activitySessionId)
         : undefined;
-      const workDate = (parentSession && workDates.get(parentSession)) ?? utcWorkDate(e.startTime);
+      const workDate = (parentSession && workDates.get(parentSession)) ?? localWorkDate(e.startTime);
 
       const domain = e.domain.toLowerCase();
       const productivityTag = match ? match.tag : (e.productivityTag as ProductivityTag);
@@ -631,7 +632,7 @@ class IngestService {
     for (const e of fresh) {
       const known = !!e.sessionId && workDates.has(e.sessionId);
       accumulator.addUsbEvent(
-        (known && workDates.get(e.sessionId!)) || utcWorkDate(e.eventTime),
+        (known && workDates.get(e.sessionId!)) || localWorkDate(e.eventTime),
         e.eventTime,
       );
 
@@ -684,7 +685,7 @@ class IngestService {
 
     for (const e of events) {
       if (!stored.has(e.clientEventId))
-        accumulator.addAlert(utcWorkDate(e.triggeredAt), e.triggeredAt);
+        accumulator.addAlert(localWorkDate(e.triggeredAt), e.triggeredAt);
     }
 
     return {

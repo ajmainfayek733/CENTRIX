@@ -34,6 +34,7 @@ invalid value**, naming the variable.
 | `BETTER_AUTH_URL`    | `http://localhost:3000` |                                                                                                                            |
 | `FRONTEND_URL`       | `http://localhost:3000` | The CORS origin, and the base of emailed password reset links                                                              |
 | `PUBLIC_BASE_URL`    | `http://localhost:5000` | Builds `remoteUri` in the screenshot response. The agent only logs it, so it need not be publicly resolvable - just stable |
+| `APP_TIME_ZONE`      | `UTC`                   | IANA zone the organization works in, for example `Asia/Dhaka`. See [Time zone](#time-zone). Invalid values fail startup    |
 
 ### Secrets
 
@@ -141,6 +142,7 @@ credentials are all-or-nothing; a partial set fails startup.
 | -------------------------------- | -------------------- | ----------------------------------------- |
 | `MONITORING_API_URL`             | Next.js **server**   | May be an internal hostname               |
 | `NEXT_PUBLIC_MONITORING_API_URL` | **Browser** (socket) | Must be reachable from the user's machine |
+| `NEXT_PUBLIC_APP_TIME_ZONE`      | Browser and server   | Display zone. Must equal `APP_TIME_ZONE`. Inlined at build time |
 
 Separate on purpose. Setting only the first leaves the socket pointed at `http://localhost:5000`
 from the user's browser.
@@ -244,6 +246,27 @@ screenshots is that many full-size JPEGs the browser downloads and decodes.
 | -------------------------- | ------- |
 | `retentionDays`            | `90`    |
 | `undeliveredRetentionDays` | `30`    |
+
+### <a id="time-zone"></a>Time zone
+
+Timestamps are stored, transported and compared as UTC, always. `APP_TIME_ZONE` (backend) and
+`NEXT_PUBLIC_APP_TIME_ZONE` (dashboard) only decide how a person reads them. Set both to the same
+IANA zone; the deploy `.env` sets them from one `APP_TIME_ZONE` value.
+
+| What follows the zone | Detail |
+| --- | --- |
+| Clock times and dates on every screen | Rendered in the zone, not the viewer's laptop or the server's |
+| A bare report date (`startDate=2026-08-15`) | The local calendar day: for `Asia/Dhaka`, 18:00 UTC the evening before until 17:59:59.999 UTC |
+| "Today" | Starts at local midnight, so the overview no longer shows yesterday for the first hours of a Dhaka day |
+| Clock times in PDF reports | Printed in the zone, with the zone named in the "Generated" stamp |
+| "Late night" in the burnout score | 20:00-05:00 local time |
+| `reportSummaryScheduleTimeLocal` | Matched against the local clock in the zone |
+| Fallback `workDate` for telemetry with no attendance session | The local date of its timestamp |
+
+A `workDate` itself is the workstation's own local date, taken from the agent, and is never
+shifted. The agent's machines and `APP_TIME_ZONE` should be in the same zone for one office.
+`NEXT_PUBLIC_*` is inlined at build time, so changing the zone means rebuilding the dashboard image
+(`./deploy/scripts/deploy.sh`), not just restarting it.
 
 ### Working hours
 

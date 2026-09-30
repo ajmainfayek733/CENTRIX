@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import path from "path";
 import { reportService } from "./reportService";
 import { getScreenshot } from "../ingest/screenshotStorage";
+import { localDateKey } from "../../lib/timezone";
 
 /**
  * A `limit` query parameter, or undefined to let policy decide.
@@ -75,7 +76,7 @@ export class ReportController {
       );
 
       const sanitizedName = data.employee.name.replace(/[^a-z0-9_-]/gi, "_").toLowerCase();
-      const dateTag = (startDate as string) || new Date().toISOString().slice(0, 10);
+      const dateTag = (startDate as string) || localDateKey(new Date());
       const filename = `report_${sanitizedName}_${dateTag}.pdf`;
 
       res.setHeader("Content-Type", "application/pdf");
@@ -119,7 +120,7 @@ export class ReportController {
       );
 
       const sanitizedName = data.department.name.replace(/[^a-z0-9_-]/gi, "_").toLowerCase();
-      const dateTag = (startDate as string) || new Date().toISOString().slice(0, 10);
+      const dateTag = (startDate as string) || localDateKey(new Date());
       const filename = `department_performance_${sanitizedName}_${dateTag}.pdf`;
 
       res.setHeader("Content-Type", "application/pdf");
@@ -146,7 +147,7 @@ export class ReportController {
         endDate as string | undefined,
       );
 
-      const dateTag = (startDate as string) || new Date().toISOString().slice(0, 10);
+      const dateTag = (startDate as string) || localDateKey(new Date());
       const filename = `department_bundle_${req.params.departmentId.slice(0, 8)}_${dateTag}.zip`;
 
       res.setHeader("Content-Type", "application/zip");

@@ -28,10 +28,13 @@ WORKDIR /app
 # here and cannot be changed by setting an environment variable on the running container.
 # This one is the API address the *browser* uses for Socket.IO - the public API hostname.
 ARG NEXT_PUBLIC_MONITORING_API_URL
+# IANA zone every clock time and date is displayed in. Must equal the API's APP_TIME_ZONE.
+ARG NEXT_PUBLIC_APP_TIME_ZONE=UTC
 RUN test -n "$NEXT_PUBLIC_MONITORING_API_URL" \
     || (echo "Build arg NEXT_PUBLIC_MONITORING_API_URL is required" >&2 && exit 1)
 
 ENV NEXT_PUBLIC_MONITORING_API_URL=${NEXT_PUBLIC_MONITORING_API_URL} \
+    NEXT_PUBLIC_APP_TIME_ZONE=${NEXT_PUBLIC_APP_TIME_ZONE} \
     NEXT_TELEMETRY_DISABLED=1 \
     NODE_ENV=production
 
