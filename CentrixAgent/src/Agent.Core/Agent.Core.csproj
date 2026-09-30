@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Agent.Core</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Local store. Microsoft.Data.Sqlite rather than EF Core: the schema is a fixed set of
+         typed telemetry tables written by hand-rolled SQL, and a background service running on
+         30 workstations does not need a change tracker or migrations engine. -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.10" />
+    <!-- Pinned ahead of what Microsoft.Data.Sqlite 10.0.10 resolves to: its default
+         SQLitePCLRaw 2.1.11 carries GHSA-2m69-gcr7-jv3q (high). 3.0.5 brings the patched
+         native e_sqlite3. -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
+    <!-- ILoggingBuilder plumbing for the rolling-file sink in Logging/. Abstractions alone gives
+         ILogger but not the builder extension points the provider registers through. -->
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.10" />
+  </ItemGroup>
+
+</Project>

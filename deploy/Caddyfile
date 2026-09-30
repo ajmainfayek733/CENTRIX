@@ -1,0 +1,70 @@
+# CENTRIX reverse proxy: one domain, routed by path.
+#
+#   https://DOMAIN/api/v1/*     -> api:5000       Windows agents (REST)
+#   https://DOMAIN/socket.io/*  -> api:5000       realtime (agents and the dashboard browser)
+#   https://DOMAIN/health       -> api:5000       API + database health
+#   https://DOMAIN/*            -> frontend:3000  dashboard, including its own /api/* routes
+#
+# Why not send all of /api to the API: the dashboard itself serves /api/auth/login,
+# /api/reports/..., /api/screenshots/... and /api/health. Those must reach Next.js, or login
+# breaks. The API's other routes (/api/auth for Better Auth, /v1/dashboard) are only ever called
+# by the dashboard server over the private compose network, so they stay unexposed.
+#
+# Why agents use https://DOMAIN and not https://DOMAIN/api: the agent appends api/v1/... itself,
+# and its Socket.IO client treats any URL path as a namespace name. A /api base URL would make
+# it request the "/api/agents" namespace, which does not exist.
+#
+# TLS certificates are issued and renewed automatically by Let's Encrypt. That requires the
+# domain's DNS A record (and AAAA, if one exists) to point at this host's public IP, and inbound
+# 80 and 443 to be open. A stale AAAA record breaks issuance, because Let's Encrypt prefers IPv6.
+#
+# {$VAR} values are substituted from the container environment set in docker-compose.prod.yml.
+
+{
+	email {$ACME_EMAIL}
+	servers {
+		protocols h1 h2 h3
+	}
+}
+
+{$DOMAIN} {
+	# Clients reach Caddy directly, so no upstream proxy is trusted: Caddy sets X-Forwarded-For
+	# to the real client address, which the API's TRUST_PROXY=1 relies on for rate limiting.
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+		-X-Powered-By
+	}
+
+	log {
+		output stdout
+		format json
+	}
+
+	encode zstd gzip
+
+	@backend path /api/v1 /api/v1/* /socket.io /socket.io/* /health
+	handle @backend {
+		request_body {
+			# Screenshot uploads are capped at 15 MB by the API itself; this rejects anything
+			# larger at the edge before it is buffered to disk. WebSocket upgrades pass through.
+			max_size {$API_MAX_BODY_SIZE}
+		}
+		reverse_proxy api:5000
+	}
+
+	handle {
+		header {
+			X-Frame-Options "DENY"
+			Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		}
+		reverse_proxy frontend:3000
+	}
+}
+
+# The registrar's zone usually carries a www record too. Send it to the bare domain.
+www.{$DOMAIN} {
+	redir https://{$DOMAIN}{uri} permanent
+}

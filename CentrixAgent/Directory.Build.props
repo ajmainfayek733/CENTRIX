@@ -1,0 +1,34 @@
+<Project>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <!-- 30 company workstations, all x64 (spec section 11). Fixing the RID here means
+         `dotnet publish` produces a self-contained build without per-invocation flags. -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <Platforms>x64</Platforms>
+
+    <!-- Product identity. AgentVersion is reported to the backend on every enrollment and
+         shows up in the dashboard's device inventory, so bump it with each release. -->
+    <Version>3.8.3.1</Version>
+    <AgentVersion>3.8.3.1</AgentVersion>
+    <Company>CENTRIX</Company>
+    <Product>CENTRIX Agent</Product>
+
+    <!-- The agent must be discoverable, never disguised (spec section 3): no obfuscation,
+         no generic process names, and a real entry in Add/Remove Programs. -->
+    <AssemblyTitle>CENTRIX Agent</AssemblyTitle>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>AgentVersion</_Parameter1>
+      <_Parameter2>$(AgentVersion)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>

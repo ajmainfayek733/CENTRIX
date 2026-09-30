@@ -1,94 +1,116 @@
-# API Documentation
+# Employee Tracker
 
-## API Response Structure
+An in-office CENTRIXing system for company-owned Windows workstations: a native agent
+collects activity, an Express/PostgreSQL backend stores it, and a Next.js dashboard reports on it.
 
-### Success Response
-
-- **Code:** 200 (on successful GET/PUT/DELETE)
-- **Code:** 201 (on successful POST with DB insertion)
-- **Structure:**
-
-```json
-{
-  "status": "success",
-  "message": "success note",
-  "data": "response data"
-}
-```
-
-### Error Response
-
-- **Codes:**
-  - 400 → Bad Request
-  - 401 → Unauthorized
-  - 404 → Not Found
-  - 500 → Internal Server Error
-
-- **Structure:**
-
-```json
-{
-  "status": "error",
-  "message": "error note"
-}
-```
+**All documentation lives in [`Docs/`](Docs/). Start at [Docs/README.md](Docs/README.md).**
 
 ---
 
-## Development Branch Convention
+## The three tiers
 
-This is the convention we follow for development
+| Tier | Directory | Stack | Port | Docs |
+|---|---|---|---|---|
+| Backend | `Backend/` | Express + Prisma + PostgreSQL | 5000 | [Docs/backend/](Docs/backend/) |
+| Dashboard | `Frontend/` | Next.js App Router | 3000 | [Docs/frontend/](Docs/frontend/) |
+| Agent | `Windows Software_v3/` | .NET 10, WPF, SYSTEM service + user host | - | [Docs/agent/](Docs/agent/) |
 
-- `main` - Productiontion Branch. After final testing completion `dev` branch will be marged to `main` branch.
-- `dev` - feature branches will be marged here for final testing.
-- `docs` - Document branch. All kind of documents create/update will happen here.
-- `feat/<feature-name>` - New feature will be developed in its own branch.
+They must start **in that order**: the dashboard renders server-side against the API, and the
+agent cannot enroll until the backend has an organization with an enrollment token. See
+[Docs/operations/running-the-stack.md](Docs/operations/running-the-stack.md).
+
+> `Agent/` and `Windows Software/` are **abandoned** earlier attempts at the Windows client.
+> Nothing live depends on them, and their documentation is archived in
+> [Docs/archive/](Docs/archive/). Do not build on either.
+
+## Production
+
+AWS EC2 + S3 with Docker Compose and automatic HTTPS: [deploy/](deploy/) and
+[Docs/operations/aws-ec2-deployment.md](Docs/operations/aws-ec2-deployment.md).
+
+## Quick start
+
+```bash
+# 1. Backend
+cd Backend && cp .env.example .env && npx prisma migrate dev && npm run seed && npm run dev
+
+# 2. Dashboard
+cd Frontend && cp .env.example .env.local && npm run dev
+
+# 3. Agent (elevated PowerShell)
+cd "Windows Software_v3"
+.\scripts\Deploy-Agent.ps1 -Action Install -ServerUrl http://localhost:5000 `
+    -EnrollmentToken <token from npm run seed> -AllowInsecureHttp
+```
+
+`npm run seed` prints the enrollment token **once**. Seeded login: `admin@example.com` /
+`ChangeMe123!`.
+
+Full instructions and verification steps:
+[Docs/operations/running-the-stack.md](Docs/operations/running-the-stack.md).
+
+## Where to look
+
+| I want to... | Go to |
+|---|---|
+| Understand the system | [Docs/architecture/system-overview.md](Docs/architecture/system-overview.md) |
+| Fix a bug or an outage | [Docs/operations/troubleshooting.md](Docs/operations/troubleshooting.md) |
+| Find the logs | [Docs/operations/diagnostics.md](Docs/operations/diagnostics.md) |
+| Look up an endpoint | [Docs/reference/](Docs/reference/) |
+| Change something across tiers | [Docs/architecture/cross-tier-contracts.md](Docs/architecture/cross-tier-contracts.md) |
+
+Contributor rules are in [CLAUDE.md](CLAUDE.md).
 
 ---
 
-## Git Commit Convention
+## API response conventions
 
-We follow a structured commit message format:
+Dashboard endpoints (`/v1/dashboard/*`) use an envelope:
 
-**Structure:**
-
-``` text
-<type>(<scope-optional>)/ <description>
+```json
+{ "status": "success", "message": "success note", "data": "response data" }
 ```
 
-**Types:**
+```json
+{ "status": "error", "message": "error note" }
+```
 
-- feat     → New feature  
-- fix      → Bug fix  
-- docs     → Documentation changes  
-- style    → Code style changes (formatting, missing semi colons, etc)  
-- refactor → Code changes that neither fix a bug nor add a feature  
-- perf     → Performance improvements  
-- test     → Adding or modifying tests  
-- revert   → Reverting a previous commit  
-- build    → Changes to build system or dependencies  
-- ci       → Changes to CI configuration files and scripts  
-- chore    → Miscellaneous tasks (maintenance, tooling, etc)  
+| Code | Meaning |
+|---|---|
+| 200 | Successful GET/PATCH/PUT/DELETE |
+| 201 | Successful POST that inserted a row |
+| 400 | Bad request |
+| 401 | Unauthorized |
+| 403 | Forbidden - authenticated but not permitted, or deactivated |
+| 404 | Not found |
+| 500 | Internal server error |
 
-**Scops:**
+Agent endpoints (`/api/v1/*`) do **not** use this envelope - see
+[Docs/reference/agent-api.md](Docs/reference/agent-api.md).
 
-- auth     → Authentication, login, logout, JWT, etc  
-- user     → User model, User profile, user management  
-- docs     → Documentation update
-- chart    → Charts related  
-- org      → Organization related logic  
-- db       → Database schema, migration, queries  
-- api      → API endpoints, route handlers  
-- ui       → Frontend UI Components  
-- form     → Form validation, input handling  
-- config   → Project setup, environment, buld config  
-- deps     → Dependency update
-- email    → Email service, Notification
-- payment  → Payment integration, billing
-- etl      → Data extraction-transformation-load
+## Branching
 
-**Example:**
+| Branch | Purpose |
+|---|---|
+| `main` | Production. `dev` merges here after final testing |
+| `dev` | Feature branches merge here for final testing |
+| `docs` | Documentation-only changes |
+| `feat/<name>` | One branch per feature |
 
-``` text
+## Commit messages
+
+```text
+<type>(<scope>)/ <description>
+```
+
+**Types:** `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `revert`, `build`, `ci`,
+`chore`
+
+**Scopes:** `auth`, `user`, `docs`, `chart`, `org`, `db`, `api`, `ui`, `form`, `config`, `deps`,
+`email`, `payment`, `etl`
+
+Example:
+
+```text
 feat(auth)/ login with JWT
 ```

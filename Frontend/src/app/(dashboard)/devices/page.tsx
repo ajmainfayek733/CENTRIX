@@ -1,0 +1,167 @@
+import { apiGet } from "@/lib/api-client";
+import { getSessionUser } from "@/lib/session";
+import {
+  Card,
+  PageHeader,
+  Notice,
+  TableWrap,
+  TABLE_CLASS,
+  Th,
+  Td,
+  Badge,
+  EmptyState,
+} from "@/components/ui";
+import { LiveDeviceStatus, LiveStatusDot } from "@/components/LiveDeviceStatus";
+import type { DeviceRow, EmployeeSummary } from "@/types/api";
+import { DeviceActions } from "./DeviceActions";
+import { DeviceAssignment } from "./DeviceAssignment";
+
+export const metadata = { title: "Devices - C E N T R I X" };
+export const dynamic = "force-dynamic";
+
+export default async function DevicesPage() {
+  const [devices, employees, user] = await Promise.all([
+    apiGet<DeviceRow[]>("/v1/dashboard/employees/devices"),
+    apiGet<EmployeeSummary[]>("/v1/dashboard/employees"),
+    getSessionUser(),
+  ]);
+
+  const assignable = employees.map((employee) => ({
+    id: employee.id,
+    name: employee.name,
+    department: employee.department,
+  }));
+
+  // Devices enroll themselves and park on a placeholder employee until an admin assigns them,
+  // so unassigned ones are surfaced first - they are the actionable set.
+  const unassigned = devices.filter((device) => device.employee.status === "placeholder");
+  const assigned = devices.filter((device) => device.employee.status !== "placeholder");
+
+  const isAdmin = user?.role === "super_admin";
+
+  return (
+    <div className="space-y-3.5">
+      <PageHeader
+        title="Devices"
+        subtitle={`${devices.length} enrolled - ${unassigned.length} awaiting assignment`}
+      />
+
+      {unassigned.length > 0 && (
+        <Card title="Awaiting assignment">
+          <Notice tone="warning">
+            These workstations enrolled with the org token but are not attached to an employee yet.
+            Their telemetry is being stored, but it will not appear in reports until assigned.
+            {employees.length === 0 &&
+              " Create employees first - import a roster from the Employees screen."}
+          </Notice>
+          <div className="mt-3.5">
+            <DeviceTable devices={unassigned} employees={assignable} isAdmin={isAdmin} />
+          </div>
+        </Card>
+      )}
+
+      <Card title="Enrolled devices">
+        {assigned.length === 0 ? (
+          <EmptyState message="No devices assigned yet. Run Deploy-Agent.ps1 on a workstation to enroll it." />
+        ) : (
+          <DeviceTable devices={assigned} employees={assignable} isAdmin={isAdmin} />
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function DeviceTable({
+  devices,
+  employees,
+  isAdmin,
+}: {
+  devices: DeviceRow[];
+  employees: Array<{ id: string; name: string; department: string | null }>;
+  isAdmin: boolean;
+}) {
+  return (
+    <TableWrap>
+      <table className={TABLE_CLASS + "min-w-250"}>
+        <colgroup>
+          <col className="w-[18%]" /> {/* Device */}
+          <col className="w-[22%]" /> {/* Assigned to (Increased slightly for the dropdown) */}
+          <col className="w-[15%]" /> {/* Operating system */}
+          <col className="w-[13%]" /> {/* MAC */}
+          <col className="w-[10%]" /> {/* Agent */}
+          <col className="w-[12%]" /> {/* Last seen */}
+          <col className="w-[10%]" /> {/* Actions */}
+        </colgroup>
+
+        <thead>
+          <tr>
+            <Th>Device</Th>
+            <Th>Assigned to</Th>
+            <Th>Operating system</Th>
+            <Th>MAC</Th>
+            <Th align="right">Agent</Th>
+            <Th align="right">Last seen</Th>
+            {isAdmin && <Th align="right">Actions</Th>}
+          </tr>
+        </thead>
+        <tbody>
+          {devices.map((device) => {
+            return (
+              <tr key={device.id}>
+                <Td>
+                  <span className="flex items-center gap-2 font-medium">
+                    <LiveStatusDot
+                      deviceId={device.id}
+                      lastSeen={device.lastSeen}
+                      isActive={device.isActive}
+                    />
+                    {device.deviceName}
+                  </span>
+                  {/* <span className="mt-0.5 block pl-4 font-mono text-[11px] text-text-tertiary">
+                    {device.deviceId}
+                  </span> */}
+                </Td>
+                <Td muted>
+                  {isAdmin ? (
+                    <DeviceAssignment
+                      deviceId={device.id}
+                      employees={employees}
+                      currentEmployeeId={device.employee.id}
+                      isUnassigned={device.employee.status === "placeholder"}
+                    />
+                  ) : device.employee.status === "placeholder" ? (
+                    <Badge tone="warning">Unassigned</Badge>
+                  ) : (
+                    device.employee.name
+                  )}
+                </Td>
+                <Td muted>
+                  {device.edition ?? "-"}
+                  <span className="block text-xs">{device.version ?? ""}</span>
+                </Td>
+                <Td muted>
+                  <span className="font-mono text-xs">{device.macAddress ?? "-"}</span>
+                </Td>
+                <Td align="right" muted numeric>
+                  {device.agentVersion ?? "-"}
+                </Td>
+                <Td align="right" muted>
+                  <LiveDeviceStatus
+                    deviceId={device.id}
+                    lastSeen={device.lastSeen}
+                    isActive={device.isActive}
+                  />
+                </Td>
+                {isAdmin && (
+                  <Td align="right">
+                    <DeviceActions deviceId={device.id} isActive={device.isActive} />
+                  </Td>
+                )}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </TableWrap>
+  );
+}

@@ -1,0 +1,1048 @@
+// CENTRIXing - v3 schema.
+//
+// Hard rule for this schema: NO Json columns. Every telemetry field the Agent sends gets its
+// own typed column, so the database is queryable by the reporting layer without unpacking a
+// blob, and a malformed field fails at ingest validation rather than silently landing in a
+// document nobody can index. Scalar lists (Postgres `text[]`) are used for genuinely
+// repeated scalars in policy - they are real array columns, not serialized documents.
+//
+// Field names track "Windows Software_v3/docs/Features.md"; table names are snake_case via
+// @@map so raw SQL / BI tools see conventional names.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums - every constrained field in Features.md is an enum rather than a free
+// string, so bad values are rejected by Postgres itself.
+// ---------------------------------------------------------------------------
+
+/// Features.md "Activity Logs" -> Type
+enum ActivityType {
+  Application
+  Desktop
+  Locked
+  Idle
+  Sleeping
+  Disconnected
+}
+
+/// Features.md "Activity Logs" -> Reason (why the activity session ended)
+enum ActivityEndReason {
+  UserInactivity
+  ScreenLock
+  Sleep
+  Disconnect
+  AppSwitch
+  SessionEnd
+}
+
+/// Features.md "Activity Logs"/"Browser Activity log" -> ProductivityTag
+enum ProductivityTag {
+  Productive
+  Unproductive
+  Blacklisted
+  Neutral
+}
+
+/// Why an attendance session's LogoutTime was stamped. Covers the lock/shutdown/
+/// hibernate/power-loss edge cases called out in Features.md "Attendace report".
+enum SessionEndReason {
+  Logout
+  Lock
+  Shutdown
+  Restart
+  Hibernate
+  Sleep
+  PowerLoss
+  Disconnect
+  /// Session was still open when the agent restarted - logout time is a recovered estimate.
+  Recovered
+}
+
+enum UsbEventType {
+  Connected
+  Disconnected
+}
+
+/// Features.md "USB Logs" -> DeviceType
+enum UsbDeviceType {
+  UsbStorage
+  MobileDevice
+  Hid
+  Other
+}
+
+enum BrowserKind {
+  Chrome
+  Edge
+  Firefox
+  Brave
+  Opera
+  Vivaldi
+  Other
+}
+
+enum UrlProtocol {
+  Http
+  Https
+}
+
+enum AlertSeverity {
+  Information
+  Warning
+  High
+  Critical
+}
+
+enum AlertState {
+  New
+  Shown
+  Acknowledged
+  Resolved
+  Archived
+}
+
+/// What an alert fired about. Determines which of the nullable context columns on Alert
+/// are populated - see the comments on that model.
+enum AlertType {
+  IdleThreshold
+  BlacklistedApp
+  BlacklistedWebsite
+  UsbDeviceConnected
+}
+
+/// Whether a Category rule matches an application or a web domain.
+enum CategoryTarget {
+  Application
+  Domain
+}
+
+enum UserRole {
+  super_admin
+  manager
+  auditor
+}
+
+// ---------------------------------------------------------------------------
+// Tenancy and people
+// ---------------------------------------------------------------------------
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  /// HMAC of the shared enrollment token baked into the agent's install-time config
+  /// (spec section 11). Presented once at POST /api/v1/device/enroll to trade for a per-device
+  /// API key; it is NOT accepted as a credential on any telemetry route. Only the HMAC is
+  /// stored, so a database read cannot recover the token.
+  enrollmentTokenHash String? @unique
+
+  users        User[]
+  departments  Department[]
+  employees    Employee[]
+  devices      Device[]
+  policy       Policy?
+  categories   Category[]
+  dailyRollups DailyActivityRollup[]
+  browserDailySummaries BrowserDailySummary[]
+  activityMetricDailySummaries ActivityMetricDailySummary[]
+  activitySessionDailySummaries ActivitySessionDailySummary[]
+
+  @@map("organizations")
+}
+
+model Department {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?
+
+  employees  Employee[]
+  categories Category[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("departments")
+}
+
+model Employee {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  email          String       @unique
+  department     String?
+  departmentId   String?
+  departmentRef  Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  status         String       @default("active")
+  createdAt      DateTime     @default(now())
+
+  devices      Device[]
+  dailyRollups DailyActivityRollup[]
+  browserDailySummaries BrowserDailySummary[]
+  activityMetricDailySummaries ActivityMetricDailySummary[]
+  activitySessionDailySummaries ActivitySessionDailySummary[]
+
+  @@index([organizationId])
+  @@index([departmentId])
+  @@map("employees")
+}
+
+// ---------------------------------------------------------------------------
+// Devices - Features.md "Device Information".
+//
+// Identity note: `deviceId` is the Windows MachineGuid and is the primary stable key.
+// `macAddress` is recorded because Features.md calls it out as burned-into-hardware and
+// stable across IP changes, but it is NOT used as the identity key - MAC is spoofable and
+// multi-NIC machines report several.
+// ---------------------------------------------------------------------------
+
+model Device {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employeeId     String
+  employee       Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  /// Windows MachineGuid - HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid.
+  deviceId     String  @unique
+  deviceName   String
+  /// e.g. "64-bit operating system, x64-based processor"
+  systemType   String?
+  /// e.g. "Windows 11 Pro"
+  edition      String?
+  /// e.g. "10.0.26200"
+  version      String?
+  macAddress   String?
+  agentVersion String?
+
+  /// HMAC-SHA256 of the device API key. The key itself is shown once at enrollment.
+  apiKeyHash String @unique
+
+  isActive  Boolean   @default(true)
+  lastSeen  DateTime?
+  createdAt DateTime  @default(now())
+
+  attendanceSessions AttendanceSession[]
+  activityMetrics    ActivityMetric[]
+  activitySessions   ActivitySession[]
+  browserActivities  BrowserActivity[]
+  usbEvents          UsbEvent[]
+  alerts             Alert[]
+  screenshots        Screenshot[]
+  consents           ConsentRecord[]
+  ingestBatches      IngestBatch[]
+  dailyRollups       DailyActivityRollup[]
+
+  @@index([organizationId])
+  @@index([employeeId])
+  @@index([macAddress])
+  @@map("devices")
+}
+
+// ---------------------------------------------------------------------------
+// Ingest idempotency - one row per batch the agent successfully delivered.
+//
+// The agent's queue is at-least-once: a batch that was committed but whose HTTP response was
+// lost is resent verbatim. Per-row `skipDuplicates` already prevented duplicate *rows*, but the
+// server still re-validated, re-categorized and re-aggregated the whole batch to reach that
+// conclusion. With a fleet of 100 replaying after an outage that is the expensive path taken at
+// the worst possible moment.
+//
+// This table makes the *batch* the unit of idempotency: a batchId already recorded is answered
+// from here without touching the telemetry tables at all. Critically, the row is written inside
+// the same transaction as the events, so it can never claim a batch that did not land.
+//
+// `eventIdsHash` guards against a batch id being reused for different content - a replay must
+// prove it is the same batch before it is short-circuited, otherwise a client bug that recycles
+// ids would silently discard real telemetry.
+// ---------------------------------------------------------------------------
+
+model IngestBatch {
+  id       String @id @default(uuid())
+  deviceId String
+  device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  /// Agent-generated GUID for this batch. Unique per device, not globally: two agents
+  /// generating the same GUID is not a collision worth failing a write over.
+  batchId String
+
+  /// Which channel the batch was pushed to. Plain text rather than the Channel enum because
+  /// this table is an operational log, and an unknown future channel must not fail the write.
+  channel String
+
+  eventCount Int
+
+  /// SHA-256 of the batch's clientEventIds, sorted and joined. Proves a replay carries the
+  /// same payload as the batch already stored under this id.
+  eventIdsHash String
+
+  receivedAt DateTime @default(now())
+
+  @@unique([deviceId, batchId])
+  /// Drives the retention sweep that prunes this table; it only needs to outlive the agent's
+  /// retry window, not the telemetry itself.
+  @@index([receivedAt])
+  @@map("ingest_batches")
+}
+
+// ---------------------------------------------------------------------------
+// Daily rollup - the read path's aggregate, maintained on write.
+//
+// Reporting used to sum activity_sessions over a date range on every dashboard load. That is
+// the query that does not survive the jump from 30 devices to 100+: a month of ten-second app
+// switches is millions of rows, and every manager opening the overview re-scans them.
+//
+// Instead each arriving batch folds itself into one row per (workDate, device, employee), so a
+// report reads at most one row per employee per day. The counters are incremented, never
+// recomputed, which is what keeps ingest O(batch) rather than O(history).
+//
+// Keyed on employee as well as device deliberately: when a workstation is reassigned mid-day the
+// two employees get their own rows rather than one row silently changing owner, so yesterday's
+// report does not move when today's assignment changes.
+// ---------------------------------------------------------------------------
+
+model DailyActivityRollup {
+  id String @id @default(uuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  deviceId String
+  device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  /// Local calendar date the activity is attributed to - the agent's own date, not the
+  /// server's, so a fleet spanning timezones still rolls up to the employee's working day.
+  workDate DateTime @db.Date
+
+  // -- Time, in seconds ---------------------------------------------------
+  activeSeconds       Int @default(0)
+  idleSeconds         Int @default(0)
+  productiveSeconds   Int @default(0)
+  unproductiveSeconds Int @default(0)
+  neutralSeconds      Int @default(0)
+  blacklistedSeconds  Int @default(0)
+
+  // -- Input counts - from activity_metrics, counts only, never content ----
+  keyCount   Int @default(0)
+  mouseCount Int @default(0)
+
+  // -- Row counts, so the UI can show volume without counting the log tables
+  activitySessionCount Int @default(0)
+  browserVisitCount    Int @default(0)
+  usbEventCount        Int @default(0)
+  alertCount           Int @default(0)
+
+  /// Earliest and latest activity folded into this day, for "first seen / last seen" columns
+  /// that would otherwise need a min/max over the log tables.
+  firstActivityAt DateTime?
+  lastActivityAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workDate, deviceId, employeeId])
+  /// The employee-and-range query behind every report screen.
+  @@index([employeeId, workDate])
+  /// Org-wide overview for a range.
+  @@index([organizationId, workDate])
+  @@map("daily_activity_rollups")
+}
+
+// ---------------------------------------------------------------------------
+// Browser activity daily summary - one row per employee, work date and domain.
+// Raw browser visits remain available for the timeline, while range reports read this bounded
+// table instead of grouping every visit in the requested period.
+// ---------------------------------------------------------------------------
+
+model BrowserDailySummary {
+  id String @id @default(uuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  workDate DateTime @db.Date
+  domain   String
+
+  durationSeconds     Int @default(0)
+  visitCount          Int @default(0)
+  productiveSeconds   Int @default(0)
+  unproductiveSeconds Int @default(0)
+  neutralSeconds      Int @default(0)
+  blacklistedSeconds  Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workDate, employeeId, domain])
+  @@index([employeeId, workDate])
+  @@index([organizationId, workDate])
+  @@map("browser_daily_summaries")
+}
+
+// ---------------------------------------------------------------------------
+// Activity metric daily summary - one row per employee and work date.
+// Raw metric samples remain available for exact audits, while range reports read this bounded
+// table instead of summing every input sample.
+// ---------------------------------------------------------------------------
+
+model ActivityMetricDailySummary {
+  id String @id @default(uuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  workDate DateTime @db.Date
+
+  sampleCount          Int @default(0)
+  keyCount             Int @default(0)
+  mouseCount           Int @default(0)
+  mouseLeftKeyCount    Int @default(0)
+  mouseRightKeyCount   Int @default(0)
+  mouseMiddleKeyCount  Int @default(0)
+  mouseOtherKeyCount   Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workDate, employeeId])
+  @@index([employeeId, workDate])
+  @@index([organizationId, workDate])
+  @@map("activity_metric_daily_summaries")
+}
+
+// ---------------------------------------------------------------------------
+// Activity session daily summary - one row per employee, work date and application.
+// Raw sessions remain available for exact audits, while range leaderboards read this bounded
+// table. Productivity buckets keep one application row even when its classification varies.
+// ---------------------------------------------------------------------------
+
+model ActivitySessionDailySummary {
+  id String @id @default(uuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  workDate DateTime @db.Date
+  appName  String
+
+  durationSeconds     Int @default(0)
+  sessionCount        Int @default(0)
+  productiveSeconds   Int @default(0)
+  unproductiveSeconds Int @default(0)
+  neutralSeconds      Int @default(0)
+  blacklistedSeconds  Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workDate, employeeId, appName])
+  @@index([employeeId, workDate])
+  @@index([organizationId, workDate])
+  @@map("activity_session_daily_summaries")
+}
+
+// ---------------------------------------------------------------------------
+// Attendance - Features.md "Attendace report".
+//
+// One row per uninterrupted stretch of presence - not per OS logon session. A lock, a
+// suspend or a logoff ends one and coming back starts another, so a working day is
+// several rows and its first login and last logout are the earliest and latest across
+// them.
+//
+// An open row is rewritten in place (last-write-wins) every couple of minutes as its
+// running totals grow, so an unexpected power loss still leaves the last known good
+// state. Once `logoutTime` is set the row is closed and ingest drops further writes:
+// the periodic refresh sends a null logout time to mean "still open", and letting one
+// land on a closed row blanks a logout that has already been reported.
+//
+// WHO CLOSED IT MATTERS - see `logoutSource`. A workstation that loses power mid-session
+// never gets to stamp anything, and its agent's own recovery pass only runs if and when
+// that machine boots again. On a site with scheduled load shedding that can be days, so
+// the server closes abandoned rows itself (attendanceReaper) from the last evidence it
+// holds. That estimate must stay correctable, which is what the source column buys.
+//
+// WHICH REPORT IS NEWER - see `revision`. The same session arrives many times, and until
+// this column existed the server had to infer their order from their contents: a report
+// carrying a logout was treated as later than one without. That reads a *property* of a
+// snapshot as its *age*, and the two come apart the moment delivery is out of order - a
+// still-open refresh queued before a close but delivered after it looked like the newer
+// report of the pair. The agent now stamps a per-session counter it bumps on every write,
+// so the ordering is carried explicitly rather than reconstructed.
+// ---------------------------------------------------------------------------
+
+/// Who stamped an attendance session's `logoutTime`, and therefore how much it is worth.
+enum LogoutSource {
+  /// The workstation observed the end of the session. Ground truth - never revised.
+  Agent
+
+  /// The server inferred it, because the row was abandoned and nothing on the device was
+  /// ever going to close it. An estimate: any later agent report supersedes it.
+  Server
+}
+
+model AttendanceSession {
+  id       String @id @default(dbgenerated("gen_random_uuid()"))
+  deviceId String
+  device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  /// Windows SID of the logged-on user - the agent never sends usernames.
+  userSid String
+  /// Agent-generated GUID identifying this logon session; the dedup/idempotency key.
+  sessionId String @unique
+
+  loginTime  DateTime
+  logoutTime DateTime?
+  endReason  SessionEndReason?
+
+  /// Set to `Server` the row carries an inferred logout that an agent report is still allowed
+  /// to overwrite; `Agent` it is final. Null on an open row - and also on rows closed before
+  /// this column existed, which are read as final: they predate the reaper, so an agent is the
+  /// only thing that can have written them.
+  logoutSource LogoutSource?
+
+  /// The agent's own revision number of the snapshot this row was last written from. Starts at
+  /// 1 and is bumped by the workstation on every rewrite of the session, so a report is stale if
+  /// and only if its revision is below the one already stored - no guessing from logout times.
+  /// Zero means the report predates the counter (an agent still on an older build), which the
+  /// ingest guard reads as "unordered" and falls back to the logout-based rules for.
+  ///
+  /// Only ingest advances it. The reaper writes an inferred logout without touching it, because
+  /// a server-side guess is not a new agent snapshot and must not raise the bar that the next
+  /// genuine one has to clear.
+  revision Int @default(0)
+
+  /// Local calendar date the session belongs to, for day-grained attendance reporting.
+  workDate DateTime @db.Date
+
+  /// Rolled up from ActivitySession by the reporting layer; denormalized for fast lists.
+  totalActiveSeconds Int @default(0)
+  totalIdleSeconds   Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  activityMetrics  ActivityMetric[]
+  activitySessions ActivitySession[]
+  usbEvents        UsbEvent[]
+
+  @@index([deviceId, workDate])
+  @@index([userSid, workDate])
+  /// The reaper's sweep: the open rows, oldest first. Leading on the nullable column keeps
+  /// the scan proportional to how many sessions are actually open rather than to the table.
+  @@index([logoutTime, loginTime])
+  /// Finding the session that superseded an abandoned one - same workstation, same user,
+  /// the next login after it.
+  @@index([deviceId, userSid, loginTime])
+  @@map("attendance_sessions")
+}
+
+// ---------------------------------------------------------------------------
+// Activity level metric - Features.md "Activity Level Metric".
+//
+// PRIVACY: counts only. There is deliberately no column here that could hold a key,
+// a character, or a sequence - spec section 1.2 and section 6 exclude keystroke content entirely.
+// ---------------------------------------------------------------------------
+
+model ActivityMetric {
+  id       String @id @default(uuid())
+  deviceId String
+  device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  sessionId         String
+  attendanceSession AttendanceSession? @relation(fields: [sessionId], references: [sessionId], onDelete: Cascade)
+
+  /// Agent-generated GUID per emitted sample; dedup key for at-least-once delivery.
+  clientEventId String @unique
+
+  keyCount   Int @default(0)
+  mouseCount Int @default(0)
+
+  mouseLeftKeyCount   Int @default(0)
+  mouseRightKeyCount  Int @default(0)
+  mouseMiddleKeyCount Int @default(0)
+  mouseOtherKeyCount  Int @default(0)
+
+  /// Start and end of the sampling window this row aggregates.
+  windowStartUtc DateTime
+  windowEndUtc   DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([deviceId, windowEndUtc])
+  @@index([sessionId])
+  @@map("activity_metrics")
+}
+
+// ---------------------------------------------------------------------------
+// Activity log - Features.md "Activity Logs".
+// One row per foreground-application session (or idle/lock/sleep interval).
+// ---------------------------------------------------------------------------
+
+model ActivitySession {
+  id       String @id @default(uuid())
+  deviceId String
+  device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  sessionId         String
+  attendanceSession AttendanceSession? @relation(fields: [sessionId], references: [sessionId], onDelete: Cascade)
+
+  /// Agent-generated GUID for this activity session. Browser rows reference it.
+  activitySessionId String @unique
+
+  appName        String?
+  processName    String?
+  executablePath String?
+  type           ActivityType
+  windowTitle    String?
+
+  startTime       DateTime
+  endTime         DateTime
+  durationSeconds Int
+
+  reason          ActivityEndReason?
+  productivityTag ProductivityTag    @default(Neutral)
+
+  createdAt DateTime @default(now())
+
+  browserActivities BrowserActivity[]
+
+  @@index([deviceId, startTime])
+  @@index([sessionId, startTime])
+  @@index([deviceId, productivityTag])
+  @@map("activity_sessions")
+}
+
+// ---------------------------------------------------------------------------
+// Browser activity - Features.md "Browser Activity log".
+// Linked to its owning ActivitySession via activitySessionId, per Features.md.
+// ---------------------------------------------------------------------------
+
+model BrowserActivity {
+  id       String @id @default(uuid())
+  deviceId String
+  device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  /// Agent-generated GUID; dedup key.
+  browserActivityId String @unique
+
+  activitySessionId String?
+  activitySession   ActivitySession? @relation(fields: [activitySessionId], references: [activitySessionId], onDelete: SetNull)
+
+  browser        BrowserKind
+  browserVersion String?
+  profileName    String?
+
+  domain      String
+  rawUrl      String
+  windowTitle String?
+  pageTitle   String?
+  protocol    UrlProtocol @default(Https)
+
+  startTime       DateTime
+  endTime         DateTime
+  durationSeconds Int
+
+  productivityTag ProductivityTag @default(Neutral)
+
+  createdAt DateTime @default(now())
+
+  @@index([deviceId, startTime])
+  @@index([domain])
+  @@index([activitySessionId])
+  @@map("browser_activity")
+}
+
+// ---------------------------------------------------------------------------
+// USB device events - Features.md "USB Logs".
+// Connection/removal metadata only; contents are never inspected.
+// ---------------------------------------------------------------------------
+
+model UsbEvent {
+  id       String @id @default(uuid())
+  deviceId String
+  device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  sessionId         String?
+  attendanceSession AttendanceSession? @relation(fields: [sessionId], references: [sessionId], onDelete: SetNull)
+
+  /// Agent-generated GUID; dedup key.
+  clientEventId String @unique
+
+  eventType  UsbEventType
+  deviceType UsbDeviceType
+
+  friendlyName String?
+  manufacturer String?
+  model        String?
+  serialNumber String?
+  vendorId     String?
+  productId    String?
+
+  driveLetter   String?
+  volumeLabel   String?
+  capacityBytes BigInt?
+  fileSystem    String?
+
+  eventTime DateTime
+  createdAt DateTime @default(now())
+
+  @@index([deviceId, eventTime])
+  @@index([serialNumber])
+  @@map("usb_events")
+}
+
+// ---------------------------------------------------------------------------
+// Alerts - Features.md "Alert Notification".
+//
+// The old schema carried a `contextJson` string. It is replaced by the nullable typed
+// columns below; which ones are populated depends on `type`:
+//   IdleThreshold      -> idleSeconds, thresholdSeconds
+//   BlacklistedApp     -> contextAppName, contextProcessName
+//   BlacklistedWebsite -> contextDomain, contextUrl
+//   UsbDeviceConnected -> contextUsbSerialNumber, contextUsbFriendlyName
+//
+// Upserted on clientEventId because an escalating incident reuses its id rather than
+// creating a new row.
+// ---------------------------------------------------------------------------
+
+model Alert {
+  id       String @id @default(uuid())
+  deviceId String
+  device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  clientEventId String @unique
+  userSid       String
+
+  type     AlertType
+  severity AlertSeverity
+  state    AlertState    @default(New)
+  title    String
+  message  String
+
+  idleSeconds      Int?
+  thresholdSeconds Int?
+
+  contextAppName         String?
+  contextProcessName     String?
+  contextDomain          String?
+  contextUrl             String?
+  contextUsbSerialNumber String?
+  contextUsbFriendlyName String?
+
+  triggeredAt    DateTime
+  acknowledgedAt DateTime?
+  resolvedAt     DateTime?
+  lastNotifiedAt DateTime?
+
+  escalationLevel   Int @default(0)
+  notificationCount Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([deviceId, triggeredAt])
+  @@index([userSid, type, resolvedAt])
+  @@index([severity, state])
+  @@map("alerts")
+}
+
+// ---------------------------------------------------------------------------
+// Screenshots - Features.md "Periodic ScreenShots". Image bytes live on disk;
+// only metadata and the path are stored here.
+// ---------------------------------------------------------------------------
+
+model Screenshot {
+  id       String @id @default(uuid())
+  deviceId String
+  device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  clientEventId String @unique
+  userSid       String?
+
+  capturedAt  DateTime
+  storagePath String
+  sizeBytes   Int
+  width       Int?
+  height      Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([deviceId, capturedAt])
+  @@map("screenshots")
+}
+
+// ---------------------------------------------------------------------------
+// Policy - Features.md "Configuring Policies".
+//
+// Previously a single Json document. Now one row per organization with a column per
+// setting, so the dashboard settings screen can update individual fields and the
+// database can enforce types. `version` MUST increment on every write - the agent
+// compares it to decide whether to re-prompt for consent.
+// ---------------------------------------------------------------------------
+
+model Policy {
+  id             String       @id @default(uuid())
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  version Int @default(1)
+
+  // -- Attendance ---------------------------------------------------------
+  attendanceEnabled Boolean @default(true)
+
+  // -- Activity / idle ----------------------------------------------------
+  activityEnabled     Boolean @default(true)
+  /// Features.md "Activity Logs": default 5-minute idle threshold.
+  idleThresholdSeconds Int    @default(300)
+
+  // -- Foreground app sampling -------------------------------------------
+  appSessionEnabled       Boolean @default(true)
+  appSessionPollSeconds   Int     @default(1)
+
+  // -- Browser monitoring -------------------------------------------------
+  browserMonitorEnabled   Boolean @default(true)
+  browserUiaTimeoutMs     Int     @default(500)
+  browserMaxRetryAttempts Int     @default(3)
+
+  /// How long an agent may go without re-reading a focused browser's address bar while its
+  /// window and title are unchanged.
+  ///
+  /// The agent's main CPU dial. Reading the address bar is a cross-process UI Automation call
+  /// into the browser, which is far too expensive to run on the one-second app-sampling tick. A
+  /// browser cannot navigate without changing its window title, so a title change triggers an
+  /// immediate read and this interval only has to catch navigation between two pages that share
+  /// a title. Lower is more precise about time-per-site and costs proportionally more CPU on
+  /// every monitored workstation.
+  browserUrlRefreshSeconds Int    @default(10)
+  /// Server-local time at which completed browser, metric, and application activity is summarized.
+  reportSummaryScheduleTimeLocal String @default("23:00") @map("browserSummaryScheduleTimeLocal")
+
+  // -- Screenshots --------------------------------------------------------
+  /// Features.md: enabled by default for testing, flipped off before publish.
+  screenshotEnabled         Boolean @default(true)
+  screenshotIntervalSeconds Int     @default(600)
+  screenshotJpegQuality     Int     @default(70)
+
+  // -- USB ----------------------------------------------------------------
+  usbEnabled                     Boolean @default(true)
+  usbReconciliationIntervalSeconds Int   @default(5)
+  usbAlertOnInsertion            Boolean @default(false)
+
+  // -- Alerts - Features.md: 30 Normal / 45 Moderate / 60 Severe ----------
+  alertEnabled              Boolean @default(true)
+  alertIdleEnabled          Boolean @default(true)
+  alertIdleNormalSeconds    Int     @default(1800)
+  alertIdleModerateSeconds  Int     @default(2700)
+  alertIdleSevereSeconds    Int     @default(3600)
+  alertIdleRenotifySeconds  Int     @default(900)
+  alertBlacklistEnabled     Boolean @default(true)
+  alertOutsideWorkingHours  Boolean @default(false)
+
+  // -- Sync ---------------------------------------------------------------
+  syncBatchIntervalSeconds Int @default(120)
+  /// Events per push. 100 rather than a larger number because batch size is the main lever on
+  /// peak server cost: a fleet of 100 draining a backlog together multiplies whatever this is,
+  /// and smaller batches commit faster, hold row locks for less time and fail cheaper. Admins
+  /// change it from the settings screen; the agent reads it from policy rather than a constant.
+  syncMaxBatchSize         Int @default(100)
+  syncMinRetryBackoffSeconds Int @default(5)
+  syncMaxRetryBackoffSeconds Int @default(120)
+
+  // -- Realtime -----------------------------------------------------------
+  /// Whether agents and dashboards should hold a Socket.IO connection at all. Turning this off
+  /// falls the fleet back to poll-only behaviour without a redeploy - the HTTP paths are the
+  /// system of record either way, so this is a safe switch to flip under load.
+  realtimeEnabled Boolean @default(true)
+
+  /// How often a connected agent emits proof of life over its socket.
+  ///
+  /// This is what makes "active now" on the dashboard mean something: an open socket survives an
+  /// unplugged cable or a suspended laptop for minutes, so liveness is derived from a heartbeat
+  /// having arrived, not from a connection existing. 30s is a full order of magnitude below the
+  /// old five-minute online window while costing one tiny frame per device - 100 devices is
+  /// roughly three frames a second across the whole fleet.
+  presenceHeartbeatSeconds Int @default(30)
+
+  // -- Dashboard read path ------------------------------------------------
+  /// Rows per page in the dashboard's log tables. The UI never asks for "everything"; it asks
+  /// for a page of this size and fetches the next one when the operator scrolls to the end.
+  logPageSize Int @default(50)
+
+  /// Captures per page in the screenshot gallery. Deliberately its own setting, and an order of
+  /// magnitude smaller than logPageSize: a page of log rows is a few kilobytes of JSON, while a
+  /// page of screenshots is that many full-size JPEGs actually fetched and decoded by the
+  /// browser. At ~500 KB a capture, a 50-item page is ~25 MB of image traffic per scroll - so
+  /// the two cannot share a number without one of them being wrong. 12 fills the 3-across grid
+  /// four rows deep, which is two screens' worth of scrolling before the next request.
+  screenshotPageSize Int @default(12)
+
+  // -- Retention - spec section 3.1 configurable auto-deletion --------------------
+  retentionDays            Int @default(90)
+  undeliveredRetentionDays Int @default(30)
+
+  // -- Working hours ------------------------------------------------------
+  workingHoursStartLocal String   @default("08:00")
+  workingHoursEndLocal   String   @default("17:00")
+  /// Postgres text[] - a real array column, not a serialized document.
+  workingDays            String[] @default(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("policies")
+}
+
+// ---------------------------------------------------------------------------
+// Productivity categorization - spec section 4 "Productivity categorization", admin-editable.
+// Also drives the blacklist alerts, via `isBlacklisted`.
+// ---------------------------------------------------------------------------
+
+model Category {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  departmentId   String?
+  department     Department?  @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  /// App name or domain to match, case-insensitive.
+  pattern       String
+  target        CategoryTarget
+  tag           ProductivityTag
+  isBlacklisted Boolean         @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, departmentId, target, pattern])
+  @@index([organizationId, target])
+  @@index([departmentId])
+  @@map("categories")
+}
+
+// ---------------------------------------------------------------------------
+// Consent - spec section 3. Proof the employee was notified before monitoring began.
+// ---------------------------------------------------------------------------
+
+model ConsentRecord {
+  id       String @id @default(uuid())
+  deviceId String
+  device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  userSid        String
+  policyVersion  Int
+  acknowledgedAt DateTime
+  createdAt      DateTime @default(now())
+
+  @@unique([deviceId, userSid, policyVersion])
+  @@map("consent_records")
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard users (Better Auth) - managers/HR/auditors. Unrelated to device identity.
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String   @id @default(uuid())
+  name          String?
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  role          UserRole @default(manager)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  /// The organization this dashboard user administers. Nullable for users created before this
+  /// link existed; those resolve to the oldest organization (see config/tenant.ts).
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  sessions Session[]
+  accounts Account[]
+
+  @@index([organizationId])
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("sessions")
+}
+
+model Account {
+  id                    String    @id @default(uuid())
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  idToken               String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@map("accounts")
+}
+
+model Verification {
+  id         String   @id @default(uuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("verifications")
+}
+
+/// spec section 9 - full audit log of who viewed what and when.
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String
+  action    String
+  target    String
+  ipAddress String
+  timestamp DateTime @default(now())
+
+  @@index([userId, timestamp])
+  @@map("audit_logs")
+}

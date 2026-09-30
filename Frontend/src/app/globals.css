@@ -1,0 +1,422 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Dual theme. Light is the default on :root; dark is applied by a `dark` class on <html>,
+ * set before first paint by the inline script in layout.tsx.
+ *
+ * A class rather than only a prefers-color-scheme media query, because the theme toggle has
+ * to be able to override the OS preference in both directions - a media query alone can
+ * express "follow the system" but not "I want light on a dark machine".
+ *
+ * Three token layers live below:
+ *   1. The palette - the real colours, one definition per theme. This is the source of truth.
+ *   2. The shadcn/ui contract - the names shadcn components hardcode (--card, --primary,
+ *      --muted, ...), defined as var() aliases onto the palette. Aliases are never restated in
+ *      .dark: they resolve at use site, so overriding a palette token switches both layers.
+ *      This relies on `dark` sitting on <html>, the same element as :root - see layout.tsx.
+ *   3. The glass layer - translucency, blur and shadow recipes for the frosted chrome.
+ *
+ * Interactive and semantic colour are deliberately separate. --brand is the sky blue that
+ * carries "you can act on this": navigation, links, focus, primary buttons. --success is the
+ * green that carries "this is productive / this is online". They were one token before, which
+ * made a productive-time figure and a submit button indistinguishable in intent.
+ */
+
+:root {
+  /* ---- Palette: source of truth (sky blue on a soft ambient ground) ---- */
+  --background: #e8f4fc;
+  /* Card surfaces are translucent but carry no backdrop-filter. Letting the ambient gradient
+     tint through costs nothing to paint; blurring it on every row-bearing card does. Blur is
+     spent only on the persistent chrome - see .glass below. */
+  --surface: rgba(255, 255, 255, 0.86);
+  --surface-strong: rgba(255, 255, 255, 0.93);
+  --surface-muted: rgba(240, 249, 255, 0.72);
+  --border: rgba(186, 230, 253, 0.55);
+  --border-strong: rgba(125, 211, 252, 0.55);
+  --text-primary: #0f2744;
+  --text-secondary: #4a6b8a;
+  /* Darkened from the blueprint's #7a9bb8, which lands near 2.4:1 on these surfaces. This
+     token carries every table heading, tile label and muted cell in the product - it is not
+     decorative text and has to clear AA. */
+  --text-tertiary: #52738f;
+
+  /* Scroll bar */
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: #6b7280;
+  --scrollbar-thumb-hover: #4b5563;
+
+  /*
+   * The interactive hue, split by job because one sky blue cannot do both.
+   *
+   *   --brand        foreground. Link text, active nav, icons. Must clear 4.5:1.
+   *   --brand-vivid  graphic only. Gradients, the brand mark, decorative fills. Never text.
+   *   --brand-strong solid fills that carry --brand-contrast text.
+   *
+   * The blueprint uses #0ea5e9 for all three. It measures 2.6:1 on this ground as text and
+   * 2.8:1 under white as a button, so it survives here only where nothing has to be read
+   * against it.
+   */
+  --brand: #0369a1;
+  --brand-vivid: #0ea5e9;
+  --brand-strong: #0369a1;
+  --brand-strong-2: #0284c7;
+  --brand-contrast: #ffffff;
+  --brand-soft: rgba(14, 165, 233, 0.12);
+
+  /* Semantic status colours. Never used for interaction.
+     Green is darker than the blueprint's #22c55e/#16a34a because it labels 11.5px badge text
+     ("Present", "Productive"), not just dots and bar segments. */
+  --success: #15803d;
+  --success-vivid: #16a34a;
+  --warning: #b45309;
+  --danger: #dc2626;
+  --info: #0369a1;
+  /* Fifth categorical hue, used only to complete the chart ramp. */
+  --violet: #7c3aed;
+  /* The "no signal" dot and the neutral productivity segment. */
+  --neutral-dot: #94b0c8;
+
+  /* ---- Glass: the frosted chrome recipe ---- */
+  --glass-bg: rgba(255, 255, 255, 0.62);
+  --glass-bg-strong: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.75);
+  --glass-blur: 28px;
+  --glass-blur-heavy: 36px;
+  --glass-blur-light: 12px;
+  --glass-saturate: 150%;
+  --glass-shadow:
+    0 8px 28px rgba(14, 165, 233, 0.08), 0 2px 8px rgba(14, 120, 200, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  --glass-shadow-sm: 0 4px 16px rgba(14, 165, 233, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.88);
+  --glass-shadow-lift:
+    0 10px 32px rgba(14, 120, 200, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+
+  --row-hover: rgba(224, 242, 254, 0.5);
+  --th-bg: rgba(240, 249, 255, 0.6);
+
+  /* The ambient ground, painted by .spatial-bg. */
+  --spatial-1: rgba(125, 211, 252, 0.45);
+  --spatial-2: rgba(56, 189, 248, 0.28);
+  --spatial-3: rgba(186, 230, 253, 0.4);
+  --spatial-4: rgba(224, 242, 254, 0.5);
+  --spatial-base: linear-gradient(165deg, #f0f9ff 0%, #e0f2fe 50%, #dbeafe 100%);
+
+  /* ---- shadcn/ui contract: aliases onto the palette ---- */
+  --foreground: var(--text-primary);
+  --card: var(--surface);
+  --card-foreground: var(--text-primary);
+  --popover: var(--surface-strong);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--brand-strong);
+  --primary-foreground: var(--brand-contrast);
+  --secondary: var(--surface-muted);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--surface-muted);
+  --muted-foreground: var(--text-secondary);
+  --accent: var(--surface-muted);
+  --accent-foreground: var(--text-primary);
+  --destructive: var(--danger);
+  --destructive-foreground: #ffffff;
+  --input: var(--border-strong);
+  --ring: var(--brand);
+
+  --chart-1: var(--brand-vivid);
+  --chart-2: var(--success-vivid);
+  --chart-3: var(--warning);
+  --chart-4: var(--danger);
+  --chart-5: var(--violet);
+
+  --sidebar: var(--glass-bg);
+  --sidebar-foreground: var(--text-primary);
+  --sidebar-primary: var(--brand-vivid);
+  --sidebar-primary-foreground: var(--brand-contrast);
+  --sidebar-accent: var(--brand-soft);
+  --sidebar-accent-foreground: var(--brand);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--brand);
+
+  --radius: 1.125rem;
+}
+
+.dark {
+  /* Palette only - the contract aliases above follow automatically. */
+  --background: #0b1220;
+  --surface: rgba(17, 26, 44, 0.88);
+  --surface-strong: rgba(30, 41, 59, 0.72);
+  --surface-muted: rgba(30, 41, 59, 0.6);
+  --border: rgba(148, 163, 184, 0.16);
+  --border-strong: rgba(148, 163, 184, 0.28);
+  --text-primary: #e8eef7;
+  --text-secondary: #a7bcd6;
+  /* Lightened for the same reason the light value was darkened. */
+  --text-tertiary: #8299b5;
+
+  /* Scroll bar */
+  --scrollbar-track: #1f2937;
+  --scrollbar-thumb: #9ca3af;
+  --scrollbar-thumb-hover: #d1d5db;
+
+  /* Lightened from the light-theme values: the deep blues fail against a near-black ground.
+     Dark inverts the split - the vivid accent is legible here, so foreground and graphic
+     converge on it. */
+  --brand: #38bdf8;
+  --brand-vivid: #38bdf8;
+  --brand-strong: #0ea5e9;
+  --brand-strong-2: #38bdf8;
+  /* Solid brand fills invert in dark: a bright fill with near-black text, rather than a dark
+     fill with white text, which would disappear into the background. */
+  --brand-contrast: #052540;
+  --brand-soft: rgba(56, 189, 248, 0.15);
+
+  --success: #34d399;
+  --success-vivid: #34d399;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --info: #7dd3fc;
+  --violet: #a78bfa;
+  --neutral-dot: #475569;
+
+  --glass-bg: rgba(15, 23, 42, 0.55);
+  --glass-bg-strong: rgba(30, 41, 59, 0.65);
+  --glass-border: rgba(148, 163, 184, 0.18);
+  --glass-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --glass-shadow-sm: 0 4px 16px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --glass-shadow-lift: 0 12px 36px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+
+  --row-hover: rgba(56, 189, 248, 0.08);
+  --th-bg: rgba(30, 41, 59, 0.5);
+
+  --spatial-1: rgba(14, 165, 233, 0.12);
+  --spatial-2: rgba(56, 189, 248, 0.08);
+  --spatial-3: rgba(99, 102, 241, 0.1);
+  --spatial-4: rgba(14, 165, 233, 0.06);
+  --spatial-base: linear-gradient(165deg, #0b1220 0%, #0f172a 50%, #111827 100%);
+
+  /* Restated because the light value is a white-tinted highlight, not a palette colour. */
+  --destructive-foreground: #2b0a0a;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-strong: var(--surface-strong);
+  --color-surface-muted: var(--surface-muted);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-glass-border: var(--glass-border);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-brand: var(--brand);
+  --color-brand-vivid: var(--brand-vivid);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-contrast: var(--brand-contrast);
+  --color-brand-soft: var(--brand-soft);
+  --color-success: var(--success);
+  --color-success-vivid: var(--success-vivid);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+  --color-neutral-dot: var(--neutral-dot);
+  --color-row-hover: var(--row-hover);
+  --color-th-bg: var(--th-bg);
+
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-heading: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  --shadow-glass: var(--glass-shadow);
+  --shadow-glass-sm: var(--glass-shadow-sm);
+  --shadow-glass-lift: var(--glass-shadow-lift);
+
+  --blur-glass: var(--glass-blur);
+  --blur-glass-heavy: var(--glass-blur-heavy);
+  --blur-glass-light: var(--glass-blur-light);
+}
+
+/* The font stack itself comes from `html { @apply font-sans }` in the base layer below -
+   `@theme inline` inlines its values into utilities instead of exposing --font-sans as a
+   readable custom property, so referencing var(--font-sans) here would resolve to nothing. */
+body {
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Tabular figures everywhere numbers are compared down a column - without this, proportional
+   digits make a table of durations impossible to scan. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The ambient ground. Fixed rather than scrolled: the gradient is the room the cards float in,
+ * and scrolling it would turn a static backdrop into a parallax effect nobody asked for.
+ *
+ * Rendered once, by the dashboard shell. It sits behind everything at z-index 0, so every
+ * layer above it needs a stacking context of its own - hence `relative z-10` on the shell.
+ */
+.spatial-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 85% 55% at 12% 10%, var(--spatial-1), transparent 55%),
+    radial-gradient(ellipse 65% 45% at 88% 18%, var(--spatial-2), transparent 50%),
+    radial-gradient(ellipse 55% 40% at 70% 88%, var(--spatial-3), transparent 50%),
+    radial-gradient(ellipse 45% 35% at 20% 85%, var(--spatial-4), transparent 45%),
+    var(--spatial-base);
+}
+
+/*
+ * Frosted chrome. Reserved for the persistent shell - sidebar, topbar, and the controls docked
+ * inside them.
+ *
+ * backdrop-filter forces the compositor to re-sample everything underneath the element on every
+ * paint. That is affordable for two elements that never move. Applying it to cards would mean
+ * paying it once per card on screens that render a hundred table rows, so those use a plain
+ * translucent surface instead, which reads almost identically over the same gradient.
+ *
+ * `isolation: isolate` keeps each glass surface's inset highlight from blending with the one
+ * behind it.
+ */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow-sm);
+  isolation: isolate;
+}
+
+.glass-heavy {
+  backdrop-filter: blur(var(--glass-blur-heavy)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-heavy)) saturate(var(--glass-saturate));
+  box-shadow: var(--glass-shadow);
+}
+
+.glass-control {
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur-light)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--glass-blur-light)) saturate(160%);
+  border: 1px solid var(--glass-border);
+}
+
+/*
+ * Translucency is a comfort setting, not a decoration, for anyone who finds layered surfaces
+ * hard to read. Drop to opaque surfaces and a flat ground when the OS asks.
+ */
+@media (prefers-reduced-transparency: reduce) {
+  .glass,
+  .glass-heavy,
+  .glass-control {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: var(--surface-strong);
+  }
+
+  .spatial-bg {
+    background: var(--background);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+
+  /* One visible focus treatment for every interactive element, rather than each component
+     restating a ring. Keyboard only - :focus-visible, so a mouse click does not leave a ring
+     behind on a button that has already done its job. */
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-brand;
+  }
+}

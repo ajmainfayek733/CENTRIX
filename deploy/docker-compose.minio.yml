@@ -1,0 +1,138 @@
+# CENTRIX - self-hosted S3 (MinIO) override for docker-compose.prod.yml.
+#
+# Use on hosts without AWS (Hostinger VPS, any generic Linux box). Screenshots and database
+# backups are stored in a MinIO bucket on this host instead of Amazon S3. deploy.sh adds this
+# file automatically when STORAGE_BACKEND=minio in deploy/.env.
+#
+#   cd deploy
+#   docker compose --env-file .env -f docker-compose.prod.yml -f docker-compose.minio.yml up -d --build
+#
+# Topology added by this file:
+#   api --> minio:9000 (private compose network, never routed by Caddy)
+#   host 127.0.0.1:9000 (S3 API, used by backup-postgres.sh) and 127.0.0.1:9001 (web console).
+#   Both are bound to loopback only. Reach the console with: ssh -L 9001:127.0.0.1:9001 user@host
+#
+# The API signs requests with a bucket-scoped service user, not the MinIO root account. The root
+# credentials are used only by minio-init and the minio server itself.
+
+x-hardening: &hardening
+  security_opt:
+    - no-new-privileges:true
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: ${LOG_MAX_SIZE:-20m}
+    max-file: ${LOG_MAX_FILES:-5}
+
+services:
+  api:
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      SCREENSHOT_S3_ENDPOINT: http://minio:${MINIO_API_PORT:-9000}
+      # MinIO addresses buckets by path (http://host/bucket/key), not by DNS subdomain.
+      SCREENSHOT_S3_FORCE_PATH_STYLE: 'true'
+      # Read by the AWS SDK's default credential chain. Also stops it probing EC2 metadata.
+      AWS_ACCESS_KEY_ID: ${MINIO_APP_ACCESS_KEY:?set MINIO_APP_ACCESS_KEY in deploy/.env}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_APP_SECRET_KEY:?set MINIO_APP_SECRET_KEY in deploy/.env}
+      # The api service loads all of deploy/.env through env_file. Blank the root credentials
+      # so the application process never holds them.
+      MINIO_ROOT_USER: ''
+      MINIO_ROOT_PASSWORD: ''
+
+  minio:
+    image: ${MINIO_IMAGE:-pgsty/minio:RELEASE.2026-08-04T00-00-00Z}
+    restart: unless-stopped
+    <<: *hardening
+    cap_drop: [ALL]
+    command: ['server', '/data', '--address', ':${MINIO_API_PORT:-9000}', '--console-address', ':${MINIO_CONSOLE_PORT:-9001}']
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in deploy/.env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in deploy/.env}
+    volumes:
+      - minio-data:/data
+    ports:
+      - '127.0.0.1:${MINIO_API_PORT:-9000}:${MINIO_API_PORT:-9000}'
+      - '127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:${MINIO_CONSOLE_PORT:-9001}'
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -fsS http://127.0.0.1:${MINIO_API_PORT:-9000}/minio/health/live || wget -q -O /dev/null http://127.0.0.1:${MINIO_API_PORT:-9000}/minio/health/live
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    stop_grace_period: 30s
+    mem_limit: ${MINIO_MEM_LIMIT:-1g}
+    logging: *default-logging
+
+  # Idempotent bootstrap, safe on every deploy: creates the bucket, a least-privilege policy and
+  # service user for the API, and the backup retention rule. Exits 0 when done; the API waits.
+  minio-init:
+    image: ${MINIO_MC_IMAGE:-pgsty/mc:RELEASE.2026-09-16T00-00-00Z}
+    restart: 'no'
+    <<: *hardening
+    cap_drop: [ALL]
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ENDPOINT: http://minio:${MINIO_API_PORT:-9000}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in deploy/.env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in deploy/.env}
+      APP_ACCESS_KEY: ${MINIO_APP_ACCESS_KEY:?set MINIO_APP_ACCESS_KEY in deploy/.env}
+      APP_SECRET_KEY: ${MINIO_APP_SECRET_KEY:?set MINIO_APP_SECRET_KEY in deploy/.env}
+      BUCKET: ${SCREENSHOT_S3_BUCKET:?set SCREENSHOT_S3_BUCKET in deploy/.env}
+      POLICY_NAME: ${MINIO_APP_POLICY_NAME:-centrix-app}
+      BACKUP_PREFIX: ${MINIO_BACKUP_PREFIX:-backups/}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - |
+        set -eu
+        export MC_CONFIG_DIR=/tmp/mc
+        mc alias set local "$$MINIO_ENDPOINT" "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null
+
+        mc mb --ignore-existing "local/$$BUCKET"
+
+        cat > /tmp/app-policy.json <<POLICY
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": ["s3:ListBucket", "s3:ListBucketMultipartUploads", "s3:GetBucketLocation"],
+              "Resource": ["arn:aws:s3:::$$BUCKET"]
+            },
+            {
+              "Effect": "Allow",
+              "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:AbortMultipartUpload", "s3:ListMultipartUploadParts"],
+              "Resource": ["arn:aws:s3:::$$BUCKET/*"]
+            }
+          ]
+        }
+        POLICY
+        mc admin policy create local "$$POLICY_NAME" /tmp/app-policy.json
+
+        # `user add` on an existing user resets its secret, so a rotated MINIO_APP_SECRET_KEY
+        # takes effect on the next deploy.
+        mc admin user add local "$$APP_ACCESS_KEY" "$$APP_SECRET_KEY"
+        if ! mc admin user info local "$$APP_ACCESS_KEY" | grep -q "$$POLICY_NAME"; then
+          mc admin policy attach local "$$POLICY_NAME" --user "$$APP_ACCESS_KEY"
+        fi
+
+        # Database dumps expire on their own, so a broken cron cannot delete the last good copy.
+        if ! mc ilm rule ls "local/$$BUCKET" 2>/dev/null | grep -q "$$BACKUP_PREFIX"; then
+          mc ilm rule add --prefix "$$BACKUP_PREFIX" --expire-days "$$BACKUP_RETENTION_DAYS" "local/$$BUCKET"
+        fi
+        echo "minio-init: bucket $$BUCKET ready, service user $$APP_ACCESS_KEY bound to $$POLICY_NAME"
+    logging: *default-logging
+
+# External for the same reason as postgres-data in docker-compose.prod.yml: screenshots survive
+# `docker compose down -v`. deploy.sh creates it on first run.
+volumes:
+  minio-data:
+    external: true
+    name: centrix_minio-data

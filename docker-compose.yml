@@ -1,0 +1,113 @@
+# CENTRIX - backend + database, for local and on-premises use.
+#
+# Production on AWS (dashboard, API, HTTPS, S3 screenshots) uses deploy/docker-compose.prod.yml
+# instead - see Docs/operations/aws-ec2-deployment.md.
+#
+# Deployment target is intentionally open: this composes the two pieces the agent fleet needs
+# (an HTTP API and Postgres) with everything else driven by environment variables, so the same
+# image runs under plain Docker, Swarm, ECS, or Kubernetes with only the orchestration swapped.
+#
+#   cp Backend/.env.example .env     # then edit the secrets
+#   docker compose up -d --build
+#
+# Reverse proxy note: if you put nginx/Traefik/a cloud load balancer in front, set TRUST_PROXY
+# to the number of proxies between the client and this container. Leaving it at "false" behind a
+# proxy makes every request look like it came from the proxy's IP, which collapses the per-IP
+# backstop onto a single bucket. Setting it too high lets clients forge x-forwarded-for.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-monitoring}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-centrix}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # The backend must not start against a database still initialising, or its first query
+      # fails and the container restart-loops until Postgres happens to be ready.
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-monitoring} -d ${POSTGRES_DB:-centrix}']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # Not published by default. Nothing outside this network needs Postgres, and exposing 5432
+    # on a host that also faces the office network is how databases end up on the internet.
+    # Uncomment for local inspection only:
+    # ports:
+    #   - '127.0.0.1:5432:5432'
+
+  # One-shot migration runner. Separate from the API so migrations do not race when the api
+  # service is scaled to more than one replica - N containers each running `migrate deploy` at
+  # startup is a lock fight at best.
+  migrate:
+    build:
+      context: ./Backend
+    restart: 'no'
+    command: ['npx', 'prisma', 'migrate', 'deploy']
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://monitoring:${POSTGRES_PASSWORD}@postgres:5432/centrix}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ./Backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      DATABASE_URL: ${DATABASE_URL:-postgresql://monitoring:${POSTGRES_PASSWORD}@postgres:5432/centrix}
+
+      # Secrets - no defaults on purpose. Compose fails fast rather than starting with a
+      # placeholder that would let anyone forge a device credential offline.
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
+      DEVICE_TOKEN_PEPPER: ${DEVICE_TOKEN_PEPPER:?set DEVICE_TOKEN_PEPPER in .env}
+
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:5000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:5000}
+
+      SCREENSHOT_STORAGE_DIR: /app/storage/screenshots
+      JSON_BODY_LIMIT: ${JSON_BODY_LIMIT:-2mb}
+
+      # See the reverse-proxy note at the top of this file.
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+
+      DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-10}
+      RATE_LIMIT_ENROLL_PER_MIN: ${RATE_LIMIT_ENROLL_PER_MIN:-10}
+      RATE_LIMIT_INGEST_PER_MIN: ${RATE_LIMIT_INGEST_PER_MIN:-200}
+      RATE_LIMIT_SCREENSHOT_PER_MIN: ${RATE_LIMIT_SCREENSHOT_PER_MIN:-60}
+      RATE_LIMIT_UNAUTHENTICATED_PER_MIN: ${RATE_LIMIT_UNAUTHENTICATED_PER_MIN:-3000}
+    volumes:
+      # Screenshots are files, not rows. A named volume keeps them across image rebuilds.
+      #
+      # Scaling caveat: this is local storage. Running more than one api replica means each
+      # holds a different subset of the images, so the dashboard would 404 whichever replica it
+      # asks. Point SCREENSHOT_STORAGE_DIR at shared storage (NFS/EFS) or swap
+      # screenshotStorage.ts for S3/Azure Blob before scaling out.
+      - screenshot-data:/app/storage/screenshots
+    ports:
+      - '${API_PORT:-5000}:5000'
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:5000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      # Generous: the first start waits on Prisma client load and the pool opening.
+      start_period: 20s
+
+volumes:
+  postgres-data:
+  screenshot-data:

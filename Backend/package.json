@@ -1,0 +1,53 @@
+{
+  "name": "centrix_backend",
+  "version": "1.2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "nodemon --watch src --ext ts --exec tsx src/server.ts",
+    "build": "tsc && node scripts/postbuild.mjs",
+    "start": "node dist/server.js",
+    "migrate:deploy": "prisma migrate deploy",
+    "test": "tsx scripts/smoke.ts",
+    "seed": "tsx scripts/seed.ts",
+    "aggregate:browser": "tsx scripts/aggregate-browser-history.ts --type=browser",
+    "aggregate:activity-metrics": "tsx scripts/aggregate-browser-history.ts --type=activity-metrics",
+    "aggregate:activity-sessions": "tsx scripts/aggregate-browser-history.ts --type=activity-sessions"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.862.0",
+    "@better-auth/prisma-adapter": "^1.6.23",
+    "@emailjs/nodejs": "^5.0.2",
+    "@prisma/adapter-pg": "^7.9.0",
+    "@prisma/client": "^7.8.0",
+    "archiver": "^8.0.0",
+    "bcryptjs": "^3.0.3",
+    "better-auth": "^1.6.23",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "morgan": "^1.11.0",
+    "multer": "^2.0.1",
+    "pdfkit": "^0.20.2",
+    "pg": "^8.22.0",
+    "prisma": "^7.8.0",
+    "socket.io": "^4.8.3",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/archiver": "^8.0.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "^1.4.13",
+    "@types/node": "^26.1.1",
+    "@types/pdfkit": "^0.17.6",
+    "@types/pg": "^8.20.0",
+    "nodemon": "^3.1.14",
+    "socket.io-client": "^4.8.3",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.23.1",
+    "typescript": "^5.9.3"
+  }
+}

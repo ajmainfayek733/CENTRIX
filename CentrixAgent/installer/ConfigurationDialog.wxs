@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+  <!--
+    The configuration page: where an administrator installing interactively supplies the server
+    address, the enrollment token and the transport exception.
+
+    These are the same three public properties a silent install passes on the command line. The
+    dialog is a way to set them, not a second mechanism - which is why every validation rule here
+    has a matching Launch condition in Package.wxs. Everything enforced in the UI is enforced
+    again for /qn, because a dialog cannot validate an install that never shows one.
+
+    Layout follows the WixUI dialog metrics (370 x 270, banner to y=44, button row at y=243) so
+    it sits in the standard sequence without looking grafted on.
+  -->
+
+  <!--
+    One fragment, pulled in by the UIRef in Package.wxs. It has to be referenced explicitly:
+    unreferenced fragments are dropped at link time without a diagnostic, which produces an
+    installer that builds cleanly and shows no configuration page at all.
+  -->
+  <Fragment>
+    <UI Id="AgentConfigDlgUI">
+      <Dialog Id="AgentConfigDlg" Width="370" Height="270" Title="[ProductName] Setup">
+
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44"
+                 TabSkip="no" Text="WixUI_Bmp_Banner" />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="260" Height="15" Transparent="yes" NoPrefix="yes"
+                 Text="{\WixUI_Font_Title}Monitoring server" />
+        <Control Id="Description" Type="Text" X="25" Y="23" Width="330" Height="15" Transparent="yes" NoPrefix="yes"
+                 Text="Where this workstation reports to, and how it identifies itself." />
+
+        <Control Id="ServerUrlLabel" Type="Text" X="20" Y="60" Width="330" Height="12" NoPrefix="yes"
+                 Text="&amp;Server address" />
+        <Control Id="ServerUrlEdit" Type="Edit" X="20" Y="73" Width="330" Height="18"
+                 Property="SERVERURL" Indirect="no" />
+        <Control Id="ServerUrlHint" Type="Text" X="20" Y="93" Width="330" Height="12" NoPrefix="yes"
+                 Text="For example https://monitoring.example.com" />
+
+        <Control Id="TokenLabel" Type="Text" X="20" Y="117" Width="330" Height="12" NoPrefix="yes"
+                 Text="Enrollment &amp;token" />
+
+        <!--
+          Password="yes" masks the field. The token is not a telemetry credential - the backend
+          refuses it everywhere except enrollment - but it does let a machine join the fleet, and
+          this dialog is often filled in over someone's shoulder or on a shared screen.
+        -->
+        <Control Id="TokenEdit" Type="Edit" X="20" Y="130" Width="330" Height="18"
+                 Property="ENROLLMENTTOKEN" Password="yes" Indirect="no" />
+        <Control Id="TokenHint" Type="Text" X="20" Y="150" Width="330" Height="12" NoPrefix="yes"
+                 Text="From the dashboard, under Settings - Organization." />
+
+        <Control Id="AllowInsecureHttpCheckBox" Type="CheckBox" X="20" Y="176" Width="330" Height="18"
+                 Property="ALLOWINSECUREHTTP" CheckBoxValue="1" Text="Allow an insecure &amp;HTTP server address" />
+        <Control Id="AllowInsecureHttpHint" Type="Text" X="33" Y="192" Width="317" Height="24" NoPrefix="yes"
+                 Text="Only for a local test server. Telemetry to an HTTP address travels the network in the clear, including window titles and visited domains." />
+
+        <!--
+          The gate. Disabled until there is a server and a token, and until the address is either
+          HTTPS or explicitly excused - the same three rules the Launch conditions apply to a
+          silent install. Blocking here rather than failing later means the administrator finds
+          out while the value is still in front of them.
+
+          '~<<' is a case-insensitive begins-with: an address typed as HTTPS:// is still HTTPS.
+        -->
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="&amp;Next"
+                 DisableCondition="SERVERURL = &quot;&quot; OR ENROLLMENTTOKEN = &quot;&quot; OR (NOT (SERVERURL ~&lt;&lt; &quot;https://&quot;) AND NOT ALLOWINSECUREHTTP = &quot;1&quot;)"
+                 EnableCondition="SERVERURL &lt;&gt; &quot;&quot; AND ENROLLMENTTOKEN &lt;&gt; &quot;&quot; AND ((SERVERURL ~&lt;&lt; &quot;https://&quot;) OR ALLOWINSECUREHTTP = &quot;1&quot;)" />
+
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="&amp;Back" />
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+
+      <!--
+        Insertion into WixUI_InstallDir: after the install location is chosen, before the
+        confirmation page. Both directions are published, so Back from the confirmation page
+        returns here rather than skipping to the directory page and losing the context of what
+        was just typed.
+
+        Ordering is the whole game here, and getting it wrong is what made the page never appear.
+        MSI fires a control's events in ascending Order, and for NewDialog the highest-ordered one
+        whose condition holds wins. WixUI's own InstallDirDlg/Next jumps to VerifyReadyDlg at
+        Order 4, so a forward transition to this page has to sit ABOVE 4 - at Order 3 it lost and
+        the installer went straight to the confirmation page. It also has to carry WixUI's own
+        path-valid guard, or an invalid install location (whose InvalidDirDlg spawn is Order 3)
+        would be navigated away from anyway.
+
+        The Back transitions win at Order 3 because the built-in Backs they override sit at
+        Order 1 and 2.
+      -->
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="AgentConfigDlg"
+               Order="5" Condition="WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID = &quot;1&quot;" />
+      <Publish Dialog="AgentConfigDlg" Control="Back" Event="NewDialog" Value="InstallDirDlg" />
+      <Publish Dialog="AgentConfigDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="AgentConfigDlg" Order="3" />
+    </UI>
+  </Fragment>
+</Wix>
