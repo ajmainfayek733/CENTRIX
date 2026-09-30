@@ -1,5 +1,6 @@
 import { Prisma, ProductivityTag } from "@prisma/client";
 import { isActiveType, isIdleType } from "../report/activityClassification";
+import { localDateKey } from "../../lib/timezone";
 
 /**
  * Ingest-time aggregation into daily_activity_rollups.
@@ -412,7 +413,7 @@ export async function applyRollup(
   for (const [workDate, domain, delta] of accumulator.browserDomainEntries()) {
     // The current day is intentionally left in browser_activity. Reports use that raw data for
     // exact audits; the scheduler folds completed days after the configured work window.
-    if (workDate >= utcWorkDate(new Date())) continue;
+    if (workDate >= localWorkDate(new Date())) continue;
 
     await tx.$executeRaw`
       INSERT INTO browser_daily_summaries (
@@ -436,7 +437,7 @@ export async function applyRollup(
   }
 
   for (const [workDate, delta] of accumulator.activityMetricEntries()) {
-    if (workDate >= utcWorkDate(new Date())) continue;
+    if (workDate >= localWorkDate(new Date())) continue;
 
     await tx.$executeRaw`
       INSERT INTO activity_metric_daily_summaries (
@@ -461,7 +462,7 @@ export async function applyRollup(
   }
 
   for (const [workDate, appName, delta] of accumulator.applicationEntries()) {
-    if (workDate >= utcWorkDate(new Date())) continue;
+    if (workDate >= localWorkDate(new Date())) continue;
 
     await tx.$executeRaw`
       INSERT INTO activity_session_daily_summaries (
@@ -485,7 +486,11 @@ export async function applyRollup(
   }
 }
 
-/** Formats a timestamp as the UTC calendar date, the fallback when no local work date is known. */
-export function utcWorkDate(timestamp: Date): string {
-  return timestamp.toISOString().slice(0, "YYYY-MM-DD".length);
+/**
+ * The organization-local calendar date of a timestamp (APP_TIME_ZONE), the fallback when the agent
+ * sent no work date of its own. Not for `@db.Date` values, which are already a date: use
+ * `dateColumnKey` for those.
+ */
+export function localWorkDate(timestamp: Date): string {
+  return localDateKey(timestamp);
 }

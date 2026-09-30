@@ -1,5 +1,5 @@
 import { apiGet } from "@/lib/api-client";
-import { formatDuration, formatPercent, formatRelative } from "@/lib/format";
+import { formatDuration, formatLocalDate, formatPercent, formatRelative } from "@/lib/format";
 import { getSessionUser } from "@/lib/session";
 import {
   Card,
@@ -54,9 +54,9 @@ export default async function EmployeesPage({
     <div>
       <PageHeader
         title="Employees"
-        subtitle={`${roster.employees.length} tracked - ${new Date(
+        subtitle={`${roster.employees.length} tracked - ${formatLocalDate(
           roster.period.start,
-        ).toLocaleDateString()} to ${new Date(roster.period.end).toLocaleDateString()}`}
+        )} to ${formatLocalDate(roster.period.end)}`}
       />
 
       {organizationId && (

@@ -62,6 +62,9 @@ services:
         # Inlined into the browser bundle at build time. Changing it requires a rebuild. The
         # browser opens Socket.IO at https://DOMAIN/socket.io, which Caddy routes to the API.
         NEXT_PUBLIC_MONITORING_API_URL: https://${DOMAIN:?set DOMAIN in deploy/.env}
+        # Display zone for every clock time and date. Also inlined at build time, and it must
+        # equal the API's APP_TIME_ZONE below, which comes from the same deploy value.
+        NEXT_PUBLIC_APP_TIME_ZONE: ${APP_TIME_ZONE:-UTC}
     image: centrix-frontend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     <<: *hardening
@@ -122,6 +125,10 @@ services:
       # Exactly one proxy (Caddy) sits between clients and this container. Raise to 2 only if an
       # ALB or CloudFront is added in front of Caddy - see TRUST_PROXY in Backend/.env.example.
       TRUST_PROXY: ${TRUST_PROXY:-1}
+      # Day boundaries, "today" and printed report times follow this zone. Stored timestamps
+      # stay UTC. Pinned here so a missing value in .env cannot leave the API and the dashboard
+      # on different zones.
+      APP_TIME_ZONE: ${APP_TIME_ZONE:-UTC}
       SCREENSHOT_STORAGE_PROVIDER: s3
       SCREENSHOT_S3_BUCKET: ${SCREENSHOT_S3_BUCKET:?set SCREENSHOT_S3_BUCKET in deploy/.env}
       SCREENSHOT_S3_REGION: ${AWS_REGION:?set AWS_REGION in deploy/.env}

@@ -24,6 +24,15 @@ import { generateDeviceApiKey, hashDeviceApiKey } from "../src/utils/token";
 import { organizationService } from "../src/modules/organization/organizationService";
 import { employeeService } from "../src/modules/employee/employeeService";
 import { resolveRange, reportService } from "../src/modules/report/reportService";
+import {
+  addDaysToKey,
+  localClock,
+  localDateKey,
+  localHour,
+  workDateOf,
+  zonedEndOfDay,
+  zonedMidnight,
+} from "../src/lib/timezone";
 import { formatDuration } from "../src/lib/format";
 import {
   summarizeBrowserDay,
@@ -1096,11 +1105,13 @@ async function main() {
     // those read the rollup by day and everything else filters raw timestamps.
     console.log("\nReport date ranges");
 
+    // Expected bounds come from the configured zone (APP_TIME_ZONE), so this holds whether the
+    // dev environment runs in UTC or in the organization's own zone.
     const singleDay = resolveRange("2026-08-15", "2026-08-15");
     check(
       "a date-only end bound includes the day it names",
-      singleDay.start.toISOString() === "2026-08-15T00:00:00.000Z" &&
-        singleDay.end.toISOString() === "2026-08-15T23:59:59.999Z",
+      singleDay.start.getTime() === zonedMidnight("2026-08-15").getTime() &&
+        singleDay.end.getTime() === zonedEndOfDay("2026-08-15").getTime(),
       { start: singleDay.start, end: singleDay.end },
     );
 
@@ -1118,6 +1129,59 @@ async function main() {
       "an explicit timestamp is not widened to the end of its day",
       explicitInstant.end.toISOString() === "2026-08-15T09:30:00.000Z",
       { end: explicitInstant.end },
+    );
+
+    // -- Organization time zone ----------------------------------------------
+    //
+    // Every helper takes the zone explicitly, so these run against Asia/Dhaka (UTC+6, no DST) and
+    // America/New_York (DST) regardless of how the process itself is configured.
+    console.log("\nOrganization time zone");
+
+    const DHAKA = "Asia/Dhaka";
+    const NEW_YORK = "America/New_York";
+
+    check(
+      "a Dhaka day begins at 18:00 UTC the evening before",
+      zonedMidnight("2026-08-15", DHAKA).toISOString() === "2026-08-14T18:00:00.000Z",
+      zonedMidnight("2026-08-15", DHAKA),
+    );
+    check(
+      "a Dhaka day ends at 17:59:59.999 UTC",
+      zonedEndOfDay("2026-08-15", DHAKA).toISOString() === "2026-08-15T17:59:59.999Z",
+      zonedEndOfDay("2026-08-15", DHAKA),
+    );
+    check(
+      "18:00 UTC is already the next calendar day in Dhaka",
+      localDateKey(new Date("2026-08-14T18:00:00.000Z"), DHAKA) === "2026-08-15" &&
+        localDateKey(new Date("2026-08-14T17:59:59.999Z"), DHAKA) === "2026-08-14",
+    );
+    check(
+      "Dhaka local hour follows UTC+6 and midnight is 0, not 24",
+      localHour(new Date("2026-09-30T20:00:00.000Z"), DHAKA) === 2 &&
+        localHour(new Date("2026-09-29T18:00:00.000Z"), DHAKA) === 0,
+    );
+    check(
+      "local clock prints HH:mm in the zone",
+      localClock(new Date("2026-09-30T09:05:00.000Z"), DHAKA) === "15:05",
+      localClock(new Date("2026-09-30T09:05:00.000Z"), DHAKA),
+    );
+    check(
+      "a work date is midnight UTC of the local calendar date",
+      workDateOf(new Date("2026-08-14T18:00:00.000Z"), DHAKA).toISOString() ===
+        "2026-08-15T00:00:00.000Z",
+    );
+    check(
+      "a spring-forward day is 23 hours, not 24",
+      zonedMidnight("2026-03-08", NEW_YORK).toISOString() === "2026-03-08T05:00:00.000Z" &&
+        zonedEndOfDay("2026-03-08", NEW_YORK).toISOString() === "2026-03-09T03:59:59.999Z",
+      {
+        start: zonedMidnight("2026-03-08", NEW_YORK),
+        end: zonedEndOfDay("2026-03-08", NEW_YORK),
+      },
+    );
+    check(
+      "date keys step across month ends",
+      addDaysToKey("2026-02-28", 1) === "2026-03-01" && addDaysToKey("2026-03-01", -1) === "2026-02-28",
     );
 
     const badRange = (() => {

@@ -1,4 +1,12 @@
-/** Shared formatting. Kept in one place so a duration reads identically on every screen. */
+import { APP_TIME_ZONE, localDateKey } from "@/lib/timezone";
+
+/**
+ * Shared formatting. Kept in one place so a duration reads identically on every screen.
+ *
+ * Every clock time and calendar date of an instant is rendered in the organization's zone
+ * (APP_TIME_ZONE), never the server's or the viewer's. A `workDate` is different: it is already a
+ * calendar date, stored as midnight UTC, so `formatDate` reads it as UTC and must not be shifted.
+ */
 
 /** Seconds as "6h 12m", "12m", or "45s". Zero renders as an em dash, not "0s". */
 export function formatDuration(seconds: number): string {
@@ -21,7 +29,11 @@ export function formatTime(value: string | Date | null | undefined): string {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: APP_TIME_ZONE,
+  });
 }
 
 export function formatDateTime(value: string | Date | null | undefined): string {
@@ -33,10 +45,35 @@ export function formatDateTime(value: string | Date | null | undefined): string 
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: APP_TIME_ZONE,
   });
 }
 
-/** Formats a date as '19 Sep 2026' */
+/**
+ * '19 Sep 2026' for an instant, read in the organization's zone. For a report period bound, which
+ * is an instant, not a bare date. A `workDate` column value goes through `formatDate` instead.
+ */
+export function formatLocalDate(value: string | Date | null | undefined): string {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+
+  // Assembled from parts so the order is always "19 Sep 2026", matching formatDate below.
+  // A single locale's own ordering would differ ("Sep 19, 2026" in en-US, "19 Sept 2026" in en-GB).
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      timeZone: APP_TIME_ZONE,
+    })
+      .formatToParts(date)
+      .map((part) => [part.type, part.value]),
+  );
+  return `${parts.day} ${parts.month} ${parts.year}`;
+}
+
+/** Formats a stored calendar date (midnight UTC) as '19 Sep 2026' */
 export function formatDate(value: string | Date | null | undefined): string {
   if (!value) return "-";
   const date = new Date(value);
@@ -89,7 +126,10 @@ export function formatBytes(value: string | number | null | undefined): string {
   return `${size >= 10 || exponent === 0 ? Math.round(size) : size.toFixed(1)} ${units[exponent]}`;
 }
 
-/** ISO date (yyyy-mm-dd) for the range pickers. */
+/**
+ * ISO date (yyyy-mm-dd) for the range pickers: the organization-local day the instant falls on.
+ * Reading it in UTC would make "today" still be yesterday for the first hours of every local day.
+ */
 export function isoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  return localDateKey(date);
 }

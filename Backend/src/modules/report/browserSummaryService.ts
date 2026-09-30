@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../config/db";
+import { addDaysToKey, localClock, localDateKey } from "../../lib/timezone";
 
 /** Rebuilds one completed work date from the immutable browser log. */
 export async function summarizeBrowserDay(
@@ -205,15 +206,15 @@ export async function runBrowserSummarySchedule(
   tx: Prisma.TransactionClient,
   now = new Date(),
 ): Promise<string | null> {
-  const currentTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  const currentTime = localClock(now);
   const policies = await tx.policy.findMany({
     where: { reportSummaryScheduleTimeLocal: currentTime },
     select: { organizationId: true },
   });
 
-  const previousWorkDate = new Date(now);
-  previousWorkDate.setDate(previousWorkDate.getDate() - 1);
-  const workDate = previousWorkDate.toISOString().slice(0, "YYYY-MM-DD".length);
+  // The day that just ended, in the organization's own calendar. Stepping back a whole day from
+  // the local date key is exact; subtracting 24 hours from an instant is not across a DST change.
+  const workDate = addDaysToKey(localDateKey(now), -1);
   let rows = 0;
 
   for (const policy of policies) {

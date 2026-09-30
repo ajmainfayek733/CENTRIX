@@ -177,6 +177,28 @@ const envSchema = z.object({
   // Product name rendered into email templates as {{app_name}}.
   APP_NAME: z.string().trim().min(1).default("CENTRIX"),
 
+  // -- Time zone ---------------------------------------------------------------
+  // IANA zone the organization works in (for example Asia/Dhaka). Timestamps are always stored
+  // and transported as UTC; this only decides where a calendar day starts and ends, which clock
+  // time a report prints, and what counts as "today" and "late night". It must match the zone
+  // the dashboard uses (NEXT_PUBLIC_APP_TIME_ZONE, set from the same deploy value).
+  APP_TIME_ZONE: z
+    .string()
+    .trim()
+    .min(1)
+    .default("UTC")
+    .refine(
+      (zone) => {
+        try {
+          new Intl.DateTimeFormat("en-US", { timeZone: zone });
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      { message: "APP_TIME_ZONE must be a valid IANA time zone such as Asia/Dhaka" },
+    ),
+
   // -- Password recovery -------------------------------------------------------
   // Lifetime of a Better Auth reset token (emailAndPassword.resetPasswordTokenExpiresIn).
   PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().positive().max(1_440).default(30),

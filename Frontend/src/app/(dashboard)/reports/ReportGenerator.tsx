@@ -14,6 +14,7 @@ import {
   Archive,
 } from "lucide-react";
 import { Button, Card, Badge, useToast } from "@/components/ui";
+import { isoDate } from "@/lib/format";
 import type { RosterEmployee, DepartmentSummary } from "@/types/api";
 
 const SAVE_PRIMARY_CLASS =
@@ -29,8 +30,8 @@ type ReportScope = "employee" | "department_pdf" | "department_zip";
 function getInitialDates() {
   const now = Date.now();
   return {
-    today: new Date(now).toISOString().slice(0, 10),
-    sevenDaysAgo: new Date(now - 7 * 86400000).toISOString().slice(0, 10),
+    today: isoDate(new Date(now)),
+    sevenDaysAgo: isoDate(new Date(now - 7 * 86400000)),
   };
 }
 
@@ -71,8 +72,8 @@ export function ReportGenerator({ employees, departments }: ReportGeneratorProps
   // Preset date ranges
   function applyPreset(days: number) {
     const now = Date.now();
-    const end = new Date(now).toISOString().slice(0, 10);
-    const start = new Date(now - days * 86400000).toISOString().slice(0, 10);
+    const end = isoDate(new Date(now));
+    const start = isoDate(new Date(now - days * 86400000));
     setStartDate(start);
     setEndDate(end);
   }
@@ -101,7 +102,7 @@ export function ReportGenerator({ employees, departments }: ReportGeneratorProps
       link.href = downloadUrl;
 
       const currentEmp = employees.find((e) => e.id === empId);
-      const dateTag = new Date().toISOString().slice(0, 10);
+      const dateTag = isoDate(new Date());
       const safeName = (currentEmp?.name || empId).replace(/[^a-z0-9_-]/gi, "_").toLowerCase();
       link.download = `employee_report_${safeName}_${startDate || dateTag}.pdf`;
 
@@ -270,7 +271,7 @@ export function ReportGenerator({ employees, departments }: ReportGeneratorProps
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = downloadUrl;
-      const dateTag = new Date().toISOString().slice(0, 10);
+      const dateTag = isoDate(new Date());
       link.download = `roster_export_${dateTag}.csv`;
 
       document.body.appendChild(link);
@@ -315,7 +316,7 @@ export function ReportGenerator({ employees, departments }: ReportGeneratorProps
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = downloadUrl;
-      const dateTag = new Date().toISOString().slice(0, 10);
+      const dateTag = isoDate(new Date());
       link.download = `department_summary_${dateTag}.csv`;
 
       document.body.appendChild(link);

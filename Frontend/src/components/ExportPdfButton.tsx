@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Download, Loader2 } from "lucide-react";
 import { Button, useToast } from "@/components/ui";
+import { isoDate } from "@/lib/format";
 
 interface ExportPdfButtonProps {
   employeeId: string;
@@ -49,7 +50,7 @@ export function ExportPdfButton({
       const link = document.createElement("a");
       link.href = downloadUrl;
 
-      const datePart = startDate || new Date().toISOString().slice(0, 10);
+      const datePart = startDate || isoDate(new Date());
       const safeName = (employeeName || employeeId).replace(/[^a-z0-9_-]/gi, "_").toLowerCase();
       link.download = `report_${safeName}_${datePart}.pdf`;
 
