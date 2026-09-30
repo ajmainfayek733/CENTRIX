@@ -54,9 +54,11 @@ done
 [[ -f "$ENV_FILE" ]] || die "missing ${ENV_FILE} - copy deploy/.env.example and fill it in"
 
 # Reads KEY from the env file without sourcing it, so values are never executed as shell.
+# An absent key yields an empty string. grep exits 1 on no match, which under `set -e -o pipefail`
+# would otherwise end the script silently the first time an optional setting is read.
 env_value() {
   local key="$1"
-  grep -E "^${key}=" "$ENV_FILE" | tail -n 1 | cut -d '=' -f 2- | sed -e 's/^"//' -e 's/"$//'
+  { grep -E "^${key}=" "$ENV_FILE" || true; } | tail -n 1 | cut -d '=' -f 2- | sed -e 's/^"//' -e 's/"$//'
 }
 
 require() {
