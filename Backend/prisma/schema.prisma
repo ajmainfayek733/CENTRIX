@@ -144,6 +144,7 @@ model Organization {
   /// stored, so a database read cannot recover the token.
   enrollmentTokenHash String? @unique
 
+  users        User[]
   departments  Department[]
   employees    Employee[]
   devices      Device[]
@@ -977,9 +978,15 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  /// The organization this dashboard user administers. Nullable for users created before this
+  /// link existed; those resolve to the oldest organization (see config/tenant.ts).
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
   sessions Session[]
   accounts Account[]
 
+  @@index([organizationId])
   @@map("users")
 }
 

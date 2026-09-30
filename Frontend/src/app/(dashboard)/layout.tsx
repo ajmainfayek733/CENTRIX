@@ -144,7 +144,7 @@ function Shell({ user, children }: { user?: SessionUser; children: ReactNode }) 
                 </Link>
               )}
             </div>
-            <TopbarSearch />
+            {/* <TopbarSearch /> */}
           </div>
 
           <div className="flex shrink-0 items-center gap-2.5">

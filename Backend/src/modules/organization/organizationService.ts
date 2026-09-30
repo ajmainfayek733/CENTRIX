@@ -1,4 +1,5 @@
 import { prisma } from "../../config/db";
+import { auth } from "../../config/auth";
 import { categoryService } from "../report/categoryService";
 import { toAgentPolicy } from "../ingest/policyService";
 import { generateEnrollmentToken, hashEnrollmentToken } from "../../utils/token";
@@ -7,6 +8,7 @@ import {
   AddDepartmentMembersDto,
   CreateDepartmentDto,
   CreateOrganizationDto,
+  RegisterOrganizationDto,
   UpdateDepartmentDto,
   UpdatePolicyDto,
   UpsertCategoryDto,
@@ -58,6 +60,74 @@ export class OrganizationService {
     };
   }
 
+  /**
+   * Bootstrap: organization + default policy + enrollment token + first super_admin.
+   * The raw enrollment token is returned exactly once and is required to register fleet devices.
+   */
+  async registerOrganization(dto: RegisterOrganizationDto) {
+    const name = dto.name.trim();
+    const adminEmail = dto.adminEmail.trim().toLowerCase();
+    const adminName = dto.adminName.trim();
+
+    const existingUser = await prisma.user.findUnique({ where: { email: adminEmail } });
+    if (existingUser) {
+      throw { statusCode: 409, message: "A user with this email already exists" };
+    }
+
+    const existingOrg = await prisma.organization.findFirst({
+      where: { name: { equals: name, mode: "insensitive" } },
+    });
+    if (existingOrg) {
+      throw { statusCode: 409, message: "An organization with this name already exists" };
+    }
+
+    const enrollmentToken = generateEnrollmentToken();
+    const organization = await prisma.organization.create({
+      data: {
+        name,
+        enrollmentTokenHash: hashEnrollmentToken(enrollmentToken),
+        policy: { create: {} },
+      },
+    });
+
+    try {
+      await auth.api.signUpEmail({
+        body: {
+          email: adminEmail,
+          password: dto.adminPassword,
+          name: adminName,
+          role: "super_admin",
+        },
+      });
+
+      await prisma.user.update({
+        where: { email: adminEmail },
+        // Bind the administrator to the organization they just created.
+        data: { role: "super_admin", organizationId: organization.id },
+      });
+    } catch (error) {
+      await prisma.organization.delete({ where: { id: organization.id } }).catch(() => undefined);
+      await prisma.user.delete({ where: { email: adminEmail } }).catch(() => undefined);
+      const message =
+        error && typeof error === "object" && "message" in error && typeof error.message === "string"
+          ? error.message
+          : "Failed to create the administrator account";
+      throw { statusCode: 400, message };
+    }
+
+    const adminUser = await prisma.user.findUnique({
+      where: { email: adminEmail },
+      select: { email: true, name: true, role: true },
+    });
+
+    return {
+      organization: { id: organization.id, name: organization.name },
+      adminUser,
+      enrollmentToken,
+      note: "Store this enrollment token in the agent installer config. It is required to register organization devices and will not be shown again.",
+    };
+  }
+
   /** Invalidates every agent's ability to re-enroll; already-issued device keys keep working. */
   async rotateEnrollmentToken(organizationId: string) {
     await this.getOrganizationById(organizationId);
@@ -71,8 +141,9 @@ export class OrganizationService {
     return { enrollmentToken, note: "Existing device API keys are unaffected." };
   }
 
-  async getAllOrganizations() {
+  async getAllOrganizations(organizationId: string) {
     return prisma.organization.findMany({
+      where: { id: organizationId },
       orderBy: { createdAt: "desc" },
       select: { id: true, name: true, createdAt: true },
     });

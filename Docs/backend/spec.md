@@ -607,9 +607,17 @@ on the first screen an operator looks at. The window is sent rather than hardcod
 changing the interval in admin config does not need a frontend release.
 
 **Known limitation.** The dashboard namespace resolves its organization with
-`currentOrganizationId()`, which returns the oldest organization row, because dashboard users have
-no organization column. Correct for this single-tenant deployment; it is the first thing that must
-change if a second organization is ever provisioned. The smoke test works around it explicitly.
+`currentOrganizationId()`, which returns the oldest organization row. Correct for a single-tenant
+deployment; the realtime namespace and the report/roster reads still assume it, so they are the
+next things to change for full multi-organization isolation. The smoke test works around it
+explicitly.
+
+**Organization binding (users).** `users.organizationId` links a dashboard user to the
+organization they administer; `registerOrganization` sets it for the first admin. Organization
+routes (`/organizations`, `/organizations/:id/...`) and the employee create/bulk endpoints are
+limited to the caller's own organization (`middleware/orgScope.ts`; another organization's id is a
+404). `GET /organizations` returns only the caller's organization. Users without the link resolve
+to the oldest organization.
 
 ### 12.7 The ingest event carries the aggregate, not a hint
 

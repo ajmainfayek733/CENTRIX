@@ -13,17 +13,12 @@ const ONE_SECOND_MS = 1000;
 const FORGOT_PASSWORD_PATH = '/forgot-password';
 const NETWORK_ERROR_MESSAGE = 'Could not reach the server. Check that the API is running.';
 
-type DeliveryMode = 'link' | 'code' | 'both';
-type Step = 'request' | 'verify';
+type Step = 'request' | 'sent';
 
 interface ForgotPasswordResponse {
   message?: string;
   error?: string;
-  data?: { delivery?: DeliveryMode; expiresInMinutes?: number; emailDispatch?: unknown };
-}
-
-function isDeliveryMode(value: unknown): value is DeliveryMode {
-  return value === 'link' || value === 'code' || value === 'both';
+  data?: { expiresInMinutes?: number; emailDispatch?: unknown };
 }
 
 function errorMessage(body: { error?: unknown; message?: unknown }, fallback: string): string {
@@ -39,13 +34,11 @@ export function ForgotPasswordForm() {
 
   // A token in the URL means the user arrived from the emailed link.
   const [linkToken, setLinkToken] = useState(() => searchParams.get('token')?.trim() ?? '');
-  const [step, setStep] = useState<Step>(() => (linkToken ? 'verify' : 'request'));
-  const [email, setEmail] = useState(() => searchParams.get('email') ?? '');
-  const [code, setCode] = useState('');
+  const [step, setStep] = useState<Step>('request');
+  const [email, setEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  const [delivery, setDelivery] = useState<DeliveryMode>('both');
   const [notice, setNotice] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
   const [pending, setPending] = useState(false);
@@ -55,12 +48,8 @@ export function ForgotPasswordForm() {
   // Remove the secret from the address bar and history as soon as it has been captured.
   useEffect(() => {
     if (!linkToken) return;
-    const params = new URLSearchParams();
-    const initialEmail = searchParams.get('email');
-    if (initialEmail) params.set('email', initialEmail);
-    const suffix = params.size > 0 ? `?${params.toString()}` : '';
-    window.history.replaceState(null, '', `${FORGOT_PASSWORD_PATH}${suffix}`);
-  }, [linkToken, searchParams]);
+    window.history.replaceState(null, '', FORGOT_PASSWORD_PATH);
+  }, [linkToken]);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -69,7 +58,6 @@ export function ForgotPasswordForm() {
   }, [cooldown]);
 
   const normalizedEmail = email.trim().toLowerCase();
-  const acceptsCode = !linkToken && delivery !== 'link';
 
   async function requestRecovery() {
     setError(null);
@@ -109,16 +97,13 @@ export function ForgotPasswordForm() {
         }
       }
 
-      const mode = isDeliveryMode(body.data?.delivery) ? body.data.delivery : 'both';
       const msg = errorMessage(
         { message: body.message },
         'If an account exists for this email, recovery instructions have been sent.',
       );
-      setDelivery(mode);
       setNotice(msg);
-      setCode('');
       setCooldown(RESEND_COOLDOWN_SECONDS);
-      setStep('verify');
+      setStep('sent');
       toast.success('Check your inbox for recovery instructions.', 'Email Sent');
     } catch {
       setError(NETWORK_ERROR_MESSAGE);
@@ -137,14 +122,8 @@ export function ForgotPasswordForm() {
     e.preventDefault();
     setError(null);
 
-    const secret = linkToken || code.trim();
-
-    if (!normalizedEmail) {
-      setError('Email address is required.');
-      return;
-    }
-    if (!secret) {
-      setError('Enter the verification code from your email.');
+    if (!linkToken) {
+      setError('Open the reset link from your email to continue.');
       return;
     }
     if (newPassword.length < MIN_PASSWORD_LENGTH) {
@@ -161,7 +140,7 @@ export function ForgotPasswordForm() {
       const res = await fetch('/api/auth/reset-password', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email: normalizedEmail, token: secret, newPassword }),
+        body: JSON.stringify({ token: linkToken, newPassword }),
       });
       const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
 
@@ -174,6 +153,7 @@ export function ForgotPasswordForm() {
 
       setNewPassword('');
       setConfirmPassword('');
+      setLinkToken('');
       setResetSuccess(true);
       toast.success('Your password has been successfully reset.', 'Password Updated');
     } catch {
@@ -187,7 +167,6 @@ export function ForgotPasswordForm() {
   function startOver() {
     setError(null);
     setNotice(null);
-    setCode('');
     setLinkToken('');
     setStep('request');
   }
@@ -219,7 +198,7 @@ export function ForgotPasswordForm() {
         <Button
           type="button"
           variant="ghost"
-          onClick={() => router.push(`/login?email=${encodeURIComponent(normalizedEmail)}`)}
+          onClick={() => router.push('/login')}
           className={AUTH_PRIMARY_BUTTON_CLASS}
         >
           Sign in
@@ -228,14 +207,13 @@ export function ForgotPasswordForm() {
     );
   }
 
-  if (step === 'request') {
+  if (!linkToken && step === 'request') {
     return (
       <form onSubmit={handleRequestSubmit} className="glass space-y-4 rounded-lg p-6">
         <div>
           <h2 className="text-base font-semibold text-text-primary">Reset password</h2>
           <p className="mt-1 text-xs text-text-secondary">
-            Enter your registered work email and we will send you a reset link or verification
-            code.
+            Enter your registered work email and we will send you a reset link.
           </p>
         </div>
 
@@ -252,37 +230,24 @@ export function ForgotPasswordForm() {
 
         {errorBanner}
 
-        <div className="space-y-3">
-          <Button type="submit" variant="ghost" disabled={pending} className={AUTH_PRIMARY_BUTTON_CLASS}>
-            {pending ? 'Sending email...' : 'Send recovery email'}
-          </Button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setError(null);
-              setStep('verify');
-            }}
-            className="w-full text-center text-xs font-medium text-text-secondary hover:text-text-primary"
-          >
-            Already have a verification code? Enter code
-          </button>
-        </div>
+        <Button type="submit" variant="ghost" disabled={pending} className={AUTH_PRIMARY_BUTTON_CLASS}>
+          {pending ? 'Sending email...' : 'Send recovery email'}
+        </Button>
 
         {backToSignIn}
       </form>
     );
   }
 
-  // Link-only delivery and no link token yet: nothing to type, the user must open the email.
-  if (!linkToken && delivery === 'link') {
+  // Requested, and the user still has to open the emailed link.
+  if (!linkToken) {
     return (
       <div className="glass space-y-4 rounded-lg p-6">
         <div>
           <h2 className="text-base font-semibold text-text-primary">Check your email</h2>
           <p className="mt-1 text-xs text-text-secondary">
-            {notice ?? 'If an account exists for this email, a reset link has been sent.'} Open
-            the link in the email to choose a new password.
+            {notice ?? 'If an account exists for this email, a reset link has been sent.'} Open the
+            link in the email to choose a new password.
           </p>
         </div>
 
@@ -305,42 +270,9 @@ export function ForgotPasswordForm() {
       <div>
         <h2 className="text-base font-semibold text-text-primary">Set new password</h2>
         <p className="mt-1 text-xs text-text-secondary">
-          {linkToken
-            ? 'Your recovery link has been accepted. Choose a new password.'
-            : 'Enter the verification code from your email and choose a new password.'}
+          Your recovery link has been accepted. Choose a new password.
         </p>
       </div>
-
-      {notice && (
-        <p className="rounded-md bg-surface-muted px-3 py-2 text-xs text-text-secondary">{notice}</p>
-      )}
-
-      <Field label="Work email" htmlFor="resetEmail">
-        <Input
-          id="resetEmail"
-          type="email"
-          required
-          autoComplete="email"
-          readOnly={Boolean(linkToken)}
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-      </Field>
-
-      {acceptsCode && (
-        <Field label="Verification code" htmlFor="code">
-          <Input
-            id="code"
-            type="text"
-            required
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            spellCheck={false}
-            value={code}
-            onChange={(e) => setCode(e.target.value.trim())}
-          />
-        </Field>
-      )}
 
       <Field label="New password" htmlFor="newPassword">
         <Input
@@ -373,22 +305,13 @@ export function ForgotPasswordForm() {
           {pending ? 'Saving password...' : 'Save new password'}
         </Button>
 
-        {linkToken ? (
-          <button
-            type="button"
-            onClick={startOver}
-            className="w-full text-center text-xs font-medium text-text-secondary hover:text-text-primary"
-          >
-            Link not working? Request a new one
-          </button>
-        ) : (
-          <ResendControls
-            cooldown={cooldown}
-            pending={pending}
-            onResend={() => void requestRecovery()}
-            onChangeEmail={startOver}
-          />
-        )}
+        <button
+          type="button"
+          onClick={startOver}
+          className="w-full text-center text-xs font-medium text-text-secondary hover:text-text-primary"
+        >
+          Link not working? Request a new one
+        </button>
       </div>
 
       {backToSignIn}

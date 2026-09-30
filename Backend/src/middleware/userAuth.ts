@@ -8,6 +8,8 @@ export interface AuthenticatedUser {
   name?: string | null;
   role: string;
   isActive: boolean;
+  /** Null for users created before organizations were linked; see resolveUserOrganizationId. */
+  organizationId?: string | null;
 }
 
 export interface AuthenticatedRequest extends Request {

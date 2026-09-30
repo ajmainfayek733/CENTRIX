@@ -4,15 +4,11 @@ import { useState, useTransition } from 'react';
 import { Upload } from 'lucide-react';
 import { Card, Badge, Button } from '@/components/ui';
 import { importEmployees, type ImportResult, type ImportRow } from './actions';
+import { MAX_ROSTER_ROWS, ROSTER_PRIMARY_CLASS, ROSTER_SECONDARY_CLASS } from './rosterStyles';
 
-/** Rows past this are rejected by the server anyway; catching it here gives a better message. */
-const MAX_ROWS = 1000;
-
-/** Solid fills so these controls stay readable over the page gradient in both themes. */
-const IMPORT_PRIMARY_CLASS =
-  'border border-brand-strong bg-brand-strong text-brand-contrast shadow-none hover:bg-brand hover:text-brand-contrast';
-const IMPORT_SECONDARY_CLASS =
-  'border border-border-strong bg-surface-strong text-text-primary shadow-none hover:bg-surface-muted hover:text-text-primary';
+const MAX_ROWS = MAX_ROSTER_ROWS;
+const IMPORT_PRIMARY_CLASS = ROSTER_PRIMARY_CLASS;
+const IMPORT_SECONDARY_CLASS = ROSTER_SECONDARY_CLASS;
 
 /**
  * Bulk roster import.
@@ -129,7 +125,8 @@ export function EmployeeImport({ organizationId }: { organizationId: string }) {
         <div className="mt-4 rounded-md border border-border-strong bg-surface-muted px-4 py-3">
           <p className="text-sm">
             <Badge tone="success">{result.created} created</Badge>{' '}
-            {result.skipped > 0 && <Badge tone="warning">{result.skipped} skipped</Badge>}
+            {result.skipped > 0 && <Badge tone="warning">{result.skipped} skipped</Badge>}{' '}
+            {result.unassigned > 0 && <Badge tone="neutral">{result.unassigned} without department</Badge>}
           </p>
 
           {result.skipped > 0 && (

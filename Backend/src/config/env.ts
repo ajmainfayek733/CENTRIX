@@ -144,6 +144,19 @@ const envSchema = z.object({
   // channel per sync, so daily is ample.
   INGEST_BATCH_PRUNE_INTERVAL_SECONDS: z.coerce.number().int().positive().default(86_400),
 
+  // -- Data retention sweep ----------------------------------------------------
+  // Enforces each organization's Policy.retentionDays against raw telemetry, daily summaries and
+  // screenshots. Daily is ample: the window is measured in days.
+  RETENTION_JOB_INTERVAL_SECONDS: z.coerce.number().int().positive().default(86_400),
+  // Rows removed per statement. Bounds lock time and WAL bursts on the first pass over a large
+  // backlog. Also the screenshot batch size, so it must fit one S3 DeleteObjects request.
+  RETENTION_BATCH_SIZE: z.coerce.number().int().positive().max(1_000).default(500),
+  // Batches per table per organization per sweep. Whatever remains is taken next interval, so a
+  // huge backlog is worked off over several sweeps rather than in one long transaction.
+  RETENTION_MAX_BATCHES_PER_TABLE: z.coerce.number().int().positive().default(100),
+  // Ceiling on one sweep. It holds an advisory lock for its duration.
+  RETENTION_JOB_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000),
+
   // -- Transactional email (EmailJS Node.js SDK) -------------------------------
   // Password recovery is delivered by EmailJS. Calls are made server-side with the account's
   // private key, so "Allow EmailJS API for non-browser applications" must be enabled under
@@ -157,7 +170,7 @@ const envSchema = z.object({
   //   server  - this API sends with @emailjs/nodejs and the private key. Secrets never leave
   //             the server. Requires "Allow EmailJS API for non-browser applications".
   //   browser - the dashboard sends with @emailjs/browser and the public key. The API returns
-  //             the template params, INCLUDING the reset link and code, in the forgot-password
+  //             the template params, INCLUDING the reset link, in the forgot-password
   //             response. Anyone who can call that endpoint can then reset any account's
   //             password without reading the email. Use only when server sending is impossible.
   PASSWORD_RESET_EMAIL_TRANSPORT: z.enum(["server", "browser"]).default("server"),
@@ -165,13 +178,8 @@ const envSchema = z.object({
   APP_NAME: z.string().trim().min(1).default("CENTRIX"),
 
   // -- Password recovery -------------------------------------------------------
-  // What the recovery email carries: a one-click link, a short numeric code, or both.
-  PASSWORD_RESET_DELIVERY: z.enum(["link", "code", "both"]).default("both"),
+  // Lifetime of a Better Auth reset token (emailAndPassword.resetPasswordTokenExpiresIn).
   PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().positive().max(1_440).default(30),
-  // Failed verification attempts allowed per issued recovery before it is revoked. This is what
-  // keeps a short numeric code from being brute-forced across rotating IP addresses.
-  PASSWORD_RESET_MAX_ATTEMPTS: z.coerce.number().int().positive().max(20).default(5),
-  PASSWORD_RESET_CODE_LENGTH: z.coerce.number().int().min(6).max(10).default(6),
 
   // -- Process lifecycle -------------------------------------------------------
   // How long a SIGTERM/SIGINT shutdown may spend draining in-flight requests and closing the
@@ -244,7 +252,7 @@ if (env.NODE_ENV === "production" && !isEmailDeliveryConfigured) {
 
 if (env.PASSWORD_RESET_EMAIL_TRANSPORT === "browser") {
   console.warn(
-    "PASSWORD_RESET_EMAIL_TRANSPORT=browser: recovery secrets are returned to the browser, so " +
+    "PASSWORD_RESET_EMAIL_TRANSPORT=browser: the recovery link is returned to the browser, so " +
       "any caller can reset any account. Switch to server once non-browser API access is enabled.",
   );
 }

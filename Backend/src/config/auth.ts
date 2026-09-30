@@ -3,6 +3,7 @@ import { bearer } from 'better-auth/plugins';
 import { prismaAdapter } from '@better-auth/prisma-adapter';
 import { prisma } from './db';
 import { env } from './env';
+import { resetTtlSeconds, sendResetPassword } from '../modules/auth/passwordReset';
 
 export const auth = betterAuth({
   secret: env.BETTER_AUTH_SECRET,
@@ -20,6 +21,11 @@ export const auth = betterAuth({
     enabled: true,
     requireEmailVerification: false,
     minPasswordLength: 8,
+    // Native Better Auth recovery: it issues and single-use-consumes the token; we only deliver it.
+    sendResetPassword,
+    resetPasswordTokenExpiresIn: resetTtlSeconds(),
+    // A reset must end every existing session so a stolen one cannot outlive it.
+    revokeSessionsOnPasswordReset: true,
   },
   user: {
     additionalFields: {
@@ -28,6 +34,12 @@ export const auth = betterAuth({
         required: false,
         defaultValue: 'manager',
         input: true,
+      },
+      // Set server-side only (registerOrganization); a client must never pick its own tenant.
+      organizationId: {
+        type: 'string',
+        required: false,
+        input: false,
       },
       isActive: {
         type: 'boolean',

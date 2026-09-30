@@ -1,28 +1,36 @@
-import { hashPassword } from 'better-auth/crypto';
+import { APIError } from 'better-auth/api';
 import { auth } from '../../config/auth';
 import { prisma } from '../../config/db';
 import { env } from '../../config/env';
 import { RegisterDto, LoginDto, ResetPasswordDto } from './auth.dto';
 import {
-  buildBrowserEmailDispatch,
-  deliverResetEmail,
-  isBrowserTransport,
+  collectResetDispatch,
   isResetDeliveryAvailable,
-  issueResetSecrets,
-  parseResetRecord,
-  resetIdentifier,
-  resetTtlMs,
-  secretMatchesRecord,
-  serializeResetRecord,
+  type ResetDispatchCollector,
 } from './passwordReset';
 
-const CREDENTIAL_PROVIDER_ID = 'credential';
-const INVALID_RESET_MESSAGE = 'The recovery link or code is invalid or has already been used.';
-const EXPIRED_RESET_MESSAGE = 'This recovery link or code has expired. Please request a new one.';
-const EXHAUSTED_RESET_MESSAGE =
-  'Too many incorrect attempts. This recovery has been cancelled. Please request a new one.';
+const HTTP_BAD_REQUEST = 400;
+const HTTP_INTERNAL_ERROR = 500;
+const INVALID_RESET_MESSAGE = 'The recovery link is invalid, has expired, or has already been used.';
+const REQUEST_FAILED_MESSAGE = 'Could not start password recovery. Please try again shortly.';
 const DELIVERY_UNAVAILABLE_MESSAGE =
   'Password recovery email is not configured on this server. Contact your administrator.';
+
+/** Better Auth error codes that describe the caller's password, safe to show verbatim. */
+const PASSWORD_POLICY_CODES: ReadonlySet<string> = new Set(['PASSWORD_TOO_SHORT', 'PASSWORD_TOO_LONG']);
+
+/** Maps a Better Auth reset failure to the API's `{ statusCode, message }` error shape. */
+function toResetError(error: unknown): { statusCode: number; message: string } {
+  if (error instanceof APIError) {
+    const code = typeof error.body?.code === 'string' ? error.body.code : '';
+    if (PASSWORD_POLICY_CODES.has(code) && error.body?.message) {
+      return { statusCode: HTTP_BAD_REQUEST, message: error.body.message };
+    }
+    return { statusCode: HTTP_BAD_REQUEST, message: INVALID_RESET_MESSAGE };
+  }
+  console.error('passwordReset: resetPassword failed:', error);
+  return { statusCode: HTTP_INTERNAL_ERROR, message: REQUEST_FAILED_MESSAGE };
+}
 
 export class AuthService {
   /**
@@ -89,161 +97,50 @@ export class AuthService {
   }
 
   /**
-   * Starts password recovery by emailing a link and/or code (PASSWORD_RESET_DELIVERY).
+   * Starts password recovery through Better Auth's native `requestPasswordReset`.
    *
-   * The response is identical for known, unknown, and deactivated addresses, and the email is
-   * dispatched without being awaited so provider latency cannot be used to enumerate accounts.
-   * Secrets are never returned to the caller; only HMACs are stored.
+   * Better Auth issues the token and returns the same body for known and unknown addresses;
+   * `sendResetPassword` (passwordReset.ts) delivers it without being awaited. In browser
+   * transport the delivery payload is collected here and returned for the dashboard to send.
    */
   async forgotPassword(email: string) {
     if (!isResetDeliveryAvailable()) {
       throw { statusCode: 503, message: DELIVERY_UNAVAILABLE_MESSAGE };
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const collector: ResetDispatchCollector = { dispatch: null };
+
+    try {
+      await collectResetDispatch(collector, () =>
+        auth.api.requestPasswordReset({ body: { email: email.trim().toLowerCase() } }),
+      );
+    } catch (error) {
+      console.error('passwordReset: requestPasswordReset failed:', error);
+      throw { statusCode: 500, message: REQUEST_FAILED_MESSAGE };
+    }
+
     const response = {
       success: true,
       message: `If an account exists for this email, recovery instructions have been sent. They expire in ${env.PASSWORD_RESET_TTL_MINUTES} minutes.`,
-      delivery: env.PASSWORD_RESET_DELIVERY,
       expiresInMinutes: env.PASSWORD_RESET_TTL_MINUTES,
     };
 
-    const user = await prisma.user.findUnique({
-      where: { email: normalizedEmail },
-      select: { name: true, isActive: true },
-    });
-
-    if (!user || user.isActive === false) {
-      return response;
-    }
-
-    const secrets = issueResetSecrets();
-    const identifier = resetIdentifier(normalizedEmail);
-
-    // Replacing inside one transaction keeps exactly one outstanding recovery per address.
-    await prisma.$transaction([
-      prisma.verification.deleteMany({ where: { identifier } }),
-      prisma.verification.create({
-        data: {
-          identifier,
-          value: serializeResetRecord(secrets.record),
-          expiresAt: new Date(Date.now() + resetTtlMs()),
-        },
-      }),
-    ]);
-
-    const recipient = { email: normalizedEmail, name: user.name };
-    const secretsToSend = { linkToken: secrets.linkToken, code: secrets.code };
-
-    if (isBrowserTransport()) {
-      // The dashboard sends the email itself; see PASSWORD_RESET_EMAIL_TRANSPORT in env.ts.
-      const emailDispatch = buildBrowserEmailDispatch(recipient, secretsToSend);
-      return emailDispatch ? { ...response, emailDispatch } : response;
-    }
-
-    void deliverResetEmail(recipient, secretsToSend).catch((error: unknown) => {
-      // Recipient only: secrets are never logged. The row stays so a retry simply replaces it.
-      console.error(`passwordReset: failed to deliver recovery email to ${normalizedEmail}:`, error);
-    });
-
-    return response;
+    return collector.dispatch ? { ...response, emailDispatch: collector.dispatch } : response;
   }
 
   /**
-   * Verifies a recovery link token or code and sets the new password.
-   *
-   * Every failure counts against PASSWORD_RESET_MAX_ATTEMPTS and the recovery is revoked once
-   * the budget is spent. Consumption, the password write, and session revocation commit
-   * together, and consumption is conditional on the value read, so two concurrent submissions
-   * of the same secret cannot both succeed.
+   * Sets a new password through Better Auth's native `resetPassword`. Better Auth verifies the
+   * token, consumes it exactly once, writes the credential, and (per `auth.ts`) revokes every
+   * session of the user.
    */
   async resetPassword(dto: ResetPasswordDto) {
-    const normalizedEmail = dto.email.trim().toLowerCase();
-    const presentedSecret = dto.token.trim();
-    const identifier = resetIdentifier(normalizedEmail);
-
-    const verification = await prisma.verification.findFirst({
-      where: { identifier },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    if (!verification) {
-      throw { statusCode: 400, message: INVALID_RESET_MESSAGE };
-    }
-
-    if (verification.expiresAt.getTime() <= Date.now()) {
-      await prisma.verification.deleteMany({ where: { id: verification.id } });
-      throw { statusCode: 400, message: EXPIRED_RESET_MESSAGE };
-    }
-
-    const record = parseResetRecord(verification.value);
-    if (!record) {
-      // Malformed or issued by the previous token-in-response scheme: revoke it.
-      await prisma.verification.deleteMany({ where: { id: verification.id } });
-      throw { statusCode: 400, message: INVALID_RESET_MESSAGE };
-    }
-
-    if (!secretMatchesRecord(record, presentedSecret)) {
-      const attempts = record.attempts + 1;
-      if (attempts >= env.PASSWORD_RESET_MAX_ATTEMPTS) {
-        await prisma.verification.deleteMany({ where: { id: verification.id } });
-        throw { statusCode: 400, message: EXHAUSTED_RESET_MESSAGE };
-      }
-
-      await prisma.verification.updateMany({
-        where: { id: verification.id, value: verification.value },
-        data: { value: serializeResetRecord({ ...record, attempts }) },
+    try {
+      await auth.api.resetPassword({
+        body: { token: dto.token.trim(), newPassword: dto.newPassword },
       });
-
-      const remaining = env.PASSWORD_RESET_MAX_ATTEMPTS - attempts;
-      const noun = remaining === 1 ? 'attempt' : 'attempts';
-      throw { statusCode: 400, message: `${INVALID_RESET_MESSAGE} ${remaining} ${noun} remaining.` };
+    } catch (error) {
+      throw toResetError(error);
     }
-
-    const user = await prisma.user.findUnique({
-      where: { email: normalizedEmail },
-      select: { id: true, isActive: true },
-    });
-
-    if (!user || user.isActive === false) {
-      await prisma.verification.deleteMany({ where: { id: verification.id } });
-      throw { statusCode: 400, message: INVALID_RESET_MESSAGE };
-    }
-
-    const hashedPassword = await hashPassword(dto.newPassword);
-
-    await prisma.$transaction(async (tx) => {
-      const consumed = await tx.verification.deleteMany({
-        where: { id: verification.id, value: verification.value },
-      });
-      if (consumed.count === 0) {
-        throw { statusCode: 400, message: INVALID_RESET_MESSAGE };
-      }
-
-      const account = await tx.account.findFirst({
-        where: { userId: user.id, providerId: CREDENTIAL_PROVIDER_ID },
-        select: { id: true },
-      });
-
-      if (account) {
-        await tx.account.update({
-          where: { id: account.id },
-          data: { password: hashedPassword },
-        });
-      } else {
-        await tx.account.create({
-          data: {
-            userId: user.id,
-            accountId: user.id,
-            providerId: CREDENTIAL_PROVIDER_ID,
-            password: hashedPassword,
-          },
-        });
-      }
-
-      // Revoke every existing session so a compromised one cannot outlive the reset.
-      await tx.session.deleteMany({ where: { userId: user.id } });
-    });
 
     return {
       success: true,

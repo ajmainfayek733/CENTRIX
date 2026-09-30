@@ -1,7 +1,12 @@
 import fs from "fs/promises";
 import fsSync from "fs";
 import path from "path";
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  DeleteObjectsCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import { env } from "../../config/env";
 
 const s3 =
@@ -71,6 +76,58 @@ export async function persistScreenshot(
 
   const { size } = await fs.stat(storagePath);
   return { storagePath, sizeBytes: size };
+}
+
+/** S3 DeleteObjects accepts at most this many keys per request. */
+export const S3_DELETE_MAX_KEYS = 1_000;
+
+/**
+ * Removes stored screenshot bytes.
+ *
+ * Returns the storage paths that are confirmed gone - deleted now, or already absent. Callers
+ * must drop a database row only for a path in the returned set, so a transient storage failure
+ * leaves the row in place for the next sweep instead of orphaning the file.
+ */
+export async function deleteScreenshots(storagePaths: string[]): Promise<Set<string>> {
+  const removed = new Set<string>();
+  if (storagePaths.length === 0) return removed;
+
+  if (env.SCREENSHOT_STORAGE_PROVIDER === "s3") {
+    for (let start = 0; start < storagePaths.length; start += S3_DELETE_MAX_KEYS) {
+      const chunk = storagePaths.slice(start, start + S3_DELETE_MAX_KEYS);
+      try {
+        const response = await s3!.send(
+          new DeleteObjectsCommand({
+            Bucket: bucket(),
+            Delete: { Objects: chunk.map((Key) => ({ Key })), Quiet: true },
+          }),
+        );
+        // Quiet mode reports only failures; everything else in the chunk is gone.
+        const failed = new Set((response.Errors ?? []).map((item) => item.Key));
+        for (const key of chunk) if (!failed.has(key)) removed.add(key);
+        if (failed.size > 0) {
+          console.error(`screenshot retention: S3 refused ${failed.size} delete(s)`);
+        }
+      } catch (error) {
+        console.error("screenshot retention: S3 delete request failed:", error);
+      }
+    }
+    return removed;
+  }
+
+  for (const storagePath of storagePaths) {
+    try {
+      await fs.unlink(storagePath);
+      removed.add(storagePath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        removed.add(storagePath);
+      } else {
+        console.error(`screenshot retention: could not delete ${storagePath}:`, error);
+      }
+    }
+  }
+  return removed;
 }
 
 export async function getScreenshot(

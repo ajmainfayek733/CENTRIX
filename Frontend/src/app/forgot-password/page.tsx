@@ -25,7 +25,7 @@ export default function ForgotPasswordPage() {
             Password recovery
           </h1>
           <p className="mt-1 text-[13.5px] text-text-secondary">
-            We will email you a reset link or verification code.
+            We will email you a secure reset link.
           </p>
         </div>
 

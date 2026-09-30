@@ -98,6 +98,10 @@ these are safe to leave enabled on every replica.
 | `ATTENDANCE_REAP_MAX_SESSIONS`        | `500`   | Sessions examined per sweep. Bounds the first pass after a long outage; the remainder is picked up next interval                                                                                                                                                                                           |
 | `ATTENDANCE_REAP_TIMEOUT_MS`          | `30000` | A sweep holds the advisory lock for its duration, so a wedged one must not block every later one                                                                                                                                                                                                           |
 | `INGEST_BATCH_PRUNE_INTERVAL_SECONDS` | `86400` | How often the batch ledger is pruned to `INGEST_BATCH_RETENTION_DAYS`                                                                                                                                                                                                                                      |
+| `RETENTION_JOB_INTERVAL_SECONDS` | `86400` | How often the retention sweep enforces each organization's `retentionDays` |
+| `RETENTION_BATCH_SIZE` | `500` | Rows removed per statement (max 1000, the S3 DeleteObjects limit) |
+| `RETENTION_MAX_BATCHES_PER_TABLE` | `100` | Batches per table per organization per sweep; backlog finishes on later sweeps |
+| `RETENTION_JOB_TIMEOUT_MS` | `600000` | Ceiling on one sweep; it holds the advisory lock meanwhile |
 
 ### Storage and database
 
@@ -123,10 +127,7 @@ credentials are all-or-nothing; a partial set fails startup.
 | `EMAILJS_TIMEOUT_MS` | `10000` | Abort bound on one send |
 | `PASSWORD_RESET_EMAIL_TRANSPORT` | `server` | `server` sends with `@emailjs/nodejs`. `browser` makes the dashboard send with `@emailjs/browser`; see section 6 |
 | `APP_NAME` | `CENTRIX` | Rendered as `{{app_name}}` |
-| `PASSWORD_RESET_DELIVERY` | `both` | `link` \| `code` \| `both` |
-| `PASSWORD_RESET_TTL_MINUTES` | `30` | Max 1440 |
-| `PASSWORD_RESET_MAX_ATTEMPTS` | `5` | Wrong guesses before the recovery is revoked, max 20 |
-| `PASSWORD_RESET_CODE_LENGTH` | `6` | 6 to 10 digits |
+| `PASSWORD_RESET_TTL_MINUTES` | `30` | Reset token lifetime, max 1440 |
 
 ### Process lifecycle
 

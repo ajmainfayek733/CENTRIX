@@ -12,6 +12,7 @@ import { initRealtime } from "./realtime";
 import { defineJob, startMaintenanceJobs, stopMaintenanceJobs } from "./lib/scheduler";
 import { closeAbandonedSessions, describeReap } from "./modules/attendance/attendanceReaper";
 import { ingestService } from "./modules/ingest/ingestService";
+import { describeRetention, runRetentionSweep } from "./modules/ingest/retentionService";
 import { runBrowserSummarySchedule } from "./modules/report/browserSummaryService";
 
 import ingestRoutes from "./modules/ingest";
@@ -128,6 +129,12 @@ startMaintenanceJobs([
       const pruned = await ingestService.pruneIngestBatches(tx);
       return pruned === 0 ? null : `pruned ${pruned} expired batch ledger row(s)`;
     },
+  ),
+  defineJob(
+    "dataRetention",
+    env.RETENTION_JOB_INTERVAL_SECONDS,
+    env.RETENTION_JOB_TIMEOUT_MS,
+    async (tx) => describeRetention(await runRetentionSweep(tx)),
   ),
   defineJob(
     "browserSummary",

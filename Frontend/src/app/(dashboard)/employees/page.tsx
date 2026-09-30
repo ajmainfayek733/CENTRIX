@@ -12,7 +12,8 @@ import {
   EmptyState,
   ProductivityBar,
 } from "@/components/ui";
-import type { Organization, Roster } from "@/types/api";
+import type { DepartmentSummary, Organization, Roster } from "@/types/api";
+import { EmployeeBulkForm } from "./EmployeeBulkForm";
 import { EmployeeImport } from "./EmployeeImport";
 
 export const metadata = { title: "Employees - C E N T R I X" };
@@ -42,6 +43,13 @@ export default async function EmployeesPage({
   const organizations = isAdmin ? await apiGet<Organization[]>("/v1/dashboard/organizations") : [];
   const organizationId = organizations[0]?.id;
 
+  // Departments are optional: a failed or empty fetch just means new employees start unassigned.
+  const departments = organizationId
+    ? await apiGet<DepartmentSummary[]>(`/v1/dashboard/organizations/${organizationId}/departments`).catch(
+        () => [] as DepartmentSummary[],
+      )
+    : [];
+
   return (
     <div>
       <PageHeader
@@ -49,12 +57,23 @@ export default async function EmployeesPage({
         subtitle={`${roster.employees.length} tracked - ${new Date(
           roster.period.start,
         ).toLocaleDateString()} to ${new Date(roster.period.end).toLocaleDateString()}`}
-        action={organizationId ? <EmployeeImport organizationId={organizationId} /> : undefined}
       />
+
+      {organizationId && (
+        <div className="mb-4 space-y-3">
+          <div className="flex flex-wrap items-start gap-2">
+            <EmployeeBulkForm
+              organizationId={organizationId}
+              departments={departments.map(({ id, name }) => ({ id, name }))}
+            />
+            {/* <EmployeeImport organizationId={organizationId} /> */}
+          </div>
+        </div>
+      )}
 
       <Card>
         {roster.employees.length === 0 ? (
-          <EmptyState message="No employees yet. Use 'Import roster' to add them, then assign each enrolled device to a person on the Devices screen." />
+          <EmptyState message="No employees yet. Use 'Add employees' or 'Import roster' to add them, then assign each enrolled device to a person on the Devices screen." />
         ) : (
           <TableWrap>
             <table className={`${TABLE_CLASS} min-w-[820px]`}>

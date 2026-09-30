@@ -14,19 +14,95 @@ const DEVICE_SELECT = {
   lastSeen: true,
 } as const;
 
+interface BulkRowResult {
+  email: string;
+  status: 'created' | 'skipped';
+  reason?: string;
+  warning?: string;
+}
+
+interface DepartmentRef {
+  id: string;
+  name: string;
+}
+
+interface DepartmentResolution {
+  department: DepartmentRef | null;
+  /** Set when a department was requested but could not be matched. */
+  warning?: string;
+}
+
+/**
+ * Resolves requested departments against the organization's real ones. Loaded once per request,
+ * so a 1000-row import costs one query rather than one per row.
+ */
+class DepartmentResolver {
+  private readonly byId = new Map<string, DepartmentRef>();
+  private readonly byName = new Map<string, DepartmentRef>();
+
+  constructor(departments: DepartmentRef[]) {
+    for (const d of departments) {
+      this.byId.set(d.id, d);
+      this.byName.set(d.name.trim().toLowerCase(), d);
+    }
+  }
+
+  resolve(row: { departmentId?: string | null; department?: string }): DepartmentResolution {
+    if (row.departmentId) {
+      const found = this.byId.get(row.departmentId);
+      return found
+        ? { department: found }
+        : { department: null, warning: 'Department not found in this organization; left unassigned' };
+    }
+
+    const name = row.department?.trim();
+    if (name) {
+      const found = this.byName.get(name.toLowerCase());
+      return found
+        ? { department: found }
+        : { department: null, warning: `Department '${name}' does not exist; left unassigned` };
+    }
+
+    return { department: null };
+  }
+}
+
 export class EmployeeService {
+  private async loadResolver(organizationId: string): Promise<DepartmentResolver> {
+    const organization = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { id: true },
+    });
+    if (!organization) {
+      throw { statusCode: 404, message: 'Organization not found' };
+    }
+
+    const departments = await prisma.department.findMany({
+      where: { organizationId },
+      select: { id: true, name: true },
+    });
+    return new DepartmentResolver(departments);
+  }
+
   async createEmployee(dto: CreateEmployeeDto) {
-    const existing = await prisma.employee.findUnique({ where: { email: dto.email } });
+    const email = dto.email.trim().toLowerCase();
+    const resolver = await this.loadResolver(dto.organizationId);
+
+    const existing = await prisma.employee.findUnique({ where: { email } });
     if (existing) {
       throw { statusCode: 400, message: 'Employee with this email already exists' };
     }
 
+    const { department } = resolver.resolve(dto);
+
     return prisma.employee.create({
       data: {
         organizationId: dto.organizationId,
-        name: dto.name,
-        email: dto.email,
-        department: dto.department || null,
+        name: dto.name.trim(),
+        email,
+        departmentId: department?.id ?? null,
+        // The string column mirrors the department name, as addDepartmentMembers keeps it.
+        department: department?.name ?? null,
       },
     });
   }
@@ -43,6 +119,8 @@ export class EmployeeService {
    * to a file that already contains ninety existing people.
    */
   async bulkCreateEmployees(dto: BulkCreateEmployeesDto) {
+    const resolver = await this.loadResolver(dto.organizationId);
+
     // Normalizing here rather than in the schema keeps the reported `email` identical to what
     // the admin submitted, so they can find the offending line in their source file.
     const normalized = dto.employees.map((e) => ({ ...e, normalizedEmail: e.email.trim().toLowerCase() }));
@@ -60,31 +138,40 @@ export class EmployeeService {
     // duplicate *within* the payload is invisible to the database's unique constraint until one
     // of the pair is inserted, so `claimed` catches it here instead.
     const claimed = new Set<string>();
+    const resolved = normalized.map((e) => resolver.resolve(e));
 
-    const results = normalized.map((e) => {
+    const results: BulkRowResult[] = normalized.map((e, i) => {
       if (alreadyPresent.has(e.normalizedEmail)) {
-        return { email: e.email, status: 'skipped' as const, reason: 'Employee already exists' };
+        return { email: e.email, status: 'skipped', reason: 'Employee already exists' };
       }
       if (claimed.has(e.normalizedEmail)) {
-        return { email: e.email, status: 'skipped' as const, reason: 'Duplicate row in the import' };
+        return { email: e.email, status: 'skipped', reason: 'Duplicate row in the import' };
       }
 
       claimed.add(e.normalizedEmail);
-      return { email: e.email, status: 'created' as const };
+      return {
+        email: e.email,
+        status: 'created',
+        ...(resolved[i].warning ? { warning: resolved[i].warning } : {}),
+      };
     });
 
-    const toCreate = normalized.filter((_, i) => results[i].status === 'created');
+    const toCreate = normalized
+      .map((row, i) => ({ row, department: resolved[i].department }))
+      .filter((_, i) => results[i].status === 'created');
 
     if (toCreate.length > 0) {
       // skipDuplicates covers the narrow race where a concurrent import inserts the same address
       // between the read above and this write. That row is reported as created when it was in
       // fact skipped, which is a better outcome than failing the whole import.
       await prisma.employee.createMany({
-        data: toCreate.map((e) => ({
+        data: toCreate.map(({ row, department }) => ({
           organizationId: dto.organizationId,
-          name: e.name.trim(),
-          email: e.normalizedEmail,
-          department: e.department?.trim() || null,
+          name: row.name.trim(),
+          email: row.normalizedEmail,
+          departmentId: department?.id ?? null,
+          // The string column mirrors the department name, as addDepartmentMembers keeps it.
+          department: department?.name ?? null,
         })),
         skipDuplicates: true,
       });
@@ -94,6 +181,7 @@ export class EmployeeService {
       submitted: normalized.length,
       created: toCreate.length,
       skipped: results.length - toCreate.length,
+      unassigned: toCreate.filter((r) => r.department === null).length,
       results,
     };
   }

@@ -5,6 +5,17 @@ export const createOrganizationSchema = z.object({
   name: z.string().min(2, "Organization name is required"),
 });
 
+/**
+ * Public onboarding payload. Creates the tenant, default policy, enrollment token, and the
+ * first super_admin in one call. The enrollment token is returned once; only its HMAC is stored.
+ */
+export const registerOrganizationSchema = z.object({
+  name: z.string().trim().min(2, "Organization name must be at least 2 characters").max(120),
+  adminName: z.string().trim().min(2, "Administrator name must be at least 2 characters").max(120),
+  adminEmail: z.string().trim().email("Invalid email address"),
+  adminPassword: z.string().min(8, "Password must be at least 8 characters"),
+});
+
 const seconds = z.number().int().min(0);
 
 /**
@@ -105,6 +116,7 @@ export const upsertCategorySchema = z.object({
 });
 
 export type CreateOrganizationDto = z.infer<typeof createOrganizationSchema>;
+export type RegisterOrganizationDto = z.infer<typeof registerOrganizationSchema>;
 export type UpdatePolicyDto = z.infer<typeof updatePolicySchema>;
 export type CreateDepartmentDto = z.infer<typeof createDepartmentSchema>;
 export type UpdateDepartmentDto = z.infer<typeof updateDepartmentSchema>;

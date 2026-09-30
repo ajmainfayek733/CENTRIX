@@ -2,12 +2,15 @@ import { Router } from "express";
 import { organizationController } from "./organizationController";
 import { userAuth } from "../../middleware/userAuth";
 import { requireRole } from "../../middleware/rbac";
+import { requireOwnOrganizationParam } from "../../middleware/orgScope";
 import { auditLogger } from "../../middleware/auditLogger";
 import { validate } from "../../middleware/validate";
+import { rateLimiter } from "../../middleware/rateLimiter";
 import {
   addDepartmentMembersSchema,
   createDepartmentSchema,
   createOrganizationSchema,
+  registerOrganizationSchema,
   updateDepartmentSchema,
   updatePolicySchema,
   upsertCategorySchema,
@@ -15,7 +18,18 @@ import {
 
 const router = Router();
 
+// Public / Onboarding endpoint for registering an organization and initial admin
+router.post(
+  "/register",
+  rateLimiter({ max: 5, windowMs: 15 * 60 * 1000, name: "organization registration" }),
+  validate(registerOrganizationSchema),
+  organizationController.registerOrganization,
+);
+
 router.use(userAuth as any);
+
+// Every `/:id/...` route is limited to the caller's own organization.
+router.param("id", requireOwnOrganizationParam as any);
 
 router.get(
   "/",

@@ -12,6 +12,9 @@ import { apiSend } from '@/lib/api-client';
 export interface ImportRow {
   name: string;
   email: string;
+  /** Authoritative reference, picked from the departments fetched from the backend. */
+  departmentId?: string;
+  /** Plain department name (paste import); matched to an existing department server-side. */
   department?: string;
 }
 
@@ -19,7 +22,14 @@ export interface ImportResult {
   submitted: number;
   created: number;
   skipped: number;
-  results: Array<{ email: string; status: 'created' | 'skipped'; reason?: string }>;
+  /** Created employees that ended up without a department. */
+  unassigned: number;
+  results: Array<{
+    email: string;
+    status: 'created' | 'skipped';
+    reason?: string;
+    warning?: string;
+  }>;
 }
 
 export async function importEmployees(organizationId: string, employees: ImportRow[]) {

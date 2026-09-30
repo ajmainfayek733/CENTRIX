@@ -39,6 +39,7 @@ const JOB_LOCK_KEY = {
   attendanceReap: 1,
   ingestBatchPrune: 2,
   browserSummary: 3,
+  dataRetention: 4,
 } as const;
 
 export type JobName = keyof typeof JOB_LOCK_KEY;

@@ -4,7 +4,7 @@ import { malformedJsonResponse, proxyPublicPost } from '@/lib/auth-proxy';
 const MIN_PASSWORD_LENGTH = 8;
 
 export async function POST(request: Request) {
-  let body: { email?: string; token?: string; newPassword?: string };
+  let body: { token?: string; newPassword?: string };
 
   try {
     body = await request.json();
@@ -12,13 +12,12 @@ export async function POST(request: Request) {
     return malformedJsonResponse();
   }
 
-  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const token = typeof body.token === 'string' ? body.token.trim() : '';
   const newPassword = typeof body.newPassword === 'string' ? body.newPassword : '';
 
-  if (!email || !token || !newPassword) {
+  if (!token || !newPassword) {
     return NextResponse.json(
-      { error: 'Email, verification code, and new password are required.' },
+      { error: 'Recovery token and new password are required.' },
       { status: 400 },
     );
   }
@@ -32,7 +31,7 @@ export async function POST(request: Request) {
 
   return proxyPublicPost(
     '/v1/dashboard/auth/reset-password',
-    { email, token, newPassword },
+    { token, newPassword },
     'Failed to reset password.',
   );
 }

@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { organizationService } from "./organizationService";
+import { resolveUserOrganizationId } from "../../middleware/orgScope";
+import type { AuthenticatedRequest } from "../../middleware/userAuth";
 
 export class OrganizationController {
   async createOrganization(req: Request, res: Response, next: NextFunction) {
@@ -11,9 +13,23 @@ export class OrganizationController {
     }
   }
 
+  async registerOrganization(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await organizationService.registerOrganization(req.body);
+      return res.status(201).json({
+        message: "Organization registered successfully",
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async getAllOrganizations(req: Request, res: Response, next: NextFunction) {
     try {
-      const orgs = await organizationService.getAllOrganizations();
+      // A dashboard user only ever sees the organization they administer.
+      const ownOrganizationId = await resolveUserOrganizationId((req as AuthenticatedRequest).user!);
+      const orgs = await organizationService.getAllOrganizations(ownOrganizationId);
       return res.status(200).json({ data: orgs });
     } catch (error) {
       next(error);

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { employeeController } from './employeeController';
 import { userAuth } from '../../middleware/userAuth';
 import { requireRole } from '../../middleware/rbac';
+import { requireOwnOrganizationBody } from '../../middleware/orgScope';
 import { auditLogger } from '../../middleware/auditLogger';
 import { validate } from '../../middleware/validate';
 import {
@@ -62,6 +63,7 @@ router.post(
   '/',
   requireRole('super_admin'),
   validate(createEmployeeSchema),
+  requireOwnOrganizationBody as any,
   auditLogger('CREATE_EMPLOYEE'),
   employeeController.createEmployee
 );
@@ -72,6 +74,7 @@ router.post(
   '/bulk',
   requireRole('super_admin'),
   validate(bulkCreateEmployeesSchema),
+  requireOwnOrganizationBody as any,
   auditLogger('BULK_CREATE_EMPLOYEES'),
   employeeController.bulkCreateEmployees
 );

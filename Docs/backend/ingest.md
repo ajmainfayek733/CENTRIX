@@ -299,6 +299,19 @@ serves traffic and sweeps nothing.
 
 ---
 
+## 10. Data retention
+
+The `dataRetention` maintenance job enforces each organization's `Policy.retentionDays` (default
+90) every `RETENTION_JOB_INTERVAL_SECONDS`. Rows older than the cutoff are removed in bounded
+batches from: activity metrics, activity sessions, browser activity, USB events, alerts, the
+daily rollup and the three daily summary tables, and screenshots.
+
+- Screenshots: the stored file (local disk or S3) is deleted first, then the row. A file that
+  cannot be deleted keeps its row, so the next sweep retries it; an already-absent file counts
+  as deleted.
+- Never aged out: attendance sessions, consent records, audit logs, employees and devices.
+- `undeliveredRetentionDays` is agent-side only (see the agent's `RetentionWorker`).
+
 ## Failure modes
 
 | Symptom                                   | Likely cause                                                             | Check                                                                                                                    |
