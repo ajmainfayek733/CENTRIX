@@ -15,7 +15,8 @@
 # it request the "/api/agents" namespace, which does not exist.
 #
 # TLS certificates are issued and renewed automatically by Let's Encrypt. That requires the
-# domain's DNS A record to point at this host's Elastic IP, and inbound 80 and 443 to be open.
+# domain's DNS A record (and AAAA, if one exists) to point at this host's public IP, and inbound
+# 80 and 443 to be open. A stale AAAA record breaks issuance, because Let's Encrypt prefers IPv6.
 #
 # {$VAR} values are substituted from the container environment set in docker-compose.prod.yml.
 

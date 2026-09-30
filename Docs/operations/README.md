@@ -6,6 +6,7 @@ Running the system, and fixing it when it misbehaves.
 |---|---|
 | [running-the-stack.md](running-the-stack.md) | Setting up locally, or verifying an install end to end |
 | [aws-ec2-deployment.md](aws-ec2-deployment.md) | **Production on AWS:** EC2 + S3, HTTPS, backups, monthly cost |
+| [hostinger-deployment.md](hostinger-deployment.md) | **Production on a VPS:** Docker + Caddy + self-hosted MinIO, backups |
 | [backend-deployment.md](backend-deployment.md) | Deploying the API and onboarding a fleet |
 | [agent-deployment.md](agent-deployment.md) | Installing, updating or removing the agent on workstations |
 | [troubleshooting.md](troubleshooting.md) | **Something is wrong.** Indexed by symptom |

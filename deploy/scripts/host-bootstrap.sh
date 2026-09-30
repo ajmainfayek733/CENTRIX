@@ -1,19 +1,26 @@
 #!/usr/bin/env bash
-# Prepares a fresh Ubuntu 24.04 LTS EC2 instance to run the CENTRIX stack.
+# Prepares a fresh Ubuntu LTS host (AWS EC2, Hostinger VPS, any generic VPS) to run the CENTRIX
+# stack. Targets Ubuntu 24.04 LTS and 26.04 LTS.
 #
-#   sudo ./ec2-bootstrap.sh
+#   sudo ./host-bootstrap.sh
 #
 # Installs Docker Engine with the buildx and compose plugins from Docker's official apt
-# repository, the AWS CLI v2 (for database backups), a swap file (so `next build` does not get
+# repository, the AWS CLI v2 (S3 and MinIO database backups), a swap file (so `next build` does not get
 # OOM-killed on a 4 GiB host), and Docker daemon defaults for log rotation. Safe to re-run.
 #
 # Optional environment:
 #   SWAP_SIZE_GB   default 2
 #   DEPLOY_USER    user added to the docker group, default the invoking sudo user or ubuntu
+#   ENABLE_UFW     true to allow only SSH, HTTP, HTTPS and HTTP/3 through ufw, default false.
+#                  Skip it where the provider firewall already does this (AWS security groups).
+#   SSH_PORT       port kept open when ENABLE_UFW=true, default 22
 
 set -euo pipefail
 
 readonly DEFAULT_SWAP_SIZE_GB=2
+readonly DEFAULT_SSH_PORT=22
+readonly HTTP_PORT=80
+readonly HTTPS_PORT=443
 readonly SWAP_FILE="/swapfile"
 # Low swappiness: swap is an OOM safety net for image builds, not a place to page Postgres.
 readonly SWAPPINESS=10
@@ -21,6 +28,9 @@ readonly DOCKER_LOG_MAX_SIZE="20m"
 readonly DOCKER_LOG_MAX_FILES="5"
 readonly DOCKER_KEYRING="/etc/apt/keyrings/docker.asc"
 readonly DOCKER_REPO_URL="https://download.docker.com/linux/ubuntu"
+# Newest Ubuntu LTS whose Docker suite is known to exist, used when the host's own codename has
+# no suite yet (a new Ubuntu release usually lands in Docker's repository weeks later).
+readonly DOCKER_FALLBACK_CODENAME="noble"
 readonly AWS_CLI_URL="https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip"
 
 log() { printf '[bootstrap] %s\n' "$*"; }
@@ -33,6 +43,10 @@ die() { printf '[bootstrap] ERROR: %s\n' "$*" >&2; exit 1; }
 
 SWAP_SIZE_GB="${SWAP_SIZE_GB:-$DEFAULT_SWAP_SIZE_GB}"
 DEPLOY_USER="${DEPLOY_USER:-${SUDO_USER:-ubuntu}}"
+ENABLE_UFW="${ENABLE_UFW:-false}"
+SSH_PORT="${SSH_PORT:-$DEFAULT_SSH_PORT}"
+[[ "$ENABLE_UFW" == "true" || "$ENABLE_UFW" == "false" ]] || die "ENABLE_UFW must be true or false"
+[[ "$SSH_PORT" =~ ^[0-9]+$ ]] || die "SSH_PORT must be a whole number"
 [[ "$SWAP_SIZE_GB" =~ ^[0-9]+$ ]] || die "SWAP_SIZE_GB must be a whole number"
 
 export DEBIAN_FRONTEND=noninteractive
@@ -48,7 +62,12 @@ if ! command -v docker >/dev/null; then
   install -m 0755 -d /etc/apt/keyrings
   curl -fsSL "${DOCKER_REPO_URL}/gpg" -o "$DOCKER_KEYRING"
   chmod a+r "$DOCKER_KEYRING"
-  echo "deb [arch=$(dpkg --print-architecture) signed-by=${DOCKER_KEYRING}] ${DOCKER_REPO_URL} ${VERSION_CODENAME} stable" \
+  DOCKER_CODENAME="$VERSION_CODENAME"
+  if ! curl -fsSI "${DOCKER_REPO_URL}/dists/${DOCKER_CODENAME}/Release" >/dev/null; then
+    log "Docker has no ${DOCKER_CODENAME} suite yet, falling back to ${DOCKER_FALLBACK_CODENAME}"
+    DOCKER_CODENAME="$DOCKER_FALLBACK_CODENAME"
+  fi
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=${DOCKER_KEYRING}] ${DOCKER_REPO_URL} ${DOCKER_CODENAME} stable" \
     > /etc/apt/sources.list.d/docker.list
   apt-get update -y
   apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
@@ -96,6 +115,21 @@ if (( SWAP_SIZE_GB > 0 )) && ! swapon --show=NAME --noheadings | grep -qx "$SWAP
 fi
 sysctl -w "vm.swappiness=${SWAPPINESS}" >/dev/null
 echo "vm.swappiness=${SWAPPINESS}" > /etc/sysctl.d/99-centrix-swappiness.conf
+
+# -- Firewall (optional) --------------------------------------------------------
+# Published container ports bypass ufw, which is why the stack binds everything except Caddy to
+# loopback or the private compose network. ufw still closes every other host service.
+if [[ "$ENABLE_UFW" == "true" ]]; then
+  log "configuring ufw (ssh ${SSH_PORT}, http ${HTTP_PORT}, https ${HTTPS_PORT})"
+  apt-get install -y ufw
+  ufw default deny incoming
+  ufw default allow outgoing
+  ufw allow "${SSH_PORT}/tcp"
+  ufw allow "${HTTP_PORT}/tcp"
+  ufw allow "${HTTPS_PORT}/tcp"
+  ufw allow "${HTTPS_PORT}/udp"
+  ufw --force enable
+fi
 
 # -- Unattended security updates ---------------------------------------------
 apt-get install -y unattended-upgrades

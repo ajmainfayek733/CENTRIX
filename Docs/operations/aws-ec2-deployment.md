@@ -118,7 +118,7 @@ Connect with Session Manager (`aws ssm start-session --target i-... --region ap-
 ```bash
 sudo -i -u ubuntu
 git clone <repository-url> centrix && cd centrix
-sudo ./deploy/scripts/ec2-bootstrap.sh
+sudo ./deploy/scripts/host-bootstrap.sh
 exit   # log out and back in so the docker group applies
 ```
 
