@@ -29,8 +29,9 @@ COMPOSE_FILE="${DEPLOY_DIR}/docker-compose.prod.yml"
 
 [[ -f "$ENV_FILE" ]] || die "missing ${ENV_FILE}"
 
+# An absent key yields an empty string; see env_value in deploy.sh for why grep needs `|| true`.
 env_value() {
-  grep -E "^$1=" "$ENV_FILE" | tail -n 1 | cut -d '=' -f 2- | sed -e 's/^"//' -e 's/"$//'
+  { grep -E "^$1=" "$ENV_FILE" || true; } | tail -n 1 | cut -d '=' -f 2- | sed -e 's/^"//' -e 's/"$//'
 }
 
 BACKUP_S3_URI="$(env_value BACKUP_S3_URI)"
